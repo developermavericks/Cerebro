@@ -1,0 +1,32 @@
+/* webmeji */
+.webmeji-container {
+  position: fixed;
+  bottom: 0;
+  width: 100px;
+  height: 100px;
+  overflow: hidden;
+  z-index: 9999;
+  cursor: grab;
+  transition: transform 0.2s ease-out;
+  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.3));
+}
+
+.webmeji-container:active {
+  cursor: grabbing;
+}
+
+.webmeji-container img {
+  width: 100%;
+  height: auto;
+  user-select: none;
+  pointer-events: none;
+  display: block;
+  transform-origin: center;
+}
+
+@media (max-width: 768px) {
+  .webmeji-container {
+    width: 65px;
+    height: 65px;
+  }
+}

@@ -5,3 +5,83 @@ CREATE TABLE IF NOT EXISTS users (
   password VARCHAR(255) NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS companies (
+  id SERIAL PRIMARY KEY,
+  user_id INT REFERENCES users(id) ON DELETE CASCADE,
+  name VARCHAR(255) NOT NULL,
+  region VARCHAR(50) DEFAULT 'Global',
+  last_status VARCHAR(255) DEFAULT 'Pending first fetch',
+  mentions INT DEFAULT 0,
+  last_viewed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT unique_user_company UNIQUE(user_id, name)
+);
+
+CREATE TABLE IF NOT EXISTS articles (
+  id SERIAL PRIMARY KEY,
+  company_id INT REFERENCES companies(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  link TEXT UNIQUE NOT NULL,
+  published_at TEXT,
+  source TEXT,
+  summary TEXT,
+  sentiment VARCHAR(50) DEFAULT 'Neutral',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS status (
+  key VARCHAR(255) PRIMARY KEY,
+  value TEXT
+);
+
+CREATE TABLE IF NOT EXISTS snapshots (
+  id SERIAL PRIMARY KEY,
+  target_url TEXT NOT NULL,
+  total_mentions INT NOT NULL,
+  google_mentions INT NOT NULL,
+  reddit_mentions INT NOT NULL,
+  estimated_reach INT NOT NULL,
+  sentiment_score NUMERIC NOT NULL,
+  confidence_score NUMERIC NOT NULL,
+  velocity INT NOT NULL,
+  agentic_status VARCHAR(50) NOT NULL,
+  version VARCHAR(50) NOT NULL,
+  raw_data TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS batch_jobs (
+  id VARCHAR(255) PRIMARY KEY,
+  status VARCHAR(50) NOT NULL,
+  total_urls INT DEFAULT 0,
+  processed_urls INT DEFAULT 0,
+  result_file TEXT,
+  results TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+ALTER TABLE batch_jobs ADD COLUMN IF NOT EXISTS results TEXT;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS last_viewed_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS last_ping_at TIMESTAMP WITH TIME ZONE;
+
+CREATE TABLE IF NOT EXISTS license_keys (
+  id SERIAL PRIMARY KEY,
+  key VARCHAR(255) UNIQUE NOT NULL,
+  is_used BOOLEAN DEFAULT false,
+  assigned_to_email VARCHAR(255),
+  is_revoked BOOLEAN DEFAULT false,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+ALTER TABLE license_keys ADD COLUMN IF NOT EXISTS is_revoked BOOLEAN DEFAULT false;
+
+CREATE TABLE IF NOT EXISTS domain_authority_cache (
+  domain VARCHAR(255) PRIMARY KEY,
+  page_rank_decimal NUMERIC(5,2),
+  page_rank_integer INT,
+  rank INT,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+
