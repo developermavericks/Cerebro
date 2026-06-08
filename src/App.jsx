@@ -700,6 +700,310 @@ function App() {
   const [reportTelemetryData, setReportTelemetryData] = useState(null);
   const [isFetchingTelemetry, setIsFetchingTelemetry] = useState(false);
 
+  // --- Power BI Features States (Features 1-8) ---
+  const [reportFilters, setReportFilters] = useState({
+    brands: [],
+    sentiments: [],
+    dateRange: ['', ''],
+    minMentions: 0,
+    publications: []
+  });
+  const [activeChartFilter, setActiveChartFilter] = useState(null);
+  const [chartConfigs, setChartConfigs] = useState({});
+  const [conditionalRules, setConditionalRules] = useState({});
+  const [newBookmarkName, setNewBookmarkName] = useState('');
+  const [reportTheme, setReportTheme] = useState('Executive White');
+  const [brandedPrimaryColor, setBrandedPrimaryColor] = useState('#6366f1');
+  const [reportLayout, setReportLayout] = useState('Single-column');
+  const [drillThroughContext, setDrillThroughContext] = useState(null);
+  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(true);
+  const [isThemePickerOpen, setIsThemePickerOpen] = useState(false);
+  const [activeConfigChartId, setActiveConfigChartId] = useState(null);
+
+  // Derived filtered brands object (Feature 1 & 4)
+  const filteredBrandsObj = React.useMemo(() => {
+    if (!reportTelemetryData || !reportTelemetryData.brands) return {};
+    const brandsObj = reportTelemetryData.brands;
+    const filtered = {};
+
+    Object.entries(brandsObj).forEach(([brandName, brandData]) => {
+      // 1. Filter by Brand/Keyword checklist
+      if (reportFilters.brands.length > 0 && !reportFilters.brands.includes(brandName)) {
+        return;
+      }
+      // Cross-chart filter check for brand
+      if (activeChartFilter && activeChartFilter.field === 'brand' && activeChartFilter.value !== brandName) {
+        return;
+      }
+
+      // 2. Filter by minMentions
+      if ((brandData.mentions || 0) < reportFilters.minMentions) {
+        return;
+      }
+
+      // a. Date Range filter (applied to timeline dates)
+      const filteredTimeline = {};
+      Object.entries(brandData.timeline || {}).forEach(([dt, val]) => {
+        const dateVal = new Date(dt);
+        if (reportFilters.dateRange[0]) {
+          const start = new Date(reportFilters.dateRange[0]);
+          if (dateVal < start) return;
+        }
+        if (reportFilters.dateRange[1]) {
+          const end = new Date(reportFilters.dateRange[1]);
+          if (dateVal > end) return;
+        }
+        // Cross-chart date filter check
+        if (activeChartFilter && activeChartFilter.field === 'date' && activeChartFilter.value !== dt) {
+          return;
+        }
+        filteredTimeline[dt] = val;
+      });
+
+      // b. Publication filter (applied to sources)
+      const filteredSources = {};
+      Object.entries(brandData.sources || {}).forEach(([pubName, val]) => {
+        if (reportFilters.publications.length > 0 && !reportFilters.publications.includes(pubName)) {
+          return;
+        }
+        // Cross-chart publication filter check
+        if (activeChartFilter && activeChartFilter.field === 'publication' && activeChartFilter.value !== pubName) {
+          return;
+        }
+        filteredSources[pubName] = val;
+      });
+
+      // c. Sentiment filter (applied to sentiment card)
+      const filteredSentiment = { Positive: 0, Neutral: 0, Negative: 0 };
+      Object.entries(brandData.sentiment || {}).forEach(([sentKey, val]) => {
+        if (reportFilters.sentiments.length > 0 && !reportFilters.sentiments.includes(sentKey)) {
+          return;
+        }
+        // Cross-chart sentiment filter check
+        if (activeChartFilter && activeChartFilter.field === 'sentiment' && activeChartFilter.value !== sentKey) {
+          return;
+        }
+        filteredSentiment[sentKey] = val;
+      });
+
+      // Filter article samples
+      const filteredSamples = { Positive: [], Neutral: [], Negative: [] };
+      Object.entries(brandData.article_samples || {}).forEach(([sentKey, samples]) => {
+        if (reportFilters.sentiments.length > 0 && !reportFilters.sentiments.includes(sentKey)) {
+          return;
+        }
+        if (activeChartFilter && activeChartFilter.field === 'sentiment' && activeChartFilter.value !== sentKey) {
+          return;
+        }
+        const matching = (samples || []).filter(sample => {
+          // Date check
+          if (sample.published) {
+            const dateVal = new Date(sample.published);
+            if (reportFilters.dateRange[0] && dateVal < new Date(reportFilters.dateRange[0])) return false;
+            if (reportFilters.dateRange[1] && dateVal > new Date(reportFilters.dateRange[1])) return false;
+            if (activeChartFilter && activeChartFilter.field === 'date' && activeChartFilter.value !== sample.published) return false;
+          }
+          // Publication check
+          if (reportFilters.publications.length > 0 && !reportFilters.publications.includes(sample.source)) return false;
+          if (activeChartFilter && activeChartFilter.field === 'publication' && activeChartFilter.value !== sample.source) return false;
+          return true;
+        });
+        filteredSamples[sentKey] = matching;
+      });
+
+      const newMentions = Object.values(filteredTimeline).reduce((s, v) => s + v, 0);
+      const newArticles = filteredSamples.Positive.length + filteredSamples.Neutral.length + filteredSamples.Negative.length;
+
+      filtered[brandName] = {
+        ...brandData,
+        mentions: newMentions,
+        articles: newArticles || brandData.articles,
+        sources: filteredSources,
+        timeline: filteredTimeline,
+        sentiment: filteredSentiment,
+        article_samples: filteredSamples
+      };
+    });
+
+    return filtered;
+  }, [reportTelemetryData, reportFilters, activeChartFilter]);
+
+  // Derived filtered publications (Feature 1)
+  const filteredPublications = React.useMemo(() => {
+    if (!reportTelemetryData || !reportTelemetryData.topIndianPublications) return [];
+    return reportTelemetryData.topIndianPublications.filter(pub => {
+      if (reportFilters.publications.length > 0 && !reportFilters.publications.includes(pub.name)) {
+        return false;
+      }
+      return true;
+    });
+  }, [reportTelemetryData, reportFilters.publications]);
+
+  // Pre-process chart data (Feature 2)
+  const processChartData = (brandsObj, config) => {
+    if (!brandsObj) return [];
+    const brandNames = Object.keys(brandsObj);
+    let processed = [];
+
+    const field = config.field || 'Sentiment';
+    const groupBy = config.groupBy || 'Brand';
+    const sort = config.sort || 'Descending';
+    const maxItems = config.maxItems || 'All';
+
+    if (groupBy === 'Brand') {
+      brandNames.forEach(b => {
+        const bData = brandsObj[b];
+        let val = 0;
+        if (field === 'Sentiment') {
+          const s = bData.sentiment || { Positive: 0, Neutral: 0, Negative: 0 };
+          val = (s.Positive || 0) + (s.Neutral || 0) + (s.Negative || 0);
+        } else if (field === 'Mentions Trend' || field === 'SOV' || field === 'Share of Voice' || field === 'Reach Index') {
+          val = bData.mentions || 0;
+        } else if (field === 'Articles Coverage') {
+          val = bData.articles || 0;
+        } else if (field === 'Net Sentiment Index') {
+          const s = bData.sentiment || { Positive: 0, Neutral: 0, Negative: 0 };
+          const total = (s.Positive || 0) + (s.Neutral || 0) + (s.Negative || 0);
+          val = total > 0 ? ((s.Positive - s.Negative) / total) * 100 : 0;
+        } else if (field === 'Media Diversity Index') {
+          val = Object.keys(bData.sources || {}).length;
+        } else {
+          val = bData.mentions || 0;
+        }
+        processed.push({ name: b, value: val, originalData: bData });
+      });
+    } else if (groupBy === 'Publication') {
+      const pubMap = {};
+      brandNames.forEach(b => {
+        const bData = brandsObj[b];
+        Object.entries(bData.sources || {}).forEach(([pub, cnt]) => {
+          pubMap[pub] = (pubMap[pub] || 0) + cnt;
+        });
+      });
+      Object.entries(pubMap).forEach(([pub, val]) => {
+        processed.push({ name: pub, value: val });
+      });
+    } else if (groupBy === 'Date') {
+      const dateMap = {};
+      brandNames.forEach(b => {
+        const bData = brandsObj[b];
+        Object.entries(bData.timeline || {}).forEach(([dt, cnt]) => {
+          dateMap[dt] = (dateMap[dt] || 0) + cnt;
+        });
+      });
+      Object.entries(dateMap).forEach(([dt, val]) => {
+        processed.push({ name: dt, value: val });
+      });
+    }
+
+    // Apply sorting
+    if (sort === 'Descending') {
+      processed.sort((a, b) => b.value - a.value);
+    } else if (sort === 'Ascending') {
+      processed.sort((a, b) => a.value - b.value);
+    } else if (sort === 'Alphabetical') {
+      processed.sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    // Apply maxItems limits
+    if (maxItems === 'Top 3') {
+      processed = processed.slice(0, 3);
+    } else if (maxItems === 'Top 5') {
+      processed = processed.slice(0, 5);
+    } else if (maxItems === 'Top 10') {
+      processed = processed.slice(0, 10);
+    }
+
+    return processed;
+  };
+
+  // Conditional formatting helper (Feature 6)
+  const getConditionalColor = (chartId, value, defaultColor) => {
+    const rules = conditionalRules[chartId] || [];
+    for (const rule of rules) {
+      const val = Number(value);
+      const target = Number(rule.value);
+      if (rule.operator === '<' && val < target) return rule.color;
+      if (rule.operator === '>' && val > target) return rule.color;
+      if (rule.operator === '==' && val === target) return rule.color;
+    }
+    return defaultColor;
+  };
+
+  // Sparkline SVG renderer (Feature 3)
+  const renderSparkline = (points, color = '#6366f1') => {
+    if (!points || points.length < 2) return null;
+    const max = Math.max(...points, 1);
+    const min = Math.min(...points, 0);
+    const range = max - min;
+    const width = 100;
+    const height = 30;
+    const coords = points.map((p, idx) => {
+      const x = (idx / (points.length - 1)) * width;
+      const y = height - ((p - min) / range) * height;
+      return `${x},${y}`;
+    });
+    return (
+      <svg className="w-24 h-8 overflow-visible" viewBox={`0 0 ${width} ${height}`}>
+        <polyline
+          fill="none"
+          stroke={color}
+          strokeWidth="2"
+          points={coords.join(' ')}
+        />
+      </svg>
+    );
+  };
+
+  // Drill-through article selector helper (Feature 5)
+  const getDrillThroughArticles = (brandName, sentiment, pubName) => {
+    let list = [];
+    const activeBrands = brandName ? [brandName] : Object.keys(filteredBrandsObj);
+    activeBrands.forEach(b => {
+      const bData = filteredBrandsObj[b];
+      if (!bData || !bData.article_samples) return;
+      const activeSentiments = sentiment ? [sentiment] : ['Positive', 'Neutral', 'Negative'];
+      activeSentiments.forEach(sKey => {
+        const samples = bData.article_samples[sKey] || [];
+        samples.forEach(sample => {
+          if (pubName && sample.source !== pubName) return;
+          list.push({
+            ...sample,
+            brand: b,
+            sentiment: sKey
+          });
+        });
+      });
+    });
+    return list;
+  };
+
+  // Handle drill through segment click (Feature 4 & 5)
+  const handleSegmentClick = (field, value) => {
+    setActiveChartFilter({ field, value });
+    setDrillThroughContext({
+      isOpen: true,
+      field,
+      value,
+      articles: getDrillThroughArticles(
+        field === 'brand' ? value : null,
+        field === 'sentiment' ? value : null,
+        field === 'publication' ? value : null
+      )
+    });
+  };
+
+  // Insert citation helper (Feature 5)
+  const insertCitation = (article) => {
+    if (!activeEditor) {
+      alert("Please click inside an editor block first to focus where you want to insert the citation.");
+      return;
+    }
+    const citationText = ` [Citation: "${article.title}" (${article.source}, ${article.published})] `;
+    activeEditor.chain().focus().insertContent(citationText).run();
+    alert("Citation inserted into the active text section!");
+  };
+
   const [isChatbotOpen, setIsChatbotOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState([
     {
@@ -3436,6 +3740,82 @@ function App() {
                                     </div>
                                   </div>
                                 ))}
+
+                                {/* Report Bookmarks (Feature 7) */}
+                                <div className="border-t border-slate-800/60 my-4"></div>
+                                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 px-3 py-2 flex items-center justify-between">
+                                  <span>Report Bookmarks</span>
+                                  <span className="text-[9px] bg-slate-800 px-2 py-0.5 rounded text-slate-400">{(selectedReport.bookmarks || []).length}</span>
+                                </div>
+                                <div className="px-3 pb-3 flex flex-col gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <input
+                                      type="text"
+                                      placeholder="Bookmark name..."
+                                      value={newBookmarkName}
+                                      onChange={(e) => setNewBookmarkName(e.target.value)}
+                                      className="w-full bg-slate-800/90 text-[11px] text-white placeholder-slate-500 px-2.5 py-1.5 rounded-xl border border-slate-700/80 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner"
+                                    />
+                                    <button
+                                      onClick={() => {
+                                        const bName = newBookmarkName.trim();
+                                        if (!bName) return;
+                                        const newB = {
+                                          id: `bookmark-${Date.now()}`,
+                                          name: bName,
+                                          filters: JSON.parse(JSON.stringify(reportFilters)),
+                                          chartConfigs: JSON.parse(JSON.stringify(chartConfigs)),
+                                          conditionalRules: JSON.parse(JSON.stringify(conditionalRules))
+                                        };
+                                        const updated = {
+                                          ...selectedReport,
+                                          bookmarks: [...(selectedReport.bookmarks || []), newB]
+                                        };
+                                        setSelectedReport(updated);
+                                        setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
+                                        setNewBookmarkName('');
+                                      }}
+                                      className="p-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl shadow-lg active:scale-95 transition-all shrink-0"
+                                      title="Save Bookmark"
+                                    >
+                                      <Bookmark size={14} />
+                                    </button>
+                                  </div>
+                                  
+                                  <div className="max-h-40 overflow-y-auto space-y-1.5 custom-scrollbar">
+                                    {(selectedReport.bookmarks || []).map((b) => (
+                                      <div
+                                        key={b.id}
+                                        onClick={() => {
+                                          if (b.filters) setReportFilters(b.filters);
+                                          if (b.chartConfigs) setChartConfigs(b.chartConfigs);
+                                          if (b.conditionalRules) setConditionalRules(b.conditionalRules);
+                                        }}
+                                        className="group flex items-center justify-between px-3 py-2 rounded-xl bg-slate-850 hover:bg-slate-800 text-[11px] text-slate-300 hover:text-white cursor-pointer transition-all border border-transparent hover:border-slate-700"
+                                      >
+                                        <span className="truncate flex items-center gap-2">
+                                          <Bookmark size={11} className="text-slate-500 group-hover:text-emerald-400" />
+                                          <span className="truncate">{b.name}</span>
+                                        </span>
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            const updated = {
+                                              ...selectedReport,
+                                              bookmarks: (selectedReport.bookmarks || []).filter(item => item.id !== b.id)
+                                            };
+                                            setSelectedReport(updated);
+                                            setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
+                                          }}
+                                          className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-red-405 transition-opacity"
+                                          title="Delete Bookmark"
+                                        >
+                                          <Trash2 size={11} />
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
                               </div>
 
                               <div className="p-6 border-t border-slate-800 bg-slate-950/60 flex flex-col gap-3.5 text-xs text-slate-400 font-mono shrink-0">
@@ -3468,6 +3848,167 @@ function App() {
                             >
                               {isLeftSidebarOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
                             </button>
+                          </div>
+                        )}
+
+
+                        {/* Collapsible Left Filter Panel (Feature 1) */}
+                        {!isPresentView && (
+                          <div className={`bg-slate-900 text-white flex flex-col shadow-2xl h-full border-r border-slate-800 transition-all duration-300 shrink-0 ${isFilterPanelOpen ? 'w-80 opacity-100' : 'w-0 overflow-hidden border-none opacity-0'}`}>
+                            <div className="p-6 border-b border-slate-800 flex items-center justify-between shrink-0">
+                              <div className="flex items-center gap-2.5">
+                                <Filter size={18} className="text-indigo-400" />
+                                <h3 className="text-sm font-black uppercase tracking-wider text-slate-100">Global Slicers</h3>
+                              </div>
+                              <button
+                                onClick={() => setReportFilters({
+                                  brands: [],
+                                  sentiments: [],
+                                  dateRange: ['', ''],
+                                  minMentions: 0,
+                                  publications: []
+                                })}
+                                className="px-2 py-1 text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-indigo-400 border border-slate-700 hover:border-indigo-600 rounded transition-all"
+                                title="Clear all active filters"
+                              >
+                                Clear
+                              </button>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-6">
+                              {/* 1. Date Range Picker */}
+                              <div className="space-y-2.5">
+                                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 block ml-1">Date Range</label>
+                                <div className="flex flex-col gap-2">
+                                  <input
+                                    type="date"
+                                    value={reportFilters.dateRange[0] || ''}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      setReportFilters(prev => ({
+                                        ...prev,
+                                        dateRange: [val, prev.dateRange[1]]
+                                      }));
+                                    }}
+                                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs outline-none focus:border-indigo-500"
+                                  />
+                                  <input
+                                    type="date"
+                                    value={reportFilters.dateRange[1] || ''}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      setReportFilters(prev => ({
+                                        ...prev,
+                                        dateRange: [prev.dateRange[0], val]
+                                      }));
+                                    }}
+                                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs outline-none focus:border-indigo-500"
+                                  />
+                                </div>
+                              </div>
+
+                              {/* 2. Brand Checkboxes */}
+                              <div className="space-y-2.5">
+                                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 block ml-1">Brand Slicer</label>
+                                <div className="max-h-36 overflow-y-auto space-y-2 bg-slate-950/30 p-3 rounded-2xl border border-slate-800">
+                                  {Object.keys(reportTelemetryData?.brands || {}).map((b) => (
+                                    <label key={b} className="flex items-center gap-2.5 cursor-pointer text-xs font-semibold text-slate-300 hover:text-white transition-colors">
+                                      <input
+                                        type="checkbox"
+                                        checked={reportFilters.brands.includes(b)}
+                                        onChange={(e) => {
+                                          const checked = e.target.checked;
+                                          setReportFilters(prev => {
+                                            const brands = checked ? [...prev.brands, b] : prev.brands.filter(item => item !== b);
+                                            return { ...prev, brands };
+                                          });
+                                        }}
+                                        className="rounded text-indigo-650 focus:ring-indigo-550 bg-slate-850 border-slate-700"
+                                      />
+                                      <span className="truncate">{b}</span>
+                                    </label>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {/* 3. Sentiment Scope */}
+                              <div className="space-y-2.5">
+                                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 block ml-1">Sentiment Category</label>
+                                <div className="flex gap-1.5">
+                                  {['Positive', 'Neutral', 'Negative'].map(sent => {
+                                    const active = reportFilters.sentiments.includes(sent);
+                                    return (
+                                      <button
+                                        key={sent}
+                                        onClick={() => {
+                                          setReportFilters(prev => {
+                                            const sentiments = active
+                                              ? prev.sentiments.filter(item => item !== sent)
+                                              : [...prev.sentiments, sent];
+                                            return { ...prev, sentiments };
+                                          });
+                                        }}
+                                        className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase border transition-all ${
+                                          active
+                                            ? sent === 'Positive' ? 'bg-emerald-650 text-white border-emerald-500 shadow-lg shadow-emerald-500/20' :
+                                              sent === 'Negative' ? 'bg-red-650 text-white border-red-500 shadow-lg shadow-red-500/20' :
+                                              'bg-slate-500 text-white border-slate-450 shadow-lg'
+                                            : 'bg-slate-855 text-slate-400 border-slate-750 hover:bg-slate-750'
+                                        }`}
+                                      >
+                                        {sent}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+
+                              {/* 4. Publication Checklist */}
+                              <div className="space-y-2.5">
+                                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 block ml-1">Media Outlets</label>
+                                <div className="max-h-36 overflow-y-auto space-y-2 bg-slate-950/30 p-3 rounded-2xl border border-slate-800">
+                                  {(reportTelemetryData?.topIndianPublications || []).map((pub) => (
+                                    <label key={pub.name} className="flex items-center gap-2.5 cursor-pointer text-xs font-semibold text-slate-300 hover:text-white transition-colors">
+                                      <input
+                                        type="checkbox"
+                                        checked={reportFilters.publications.includes(pub.name)}
+                                        onChange={(e) => {
+                                          const checked = e.target.checked;
+                                          setReportFilters(prev => {
+                                            const publications = checked ? [...prev.publications, pub.name] : prev.publications.filter(item => item !== pub.name);
+                                            return { ...prev, publications };
+                                          });
+                                        }}
+                                        className="rounded text-indigo-650 focus:ring-indigo-550 bg-slate-850 border-slate-700"
+                                      />
+                                      <span className="truncate">{pub.name}</span>
+                                    </label>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {/* 5. Mentions Slider */}
+                              <div className="space-y-2.5">
+                                <div className="flex justify-between text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">
+                                  <span>Exposure Volume</span>
+                                  <span className="text-indigo-400 font-mono font-black">{reportFilters.minMentions}</span>
+                                </div>
+                                <input
+                                  type="range"
+                                  min="0"
+                                  max="500"
+                                  value={reportFilters.minMentions}
+                                  onChange={(e) => {
+                                    const val = Number(e.target.value);
+                                    setReportFilters(prev => ({
+                                      ...prev,
+                                      minMentions: val
+                                    }));
+                                  }}
+                                  className="w-full accent-indigo-500 cursor-ew-resize bg-slate-800 rounded h-1.5"
+                                />
+                              </div>
+                            </div>
                           </div>
                         )}
 
@@ -3506,6 +4047,94 @@ function App() {
                                     {selectedReport.type}
                                   </span>
                                   <h3 className="text-sm font-black tracking-tight text-white">{selectedReport.title}</h3>
+
+                                  <div className="w-px h-5 bg-slate-800 mx-2"></div>
+
+                                  {/* Toggle Filters Sidebar Button (Feature 1) */}
+                                  <button
+                                    onClick={() => setIsFilterPanelOpen(!isFilterPanelOpen)}
+                                    className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${isFilterPanelOpen ? 'bg-indigo-600 text-white shadow shadow-indigo-600/30' : 'bg-slate-800 text-slate-300 hover:bg-slate-755'}`}
+                                  >
+                                    <Filter size={13} />
+                                    <span>Filters</span>
+                                    {Object.values(reportFilters).some(v => Array.isArray(v) ? v.length > 0 : v > 0) && (
+                                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                                    )}
+                                  </button>
+
+                                  {/* Theme & Layout Selector (Feature 8) */}
+                                  <div className="relative">
+                                    <button
+                                      onClick={() => setIsThemePickerOpen(!isThemePickerOpen)}
+                                      className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${isThemePickerOpen ? 'bg-indigo-650 text-white shadow shadow-indigo-600/30' : 'bg-slate-800 text-slate-300 hover:bg-slate-755'}`}
+                                    >
+                                      <Sparkles size={13} />
+                                      <span>Theme & Layout</span>
+                                    </button>
+
+                                    {/* Theme Picker Dropdown Popover */}
+                                    {isThemePickerOpen && (
+                                      <div className="absolute top-12 left-0 mt-2 w-72 bg-slate-900 border border-slate-850 rounded-2xl shadow-2xl p-5 z-[100] text-xs space-y-4 animate-in fade-in slide-in-from-top-2 duration-200 text-white">
+                                        <div>
+                                          <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-2">Select Theme</label>
+                                          <div className="grid grid-cols-2 gap-2">
+                                            {['Corporate Dark', 'Executive White', 'Branded', 'Print-Ready'].map(theme => (
+                                              <button
+                                                key={theme}
+                                                onClick={() => setReportTheme(theme)}
+                                                className={`p-2.5 rounded-xl text-[10px] font-bold text-left transition-all border ${
+                                                  reportTheme === theme
+                                                    ? 'bg-indigo-600 text-white border-indigo-500 shadow-md'
+                                                    : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-750'
+                                                }`}
+                                              >
+                                                {theme}
+                                              </button>
+                                            ))}
+                                          </div>
+                                        </div>
+
+                                        {reportTheme === 'Branded' && (
+                                          <div className="space-y-2">
+                                            <label className="block text-[10px] font-black uppercase text-slate-400">Branded Accent Color</label>
+                                            <div className="flex items-center gap-2">
+                                              <input
+                                                type="color"
+                                                value={brandedPrimaryColor}
+                                                onChange={(e) => setBrandedPrimaryColor(e.target.value)}
+                                                className="w-10 h-8 bg-transparent rounded cursor-pointer shrink-0"
+                                              />
+                                              <input
+                                                type="text"
+                                                value={brandedPrimaryColor}
+                                                onChange={(e) => setBrandedPrimaryColor(e.target.value)}
+                                                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-2.5 py-1.5 text-white font-mono"
+                                              />
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        <div className="border-t border-slate-800 pt-3">
+                                          <label className="block text-[10px] font-black uppercase text-slate-400 mb-2">Dashboard Layout</label>
+                                          <div className="grid grid-cols-2 gap-2">
+                                            {['Single-column', 'Dashboard Grid'].map(layout => (
+                                              <button
+                                                key={layout}
+                                                onClick={() => setReportLayout(layout)}
+                                                className={`p-2 rounded-xl text-[10px] font-bold text-center transition-all border ${
+                                                  reportLayout === layout
+                                                    ? 'bg-indigo-600 text-white border-indigo-500 shadow-md'
+                                                    : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-750'
+                                                }`}
+                                              >
+                                                {layout}
+                                              </button>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
 
                                 {/* Text Formatting Toolbar */}
@@ -4000,702 +4629,681 @@ function App() {
 
                                   <div className="relative font-sans clearfix min-h-[400px]">
                                     {/* Floated Integrated Charts */}
-                                    {sec.charts && sec.charts.map((chart, cIdx) => (
-                                      <div
-                                        key={chart.id}
-                                        style={{
+                                    {(() => {
+                                      const chartItems = (sec.charts || []).map((chart, cIdx) => {
+                                        const config = chartConfigs[chart.id] || chart.config || {
+                                        type: chart.type || 'Bar Chart',
+                                        field: chart.field || 'Total Mentions',
+                                        groupBy: 'Brand',
+                                        sort: 'Descending',
+                                        maxItems: 'All'
+                                      };
+                                        const isDashboard = reportLayout === 'Dashboard Grid';
+                                        
+                                        const styleObj = isDashboard ? {
+                                          width: '100%',
+                                          transform: 'none',
+                                          zIndex: activeConfigChartId === chart.id ? 40 : 1
+                                        } : {
                                           width: `${typeof chart.width === 'number' ? chart.width : chart.width === 'full' ? 100 : 85}%`,
                                           transform: `translate3d(${chart.position?.x || 0}px, ${chart.position?.y || 0}px, 0)`,
-                                          zIndex: (chart.position?.x || chart.position?.y || chartDragState?.chartId === chart.id) ? 35 : 1
-                                        }}
-                                        className={`border border-slate-300/80 rounded-3xl p-8 bg-white shadow-xl hover:shadow-2xl transition-shadow duration-300 relative group print:shadow-none print:border-none ${chart.align === 'left' ? 'mr-8 mb-6 float-left' : chart.align === 'right' ? 'ml-8 mb-6 float-right' : 'mx-auto mb-8 clear-both block'
-                                          }`}
-                                      >
-                                        {/* Chart Customization & Drag Top Toolbar */}
-                                        {!isPresentView && (
-                                          <>
-                                            <div
-                                              className="absolute -top-3 left-1/2 -translate-x-1/2 px-4 py-1.5 bg-slate-900 text-white rounded-full shadow-lg flex items-center gap-2 cursor-grab active:cursor-grabbing text-[11px] font-bold z-30 opacity-80 hover:opacity-100 transition-opacity"
-                                              title="Drag to reposition chart anywhere on canvas"
-                                              onMouseDown={(e) => {
-                                                e.preventDefault();
-                                                setChartDragState({
-                                                  chartId: chart.id,
-                                                  sIdx,
-                                                  cIdx,
-                                                  startX: e.clientX,
-                                                  startY: e.clientY,
-                                                  initX: chart.position?.x || 0,
-                                                  initY: chart.position?.y || 0
-                                                });
-                                              }}
-                                            >
-                                              <Move size={12} className="animate-bounce" />
-                                              <span>Drag Chart</span>
-                                              {(chart.position?.x || chart.position?.y) ? (
-                                                <button
-                                                  onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    const updatedSecs = [...selectedReport.sections];
-                                                    const updatedCharts = [...updatedSecs[sIdx].charts];
-                                                    updatedCharts[cIdx] = { ...chart, position: { x: 0, y: 0 } };
-                                                    updatedSecs[sIdx] = { ...updatedSecs[sIdx], charts: updatedCharts };
-                                                    const updated = { ...selectedReport, sections: updatedSecs };
-                                                    setSelectedReport(updated);
-                                                    setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
-                                                  }}
-                                                  className="ml-1 text-red-400 hover:text-red-300 text-[10px] pl-1.5 border-l border-slate-700 font-mono"
-                                                  title="Reset Position"
-                                                >
-                                                  Reset
-                                                </button>
-                                              ) : null}
+                                          zIndex: (chart.position?.x || chart.position?.y || chartDragState?.chartId === chart.id) ? 35 : (activeConfigChartId === chart.id ? 40 : 1)
+                                        };
+
+                                        const cardBg = reportTheme === 'Corporate Dark' ? 'bg-slate-900 border-slate-850 text-slate-100' : 'bg-white border-slate-200/80 text-slate-900';
+                                        const textMuted = reportTheme === 'Corporate Dark' ? 'text-slate-400' : 'text-slate-500';
+                                        const labelColor = reportTheme === 'Corporate Dark' ? 'text-slate-350' : 'text-slate-755';
+
+                                        const classStr = `${cardBg} rounded-3xl p-8 shadow-xl hover:shadow-2xl transition-all duration-300 relative group print:shadow-none print:border-none ` + (isDashboard
+                                          ? "w-full block"
+                                          : `${chart.align === 'left' ? 'mr-8 mb-6 float-left' : chart.align === 'right' ? 'ml-8 mb-6 float-right' : 'mx-auto mb-8 clear-both block'}`);
+
+                                        const currentBrandColors = [...BRAND_COLORS];
+                                        if (reportTheme === 'Branded') {
+                                          currentBrandColors[0] = brandedPrimaryColor;
+                                        }
+
+                                        return (
+                                          <div
+                                            key={chart.id}
+                                            style={styleObj}
+                                            className={classStr}
+                                          >
+                                            {/* Chart Customization & Drag Top Toolbar */}
+                                            {!isPresentView && (
+                                              <>
+                                                {!isDashboard && (
+                                                  <div
+                                                    className="absolute -top-3 left-1/2 -translate-x-1/2 px-4 py-1.5 bg-slate-900 text-white rounded-full shadow-lg flex items-center gap-2 cursor-grab active:cursor-grabbing text-[11px] font-bold z-30 opacity-80 hover:opacity-100 transition-opacity"
+                                                    title="Drag to reposition chart anywhere on canvas"
+                                                    onMouseDown={(e) => {
+                                                      e.preventDefault();
+                                                      setChartDragState({
+                                                        chartId: chart.id,
+                                                        sIdx,
+                                                        cIdx,
+                                                        startX: e.clientX,
+                                                        startY: e.clientY,
+                                                        initX: chart.position?.x || 0,
+                                                        initY: chart.position?.y || 0
+                                                      });
+                                                    }}
+                                                  >
+                                                    <Move size={12} className="animate-bounce" />
+                                                    <span>Drag Chart</span>
+                                                    {(chart.position?.x || chart.position?.y) ? (
+                                                      <button
+                                                        onClick={(e) => {
+                                                          e.stopPropagation();
+                                                          const updatedSecs = [...selectedReport.sections];
+                                                          const updatedCharts = [...updatedSecs[sIdx].charts];
+                                                          updatedCharts[cIdx] = { ...chart, position: { x: 0, y: 0 } };
+                                                          updatedSecs[sIdx] = { ...updatedSecs[sIdx], charts: updatedCharts };
+                                                          const updated = { ...selectedReport, sections: updatedSecs };
+                                                          setSelectedReport(updated);
+                                                          setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
+                                                        }}
+                                                        className="px-1.5 py-0.5 bg-red-650 hover:bg-red-500 rounded text-[9px] font-black uppercase text-white tracking-widest active:scale-95 transition-all ml-1.5 cursor-pointer shrink-0"
+                                                        title="Reset custom coordinates"
+                                                      >
+                                                        Reset
+                                                      </button>
+                                                    ) : null}
+                                                  </div>
+                                                )}
+
+                                                <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900/95 text-white backdrop-blur-md px-4 py-2 rounded-full shadow-2xl flex items-center gap-3 z-30 text-xs font-bold print:hidden">
+                                                  {/* Feature 2 Configuration Toggle Button */}
+                                                  <button
+                                                    onClick={() => {
+                                                      setActiveConfigChartId(activeConfigChartId === chart.id ? null : chart.id);
+                                                    }}
+                                                    className={`p-1.5 rounded-lg transition-colors ${activeConfigChartId === chart.id ? 'bg-indigo-600 text-white animate-pulse' : 'hover:bg-slate-800 text-slate-350 hover:text-white'}`}
+                                                    title="Configure Chart Settings"
+                                                  >
+                                                    <Settings size={13} />
+                                                  </button>
+                                                  
+                                                  {!isDashboard && (
+                                                    <>
+                                                      <span className="text-[10px] text-slate-400 font-black uppercase tracking-wider pr-1 border-r border-slate-700">
+                                                        Width ({typeof chart.width === 'number' ? chart.width : chart.width === 'full' ? 100 : 85}%)
+                                                      </span>
+                                                      <input
+                                                        type="range"
+                                                        min="30"
+                                                        max="100"
+                                                        value={typeof chart.width === 'number' ? chart.width : chart.width === 'full' ? 100 : 85}
+                                                        onChange={(e) => {
+                                                          const val = Number(e.target.value);
+                                                          const updatedSecs = [...selectedReport.sections];
+                                                          const updatedCharts = [...updatedSecs[sIdx].charts];
+                                                          updatedCharts[cIdx] = { ...chart, width: val };
+                                                          updatedSecs[sIdx] = { ...updatedSecs[sIdx], charts: updatedCharts };
+                                                          const updated = { ...selectedReport, sections: updatedSecs };
+                                                          setSelectedReport(updated);
+                                                          setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
+                                                        }}
+                                                        className="w-20 accent-indigo-500 cursor-pointer h-1.5 bg-slate-700 rounded"
+                                                        title="Resize Chart Width (30% - 100%)"
+                                                      />
+
+                                                      <span className="text-[10px] text-slate-400 font-black uppercase tracking-wider px-1 border-x border-slate-700">Position</span>
+                                                      <button
+                                                        onClick={() => {
+                                                          const updatedSecs = [...selectedReport.sections];
+                                                          const updatedCharts = [...updatedSecs[sIdx].charts];
+                                                          updatedCharts[cIdx] = { ...chart, align: 'left' };
+                                                          updatedSecs[sIdx] = { ...updatedSecs[sIdx], charts: updatedCharts };
+                                                          const updated = { ...selectedReport, sections: updatedSecs };
+                                                          setSelectedReport(updated);
+                                                          setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
+                                                        }}
+                                                        className={`p-1.5 rounded ${chart.align === 'left' ? 'bg-indigo-600 text-white shadow' : 'hover:bg-slate-800 text-slate-300'}`} title="Float / Align Left"
+                                                      >
+                                                        <AlignLeft size={13} />
+                                                      </button>
+                                                      <button
+                                                        onClick={() => {
+                                                          const updatedSecs = [...selectedReport.sections];
+                                                          const updatedCharts = [...updatedSecs[sIdx].charts];
+                                                          updatedCharts[cIdx] = { ...chart, align: 'center' };
+                                                          updatedSecs[sIdx] = { ...updatedSecs[sIdx], charts: updatedCharts };
+                                                          const updated = { ...selectedReport, sections: updatedSecs };
+                                                          setSelectedReport(updated);
+                                                          setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
+                                                        }}
+                                                        className={`p-1.5 rounded ${(!chart.align || chart.align === 'center') ? 'bg-indigo-600 text-white shadow' : 'hover:bg-slate-800 text-slate-300'}`} title="Center Inline"
+                                                      >
+                                                        <AlignCenter size={13} />
+                                                      </button>
+                                                      <button
+                                                        onClick={() => {
+                                                          const updatedSecs = [...selectedReport.sections];
+                                                          const updatedCharts = [...updatedSecs[sIdx].charts];
+                                                          updatedCharts[cIdx] = { ...chart, align: 'right' };
+                                                          updatedSecs[sIdx] = { ...updatedSecs[sIdx], charts: updatedCharts };
+                                                          const updated = { ...selectedReport, sections: updatedSecs };
+                                                          setSelectedReport(updated);
+                                                          setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
+                                                        }}
+                                                        className={`p-1.5 rounded ${chart.align === 'right' ? 'bg-indigo-600 text-white shadow' : 'hover:bg-slate-800 text-slate-300'}`} title="Float / Align Right"
+                                                      >
+                                                        <AlignRight size={13} />
+                                                      </button>
+                                                    </>
+                                                  )}
+
+                                                  <button
+                                                    onClick={() => {
+                                                      if (confirm(`Remove this ${chart.type}?`)) {
+                                                        const updatedSecs = [...selectedReport.sections];
+                                                        const updatedCharts = updatedSecs[sIdx].charts.filter((_, i) => i !== cIdx);
+                                                        updatedSecs[sIdx] = { ...updatedSecs[sIdx], charts: updatedCharts };
+                                                        const updated = { ...selectedReport, sections: updatedSecs };
+                                                        setSelectedReport(updated);
+                                                        setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
+                                                      }
+                                                    }}
+                                                    className="p-1.5 rounded hover:bg-red-650 hover:text-white ml-2 text-red-400 transition-colors" title="Delete Chart"
+                                                  >
+                                                    <Trash2 size={13} />
+                                                  </button>
+                                                </div>
+                                              </>
+                                            )}
+
+                                            {/* Feature 2 Configuration Inline Panel Popover */}
+                                            {activeConfigChartId === chart.id && (
+                                              <div className="absolute inset-0 bg-slate-900/95 text-white backdrop-blur-md z-45 rounded-3xl p-6 overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
+                                                <div className="flex justify-between items-center mb-4 pb-2 border-b border-slate-800">
+                                                  <h4 className="font-black text-sm uppercase tracking-wider text-indigo-400">Chart Settings Visualizer</h4>
+                                                  <button
+                                                    onClick={() => setActiveConfigChartId(null)}
+                                                    className="p-1.5 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white transition-colors"
+                                                  >
+                                                    <X size={15} />
+                                                  </button>
+                                                </div>
+                                                
+                                                <div className="grid grid-cols-2 gap-4 text-xs">
+                                                  <div>
+                                                    <label className="block text-[10px] font-black uppercase text-slate-450 mb-1">Visual Type</label>
+                                                    <select
+                                                      value={chart.type}
+                                                      onChange={(e) => {
+                                                        const val = e.target.value;
+                                                        const updatedSecs = [...selectedReport.sections];
+                                                        const updatedCharts = [...updatedSecs[sIdx].charts];
+                                                        updatedCharts[cIdx] = { ...chart, type: val };
+                                                        updatedSecs[sIdx] = { ...updatedSecs[sIdx], charts: updatedCharts };
+                                                        const updated = { ...selectedReport, sections: updatedSecs };
+                                                        setSelectedReport(updated);
+                                                        setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
+                                                      }}
+                                                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-indigo-500"
+                                                    >
+                                                      <option value="Bar Chart">Bar Chart</option>
+                                                      <option value="Pie Chart">Pie Chart</option>
+                                                      <option value="Donut Chart">Donut Chart</option>
+                                                      <option value="Trend Chart">Trend Chart</option>
+                                                      <option value="Area Chart">Area Chart</option>
+                                                      <option value="KPI Card">KPI Card</option>
+                                                    </select>
+                                                  </div>
+
+                                                  <div>
+                                                    <label className="block text-[10px] font-black uppercase text-slate-450 mb-1">Data Field</label>
+                                                    <select
+                                                      value={chart.field}
+                                                      onChange={(e) => {
+                                                        const val = e.target.value;
+                                                        const updatedSecs = [...selectedReport.sections];
+                                                        const updatedCharts = [...updatedSecs[sIdx].charts];
+                                                        updatedCharts[cIdx] = { ...chart, field: val };
+                                                        updatedSecs[sIdx] = { ...updatedSecs[sIdx], charts: updatedCharts };
+                                                        const updated = { ...selectedReport, sections: updatedSecs };
+                                                        setSelectedReport(updated);
+                                                        setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
+                                                      }}
+                                                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-indigo-500"
+                                                    >
+                                                      <option value="Sentiment">Sentiment Analysis</option>
+                                                      <option value="Publications">Publication Metrics</option>
+                                                      <option value="Mentions Trend">Mentions Trend</option>
+                                                      <option value="Articles Coverage">Articles Coverage</option>
+                                                      <option value="Net Sentiment Index">Net Sentiment Index</option>
+                                                      <option value="Media Diversity Index">Media Diversity Index</option>
+                                                      <option value="Sector Penetration">Sector Penetration</option>
+                                                    </select>
+                                                  </div>
+
+                                                  <div>
+                                                    <label className="block text-[10px] font-black uppercase text-slate-455 mb-1">Group By</label>
+                                                    <select
+                                                      value={config.groupBy || 'Brand'}
+                                                      onChange={(e) => {
+                                                        const val = e.target.value;
+                                                        setChartConfigs(prev => ({
+                                                          ...prev,
+                                                          [chart.id]: { ...config, groupBy: val }
+                                                        }));
+                                                      }}
+                                                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-indigo-500"
+                                                    >
+                                                      <option value="Brand">Brand</option>
+                                                      <option value="Publication">Publication</option>
+                                                      <option value="Date">Date</option>
+                                                    </select>
+                                                  </div>
+
+                                                  <div>
+                                                    <label className="block text-[10px] font-black uppercase text-slate-455 mb-1">Sort Order</label>
+                                                    <select
+                                                      value={config.sort || 'Descending'}
+                                                      onChange={(e) => {
+                                                        const val = e.target.value;
+                                                        setChartConfigs(prev => ({
+                                                          ...prev,
+                                                          [chart.id]: { ...config, sort: val }
+                                                        }));
+                                                      }}
+                                                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-indigo-500"
+                                                    >
+                                                      <option value="Descending">Descending Value</option>
+                                                      <option value="Ascending">Ascending Value</option>
+                                                      <option value="Alphabetical">Alphabetical</option>
+                                                    </select>
+                                                  </div>
+
+                                                  <div>
+                                                    <label className="block text-[10px] font-black uppercase text-slate-455 mb-1">Max Items</label>
+                                                    <select
+                                                      value={config.maxItems || 'All'}
+                                                      onChange={(e) => {
+                                                        const val = e.target.value;
+                                                        setChartConfigs(prev => ({
+                                                          ...prev,
+                                                          [chart.id]: { ...config, maxItems: val }
+                                                        }));
+                                                      }}
+                                                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none focus:border-indigo-500"
+                                                    >
+                                                      <option value="All">All Items</option>
+                                                      <option value="Top 3">Top 3 Only</option>
+                                                      <option value="Top 5">Top 5 Only</option>
+                                                      <option value="Top 10">Top 10 Only</option>
+                                                    </select>
+                                                  </div>
+                                                </div>
+
+                                                {/* Conditional Formatting Section (Feature 6) */}
+                                                <div className="mt-4 pt-4 border-t border-slate-800 text-xs">
+                                                  <h5 className="font-bold uppercase tracking-wider text-slate-400 mb-2">Conditional Formatting Rules</h5>
+                                                  
+                                                  <div className="flex flex-wrap items-center gap-2 mb-3 bg-slate-850 p-3 rounded-xl border border-slate-800">
+                                                    <select
+                                                      id={`rule-op-${chart.id}`}
+                                                      className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-[11px]"
+                                                    >
+                                                      <option value=">">&gt;</option>
+                                                      <option value="<">&lt;</option>
+                                                      <option value="==">==</option>
+                                                    </select>
+                                                    <input
+                                                      id={`rule-val-${chart.id}`}
+                                                      type="number"
+                                                      placeholder="Value"
+                                                      className="w-16 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-[11px]"
+                                                    />
+                                                    <input
+                                                      id={`rule-col-${chart.id}`}
+                                                      type="color"
+                                                      defaultValue="#6366f1"
+                                                      className="w-8 h-6 bg-transparent rounded cursor-pointer"
+                                                    />
+                                                    <button
+                                                      onClick={() => {
+                                                        const op = document.getElementById(`rule-op-${chart.id}`).value;
+                                                        const val = document.getElementById(`rule-val-${chart.id}`).value;
+                                                        const col = document.getElementById(`rule-col-${chart.id}`).value;
+                                                        if (val === '') return;
+                                                        const newRule = { operator: op, value: Number(val), color: col };
+                                                        setConditionalRules(prev => ({
+                                                          ...prev,
+                                                          [chart.id]: [...(prev[chart.id] || []), newRule]
+                                                        }));
+                                                        document.getElementById(`rule-val-${chart.id}`).value = '';
+                                                      }}
+                                                      className="px-3 py-1 bg-indigo-650 hover:bg-indigo-600 text-white rounded font-bold text-[11px]"
+                                                    >
+                                                      Add Rule
+                                                    </button>
+                                                  </div>
+
+                                                  <div className="space-y-1 max-h-20 overflow-y-auto">
+                                                    {(conditionalRules[chart.id] || []).map((rule, rIdx) => (
+                                                      <div key={rIdx} className="flex justify-between items-center px-2 py-1 bg-slate-800 rounded text-white">
+                                                        <span className="flex items-center gap-2">
+                                                          <span className="w-2.5 h-2.5 rounded" style={{ backgroundColor: rule.color }} />
+                                                          <span>Value {rule.operator} {rule.value}</span>
+                                                        </span>
+                                                        <button
+                                                          onClick={() => {
+                                                            setConditionalRules(prev => ({
+                                                              ...prev,
+                                                              [chart.id]: (prev[chart.id] || []).filter((_, idx) => idx !== rIdx)
+                                                            }));
+                                                          }}
+                                                          className="text-slate-400 hover:text-red-400 transition-colors"
+                                                        >
+                                                          <Trash2 size={11} />
+                                                        </button>
+                                                      </div>
+                                                    ))}
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            )}
+
+                                            {/* Chart Graphic Display Title */}
+                                            <div className="flex items-center justify-between pb-6 mb-6 border-b border-slate-200/65">
+                                              <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 rounded-2xl bg-indigo-50/80 text-indigo-600 flex items-center justify-center shadow-inner shrink-0">
+                                                  {config.type.includes('Pie') || config.type.includes('Donut') ? <PieChart size={20} /> :
+                                                    config.type.includes('Trend') || config.type.includes('Area') ? <TrendingUp size={20} /> :
+                                                      config.type.includes('KPI') ? <Activity size={20} /> :
+                                                        <BarChart3 size={20} />}
+                                                </div>
+                                                <div>
+                                                  <h4 className="text-base font-black tracking-tight">{config.type}</h4>
+                                                  <p className="text-xs text-indigo-600 font-bold uppercase tracking-wider">Field Target: {config.field}</p>
+                                                </div>
+                                              </div>
+                                              <div className="px-3 py-1 bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 rounded-full font-mono text-xs font-black">
+                                                Active Stream Sync
+                                              </div>
                                             </div>
 
-                                            <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900/95 text-white backdrop-blur-md px-4 py-2 rounded-full shadow-2xl flex items-center gap-3 z-20 text-xs font-bold print:hidden">
-                                              <span className="text-[10px] text-slate-400 font-black uppercase tracking-wider pr-1 border-r border-slate-700">
-                                                Width ({typeof chart.width === 'number' ? chart.width : chart.width === 'full' ? 100 : 85}%)
-                                              </span>
-                                              <input
-                                                type="range"
-                                                min="30"
-                                                max="100"
-                                                value={typeof chart.width === 'number' ? chart.width : chart.width === 'full' ? 100 : 85}
-                                                onChange={(e) => {
-                                                  const val = Number(e.target.value);
-                                                  const updatedSecs = [...selectedReport.sections];
-                                                  const updatedCharts = [...updatedSecs[sIdx].charts];
-                                                  updatedCharts[cIdx] = { ...chart, width: val };
-                                                  updatedSecs[sIdx] = { ...updatedSecs[sIdx], charts: updatedCharts };
-                                                  const updated = { ...selectedReport, sections: updatedSecs };
-                                                  setSelectedReport(updated);
-                                                  setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
-                                                }}
-                                                className="w-20 accent-indigo-500 cursor-pointer h-1.5 bg-slate-700 rounded"
-                                                title="Resize Chart Width (30% - 100%)"
-                                              />
-
-                                              <span className="text-[10px] text-slate-400 font-black uppercase tracking-wider px-1 border-x border-slate-700">Position</span>
-                                              <button
-                                                onClick={() => {
-                                                  const updatedSecs = [...selectedReport.sections];
-                                                  const updatedCharts = [...updatedSecs[sIdx].charts];
-                                                  updatedCharts[cIdx] = { ...chart, align: 'left' };
-                                                  updatedSecs[sIdx] = { ...updatedSecs[sIdx], charts: updatedCharts };
-                                                  const updated = { ...selectedReport, sections: updatedSecs };
-                                                  setSelectedReport(updated);
-                                                  setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
-                                                }}
-                                                className={`p-1.5 rounded ${chart.align === 'left' ? 'bg-indigo-600 text-white shadow' : 'hover:bg-slate-800 text-slate-300'}`} title="Float / Align Left"
-                                              >
-                                                <AlignLeft size={13} />
-                                              </button>
-                                              <button
-                                                onClick={() => {
-                                                  const updatedSecs = [...selectedReport.sections];
-                                                  const updatedCharts = [...updatedSecs[sIdx].charts];
-                                                  updatedCharts[cIdx] = { ...chart, align: 'center' };
-                                                  updatedSecs[sIdx] = { ...updatedSecs[sIdx], charts: updatedCharts };
-                                                  const updated = { ...selectedReport, sections: updatedSecs };
-                                                  setSelectedReport(updated);
-                                                  setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
-                                                }}
-                                                className={`p-1.5 rounded ${(!chart.align || chart.align === 'center') ? 'bg-indigo-600 text-white shadow' : 'hover:bg-slate-800 text-slate-300'}`} title="Center Inline"
-                                              >
-                                                <AlignCenter size={13} />
-                                              </button>
-                                              <button
-                                                onClick={() => {
-                                                  const updatedSecs = [...selectedReport.sections];
-                                                  const updatedCharts = [...updatedSecs[sIdx].charts];
-                                                  updatedCharts[cIdx] = { ...chart, align: 'right' };
-                                                  updatedSecs[sIdx] = { ...updatedSecs[sIdx], charts: updatedCharts };
-                                                  const updated = { ...selectedReport, sections: updatedSecs };
-                                                  setSelectedReport(updated);
-                                                  setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
-                                                }}
-                                                className={`p-1.5 rounded ${chart.align === 'right' ? 'bg-indigo-600 text-white shadow' : 'hover:bg-slate-800 text-slate-300'}`} title="Float / Align Right"
-                                              >
-                                                <AlignRight size={13} />
-                                              </button>
-
-                                              <button
-                                                onClick={() => {
-                                                  if (confirm(`Remove this ${chart.type}?`)) {
-                                                    const updatedSecs = [...selectedReport.sections];
-                                                    const updatedCharts = updatedSecs[sIdx].charts.filter((_, i) => i !== cIdx);
-                                                    updatedSecs[sIdx] = { ...updatedSecs[sIdx], charts: updatedCharts };
-                                                    const updated = { ...selectedReport, sections: updatedSecs };
-                                                    setSelectedReport(updated);
-                                                    setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
-                                                  }
-                                                }}
-                                                className="p-1 rounded hover:bg-red-600 hover:text-white ml-2 text-red-400 transition-colors" title="Delete Chart"
-                                              >
-                                                <Trash2 size={14} />
-                                              </button>
-                                            </div>
-                                          </>
-                                        )}
-
-                                        {/* Chart Graphic Display */}
-                                        <div className="flex items-center justify-between pb-6 mb-6 border-b border-slate-200">
-                                          <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shadow-inner">
-                                              {chart.type.includes('Pie') || chart.type.includes('Donut') ? <PieChart size={20} /> :
-                                                chart.type.includes('Trend') || chart.type.includes('Area') ? <TrendingUp size={20} /> :
-                                                  <BarChart3 size={20} />}
-                                            </div>
-                                            <div>
-                                              <h4 className="text-base font-black text-slate-900 tracking-tight">{chart.type} Visualization</h4>
-                                              <p className="text-xs text-indigo-600 font-bold uppercase tracking-wider">Field Target: {chart.field}</p>
-                                            </div>
-                                          </div>
-                                          <div className="px-3 py-1 bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 rounded-full font-mono text-xs font-black">
-                                            Active Stream Sync
-                                          </div>
-                                        </div>
-
-                                        {/* Visual Chart Graphic Representation */}
-                                        <div className="py-8 px-6 flex flex-col items-center justify-center bg-slate-50/90 rounded-2xl border border-slate-200 shadow-inner min-h-[260px] w-full overflow-hidden">
-                                          {(() => {
-                                            try {
-                                              if (isFetchingTelemetry) {
-                                                return (
-                                                  <div className="flex flex-col items-center justify-center space-y-3 py-12">
-                                                    <div className="w-8 h-8 border-4 border-indigo-600/30 border-t-indigo-600 rounded-full animate-spin"></div>
-                                                    <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Compiling Live Telemetry...</span>
-                                                  </div>
-                                                );
-                                              }
-                                              if (!reportTelemetryData || !reportTelemetryData.brands || Object.keys(reportTelemetryData.brands).length === 0) {
-                                                return (
-                                                  <div className="flex flex-col items-center justify-center py-12 text-center">
-                                                    <Activity size={32} className="text-slate-300 mb-2" />
-                                                    <span className="text-xs font-bold text-slate-400">No telemetry data detected for specified keywords.</span>
-                                                    <span className="text-[10px] text-slate-400 font-medium mt-1">Configured Keywords: {selectedReport?.brandKeywords || 'N/A'} | Competitors: {selectedReport?.competitorKeywords || 'N/A'}</span>
-                                                  </div>
-                                                );
-                                              }
-
-                                              const brandsObj = reportTelemetryData.brands || {};
-                                              const brandNames = Object.keys(brandsObj);
-                                              const totalMentions = brandNames.reduce((s, b) => s + (Number(brandsObj[b]?.mentions) || 0), 0);
-
-                                              // 1. Publications Field
-                                              if (chart.field === 'Publications' || chart.field === 'Journalists') {
-                                                const pubs = (reportTelemetryData.topIndianPublications || []).slice(0, 5);
-                                                if (pubs.length === 0) return <div className="text-xs font-bold text-slate-400 py-8">No publication data available.</div>;
-                                                const maxPub = Math.max(...pubs.map(p => Number(p?.count) || 0), 1);
-
-                                                if (chart.type === 'Pie Chart' || chart.type === 'Donut Chart') {
-                                                  const pubTotal = pubs.reduce((s, p) => s + (Number(p?.count) || 0), 0);
-                                                  let cumOffset = 25;
-                                                  return (
-                                                    <div className="flex flex-col sm:flex-row items-center justify-center gap-10 w-full py-4">
-                                                      <div className="relative w-44 h-44 shrink-0">
-                                                        <svg viewBox="0 0 32 32" className="w-full h-full transform -rotate-90">
-                                                          {pubs.map((pub, idx) => {
-                                                            const cnt = Number(pub?.count) || 0;
-                                                            if (cnt === 0 || pubTotal === 0) return null;
-                                                            const pct = isNaN(cnt / pubTotal) ? 0 : (cnt / pubTotal) * 100;
-                                                            const color = BRAND_COLORS[idx % BRAND_COLORS.length];
-                                                            const cur = isNaN(cumOffset) ? 25 : cumOffset;
-                                                            cumOffset -= pct;
-                                                            return (
-                                                              <circle key={pub.name || idx} r="15.9154943" cx="16" cy="16" fill="transparent" stroke={color} strokeWidth={chart.type === 'Donut Chart' ? "6" : "15.9154943"} strokeDasharray={`${pct} ${Math.max(0, 100 - pct)}`} strokeDashoffset={cur} />
-                                                            );
-                                                          })}
-                                                        </svg>
-                                                      </div>
-                                                      <div className="space-y-2.5 max-w-xs w-full">
-                                                        {pubs.map((pub, idx) => (
-                                                          <div key={pub.name || idx} className="flex items-center justify-between text-xs font-bold">
-                                                            <div className="flex items-center gap-2 truncate pr-2">
-                                                              <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: BRAND_COLORS[idx % BRAND_COLORS.length] }}></span>
-                                                              <span className="text-slate-700 truncate">{pub?.name || 'Publication'}</span>
-                                                            </div>
-                                                            <span className="text-slate-900 shrink-0 font-black">{Number(pub?.count) || 0} mentions</span>
-                                                          </div>
-                                                        ))}
-                                                      </div>
-                                                    </div>
-                                                  );
-                                                }
-
-                                                return (
-                                                  <div className="space-y-3 w-full max-w-xl mx-auto py-4">
-                                                    {pubs.map((pub, idx) => {
-                                                      const cnt = Number(pub?.count) || 0;
-                                                      const pct = maxPub > 0 ? (cnt / maxPub) * 100 : 0;
-                                                      const color = BRAND_COLORS[idx % BRAND_COLORS.length];
-                                                      return (
-                                                        <div key={pub.name || idx} className="space-y-1">
-                                                          <div className="flex justify-between text-xs font-bold">
-                                                            <span className="text-slate-700 truncate">{pub?.name || 'Publication'}</span>
-                                                            <span className="text-slate-900 font-black">{cnt} mentions</span>
-                                                          </div>
-                                                          <div className="h-3 w-full bg-slate-200/80 rounded-full overflow-hidden">
-                                                            <div className="h-full rounded-full transition-all duration-700" style={{ width: `${isNaN(pct) ? 0 : pct}%`, backgroundColor: color }}></div>
-                                                          </div>
-                                                        </div>
-                                                      );
-                                                    })}
-                                                  </div>
-                                                );
-                                              }
-
-                                              // 2. Sentiment Field
-                                              if (chart.field === 'Sentiment') {
-                                                let totalPos = 0, totalNeu = 0, totalNeg = 0;
-                                                brandNames.forEach(b => {
-                                                  const s = brandsObj[b]?.sentiment || { Positive: 0, Neutral: 0, Negative: 0 };
-                                                  totalPos += Number(s.Positive) || 0;
-                                                  totalNeu += Number(s.Neutral) || 0;
-                                                  totalNeg += Number(s.Negative) || 0;
-                                                });
-                                                const sTotal = totalPos + totalNeu + totalNeg;
-                                                if (sTotal === 0) return <div className="text-xs font-bold text-slate-400 py-8">No sentiment data recorded.</div>;
-
-                                                if (chart.type === 'Pie Chart' || chart.type === 'Donut Chart') {
-                                                  const pPos = (totalPos / sTotal) * 100;
-                                                  const pNeu = (totalNeu / sTotal) * 100;
-                                                  const pNeg = (totalNeg / sTotal) * 100;
-                                                  return (
-                                                    <div className="flex flex-col sm:flex-row items-center justify-center gap-10 w-full py-4">
-                                                      <div className="relative w-44 h-44 shrink-0">
-                                                        <svg viewBox="0 0 32 32" className="w-full h-full transform -rotate-90">
-                                                          {pPos > 0 && !isNaN(pPos) && <circle r="15.9154943" cx="16" cy="16" fill="transparent" stroke="#10b981" strokeWidth={chart.type === 'Donut Chart' ? "6" : "15.9154943"} strokeDasharray={`${pPos} ${Math.max(0, 100 - pPos)}`} strokeDashoffset="25" />}
-                                                          {pNeu > 0 && !isNaN(pNeu) && <circle r="15.9154943" cx="16" cy="16" fill="transparent" stroke="#94a3b8" strokeWidth={chart.type === 'Donut Chart' ? "6" : "15.9154943"} strokeDasharray={`${pNeu} ${Math.max(0, 100 - pNeu)}`} strokeDashoffset={`${isNaN(25 - pPos) ? 25 : (25 - pPos)}`} />}
-                                                          {pNeg > 0 && !isNaN(pNeg) && <circle r="15.9154943" cx="16" cy="16" fill="transparent" stroke="#ef4444" strokeWidth={chart.type === 'Donut Chart' ? "6" : "15.9154943"} strokeDasharray={`${pNeg} ${Math.max(0, 100 - pNeg)}`} strokeDashoffset={`${isNaN(25 - pPos - pNeu) ? 25 : (25 - pPos - pNeu)}`} />}
-                                                        </svg>
-                                                      </div>
-                                                      <div className="space-y-3 max-w-xs w-full text-xs font-bold">
-                                                        <div className="flex justify-between items-center"><span className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-emerald-500"></span>Positive</span><span className="font-black text-emerald-600">{totalPos} ({isNaN(pPos) ? 0 : pPos.toFixed(1)}%)</span></div>
-                                                        <div className="flex justify-between items-center"><span className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-slate-400"></span>Neutral</span><span className="font-black text-slate-600">{totalNeu} ({isNaN(pNeu) ? 0 : pNeu.toFixed(1)}%)</span></div>
-                                                        <div className="flex justify-between items-center"><span className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-red-500"></span>Negative</span><span className="font-black text-red-600">{totalNeg} ({isNaN(pNeg) ? 0 : pNeg.toFixed(1)}%)</span></div>
-                                                      </div>
-                                                    </div>
-                                                  );
-                                                }
-
-                                                return (
-                                                  <div className="space-y-4 w-full max-w-xl mx-auto py-4">
-                                                    {brandNames.map((b) => {
-                                                      const s = brandsObj[b]?.sentiment || { Positive: 0, Neutral: 0, Negative: 0 };
-                                                      const pos = Number(s.Positive) || 0;
-                                                      const neu = Number(s.Neutral) || 0;
-                                                      const neg = Number(s.Negative) || 0;
-                                                      const bTot = pos + neu + neg;
-                                                      if (bTot === 0) return null;
-                                                      const posPct = isNaN(pos / bTot) ? 0 : (pos / bTot) * 100;
-                                                      const neuPct = isNaN(neu / bTot) ? 0 : (neu / bTot) * 100;
-                                                      const negPct = isNaN(neg / bTot) ? 0 : (neg / bTot) * 100;
-                                                      return (
-                                                        <div key={b} className="space-y-1.5 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
-                                                          <div className="flex justify-between text-xs font-bold">
-                                                            <span className="text-slate-800">{b}</span>
-                                                            <span className="text-[10px] text-slate-400 font-medium">{bTot} articles</span>
-                                                          </div>
-                                                          <div className="h-3.5 w-full rounded-full flex overflow-hidden shadow-inner">
-                                                            {posPct > 0 && <div style={{ width: `${posPct}%` }} className="bg-emerald-500 h-full flex items-center justify-center text-[9px] font-black text-white">{posPct > 12 ? `${posPct.toFixed(0)}%` : ''}</div>}
-                                                            {neuPct > 0 && <div style={{ width: `${neuPct}%` }} className="bg-slate-400 h-full flex items-center justify-center text-[9px] font-black text-white">{neuPct > 12 ? `${neuPct.toFixed(0)}%` : ''}</div>}
-                                                            {negPct > 0 && <div style={{ width: `${negPct}%` }} className="bg-red-500 h-full flex items-center justify-center text-[9px] font-black text-white">{negPct > 12 ? `${negPct.toFixed(0)}%` : ''}</div>}
-                                                          </div>
-                                                        </div>
-                                                      );
-                                                     })}
-                                                   </div>
-                                                 );
-                                               }
-
-                                              // 3. Mentions Trend (chronological timeline)
-                                              if (chart.field === 'Mentions Trend') {
-                                                const datesSetMT = new Set();
-                                                brandNames.forEach(b => Object.keys(brandsObj[b]?.timeline || {}).forEach(dt => datesSetMT.add(dt)));
-                                                const datesMT = Array.from(datesSetMT).sort();
-                                                if (datesMT.length === 0) return <div className="text-xs font-bold text-slate-400 py-8">No timeline data available.</div>;
-                                                const maxDtMT = Math.max(...datesMT.map(dt => brandNames.reduce((s, b) => s + (Number(brandsObj[b]?.timeline?.[dt]) || 0), 0)), 1);
-                                                return (
-                                                  <div className="w-full space-y-6 py-4 px-4 max-w-2xl mx-auto">
-                                                    <div className="text-xs font-black text-slate-700 uppercase tracking-wider mb-2">Mentions Over Time</div>
-                                                    <div className="h-44 flex items-end gap-2 pt-6 pb-2 border-b border-slate-200 px-2">
-                                                      {datesMT.map((dt) => {
-                                                        const dtTotal = brandNames.reduce((s, b) => s + (Number(brandsObj[b]?.timeline?.[dt]) || 0), 0);
-                                                        const hPct = maxDtMT > 0 && !isNaN(dtTotal / maxDtMT) ? (dtTotal / maxDtMT) * 100 : 0;
-                                                        return (
-                                                          <div key={dt} className="flex-1 flex flex-col justify-end items-center h-full group relative">
-                                                            <div className="absolute -top-10 bg-slate-900 text-white text-[10px] font-bold px-2.5 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-10 shadow-lg">
-                                                              {dt}: {dtTotal} Mentions
-                                                            </div>
-                                                            <div className="w-full max-w-[32px] h-full flex flex-col justify-end gap-0.5 rounded-t-lg overflow-hidden">
-                                                              {brandNames.map((b, bIdx) => {
-                                                                const cnt = Number(brandsObj[b]?.timeline?.[dt]) || 0;
-                                                                if (cnt === 0 || dtTotal === 0) return null;
-                                                                const sh = isNaN(cnt / dtTotal) ? 0 : (cnt / dtTotal) * hPct;
-                                                                return (
-                                                                  <div key={b} style={{ height: `${isNaN(sh) ? 0 : sh}%`, backgroundColor: BRAND_COLORS[bIdx % BRAND_COLORS.length] }} className="w-full hover:brightness-110 transition-all" />
-                                                                );
-                                                              })}
-                                                            </div>
-                                                            <span className="text-[9px] font-bold text-slate-400 mt-2 transform -rotate-45 origin-top-left max-w-[50px] truncate">
-                                                              {dt ? String(dt).substring(5) : ''}
-                                                            </span>
-                                                          </div>
-                                                        );
-                                                      })}
-                                                    </div>
-                                                    <div className="flex flex-wrap items-center justify-center gap-5 pt-3">
-                                                      {brandNames.map((b, idx) => (
-                                                        <div key={b} className="flex items-center gap-2 text-xs font-bold text-slate-700">
-                                                          <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: BRAND_COLORS[idx % BRAND_COLORS.length] }}></span>
-                                                          <span>{b}</span>
-                                                        </div>
-                                                      ))}
-                                                    </div>
-                                                  </div>
-                                                );
-                                              }
-
-                                              // 4. Articles Coverage (brand article count share)
-                                              if (chart.field === 'Articles Coverage') {
-                                                const totalArticlesAC = brandNames.reduce((s, b) => s + (Number(brandsObj[b]?.articles) || 0), 0);
-                                                if (totalArticlesAC === 0) return <div className="text-xs font-bold text-slate-400 py-8">No article coverage data recorded.</div>;
-                                                if (chart.type === 'Pie Chart' || chart.type === 'Donut Chart') {
-                                                  let cumOffsetAC = 25;
-                                                  return (
-                                                    <div className="flex flex-col sm:flex-row items-center justify-center gap-10 w-full py-4">
-                                                      <div className="relative w-44 h-44 shrink-0">
-                                                        <svg viewBox="0 0 32 32" className="w-full h-full transform -rotate-90">
-                                                          {brandNames.map((b, idx) => {
-                                                            const a = Number(brandsObj[b]?.articles) || 0;
-                                                            if (a === 0 || totalArticlesAC === 0) return null;
-                                                            const pct = isNaN(a / totalArticlesAC) ? 0 : (a / totalArticlesAC) * 100;
-                                                            const color = BRAND_COLORS[(idx + 2) % BRAND_COLORS.length];
-                                                            const cur = isNaN(cumOffsetAC) ? 25 : cumOffsetAC;
-                                                            cumOffsetAC -= pct;
-                                                            return (
-                                                              <circle key={b} r="15.9154943" cx="16" cy="16" fill="transparent" stroke={color} strokeWidth={chart.type === 'Donut Chart' ? "6" : "15.9154943"} strokeDasharray={`${pct} ${Math.max(0, 100 - pct)}`} strokeDashoffset={cur} />
-                                                            );
-                                                          })}
-                                                        </svg>
-                                                        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                                          <span className="text-2xl font-black text-slate-900">{totalArticlesAC}</span>
-                                                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Articles</span>
-                                                        </div>
-                                                      </div>
-                                                      <div className="space-y-2.5 max-w-xs w-full">
-                                                        {brandNames.map((b, idx) => {
-                                                          const a = Number(brandsObj[b]?.articles) || 0;
-                                                          const pct = totalArticlesAC > 0 ? ((a / totalArticlesAC) * 100).toFixed(1) : '0.0';
-                                                          const color = BRAND_COLORS[(idx + 2) % BRAND_COLORS.length];
-                                                          return (
-                                                            <div key={b} className="flex items-center justify-between text-xs">
-                                                              <div className="flex items-center gap-2 truncate pr-2">
-                                                                <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: color }}></span>
-                                                                <span className="font-bold text-slate-700 truncate">{b}</span>
-                                                              </div>
-                                                              <span className="font-black shrink-0" style={{ color }}>{pct}% ({a})</span>
-                                                            </div>
-                                                          );
-                                                        })}
-                                                      </div>
-                                                    </div>
-                                                  );
-                                                }
-                                                return (
-                                                  <div className="space-y-3.5 w-full max-w-xl mx-auto py-4">
-                                                    {brandNames.map((b, idx) => {
-                                                      const a = Number(brandsObj[b]?.articles) || 0;
-                                                      const pct = totalArticlesAC > 0 ? ((a / totalArticlesAC) * 100).toFixed(1) : '0.0';
-                                                      const color = BRAND_COLORS[(idx + 2) % BRAND_COLORS.length];
-                                                      return (
-                                                        <div key={b} className="space-y-1">
-                                                          <div className="flex justify-between text-xs font-bold">
-                                                            <span className="text-slate-800">{b}</span>
-                                                            <span style={{ color }}>{a} articles ({pct}%)</span>
-                                                          </div>
-                                                          <div className="h-3.5 w-full bg-slate-200/80 rounded-full overflow-hidden">
-                                                            <div className="h-full rounded-full transition-all duration-700" style={{ width: `${isNaN(Number(pct)) ? 0 : Number(pct)}%`, backgroundColor: color }}></div>
-                                                          </div>
-                                                        </div>
-                                                      );
-                                                    })}
-                                                  </div>
-                                                );
-                                              }
-
-                                              // 5. Net Sentiment Index (favorability benchmarks)
-                                              if (chart.field === 'Net Sentiment Index') {
-                                                const hasNSIData = brandNames.some(b => {
-                                                  const s = brandsObj[b]?.sentiment || {};
-                                                  return (Number(s.Positive) || 0) + (Number(s.Neutral) || 0) + (Number(s.Negative) || 0) > 0;
-                                                });
-                                                if (!hasNSIData) return <div className="text-xs font-bold text-slate-400 py-8">No sentiment data recorded.</div>;
-                                                return (
-                                                  <div className="space-y-4 w-full max-w-xl mx-auto py-4">
-                                                    <div className="text-xs font-black text-slate-700 uppercase tracking-wider mb-1">Net Favorability Index (-100% to +100%)</div>
-                                                    {brandNames.map((b) => {
-                                                      const s = brandsObj[b]?.sentiment || { Positive: 0, Neutral: 0, Negative: 0 };
-                                                      const pos = Number(s.Positive) || 0;
-                                                      const neu = Number(s.Neutral) || 0;
-                                                      const neg = Number(s.Negative) || 0;
-                                                      const total = pos + neu + neg;
-                                                      const netScore = total > 0 ? ((pos - neg) / total) * 100 : 0;
-                                                      const widthPct = Math.abs(netScore) / 2;
-                                                      const isPos = netScore >= 0;
-                                                      return (
-                                                        <div key={b} className="space-y-1.5 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
-                                                          <div className="flex justify-between text-xs font-bold">
-                                                            <span className="text-slate-800">{b}</span>
-                                                            <span className={isPos ? 'text-emerald-600 font-black' : 'text-red-500 font-black'}>
-                                                              {isPos ? '+' : ''}{netScore.toFixed(1)}% NSI
-                                                            </span>
-                                                          </div>
-                                                          <div className="h-3.5 w-full bg-slate-200/60 rounded-full relative overflow-hidden flex shadow-inner">
-                                                            <div className="w-1/2 h-full border-r border-slate-400/30" />
-                                                            <div style={{ width: `${widthPct}%`, left: isPos ? '50%' : 'auto', right: isPos ? 'auto' : '50%', backgroundColor: isPos ? '#10b981' : '#ef4444' }} className="absolute h-full rounded-full transition-all duration-700" />
-                                                          </div>
-                                                          <div className="flex justify-between text-[9px] text-slate-400 font-bold">
-                                                            <span>-100%</span><span className="text-slate-500">Neutral</span><span>+100%</span>
-                                                          </div>
-                                                        </div>
-                                                      );
-                                                    })}
-                                                  </div>
-                                                );
-                                              }
-
-
-                                              // 6. Media Diversity Index (unique outlets per brand)
-                                              if (chart.field === 'Media Diversity Index') {
-                                                const outletCountsMDI = brandNames.map(b => Object.keys(brandsObj[b]?.sources || {}).length);
-                                                const maxOutletsMDI = Math.max(...outletCountsMDI, 1);
-                                                if (outletCountsMDI.every(c => c === 0)) return <div className="text-xs font-bold text-slate-400 py-8">No media diversity data tracked.</div>;
-                                                return (
-                                                  <div className="space-y-3.5 w-full max-w-xl mx-auto py-4">
-                                                    <div className="text-xs font-black text-slate-700 uppercase tracking-wider mb-2">Unique Media Outlets per Brand</div>
-                                                    {brandNames.map((b, idx) => {
-                                                      const outlets = Object.keys(brandsObj[b]?.sources || {}).length;
-                                                      const pct = maxOutletsMDI > 0 ? (outlets / maxOutletsMDI) * 100 : 0;
-                                                      const color = BRAND_COLORS[(idx + 4) % BRAND_COLORS.length];
-                                                      return (
-                                                        <div key={b} className="space-y-1">
-                                                          <div className="flex justify-between text-xs font-bold">
-                                                            <span className="text-slate-800">{b}</span>
-                                                            <span style={{ color }}>{outlets} unique outlets</span>
-                                                          </div>
-                                                          <div className="h-3.5 w-full bg-slate-200/80 rounded-full overflow-hidden">
-                                                            <div className="h-full rounded-full transition-all duration-700" style={{ width: `${isNaN(pct) ? 0 : pct}%`, backgroundColor: color }}></div>
-                                                          </div>
-                                                        </div>
-                                                      );
-                                                    })}
-                                                  </div>
-                                                );
-                                              }
-
-                                              // 7. Sector Penetration (keyword vs sector volume)
-                                              if (chart.field === 'Sector Penetration') {
-                                                const secTotalSP = Number(reportTelemetryData.totalSectorArticles) || 100;
-                                                const keyTotalSP = Number(reportTelemetryData.totalKeywordArticles) || 0;
-                                                const otherTotalSP = Math.max(0, secTotalSP - keyTotalSP);
-                                                const pctKeySP = secTotalSP > 0 ? (keyTotalSP / secTotalSP) * 100 : 0;
-                                                const pctOtherSP = secTotalSP > 0 ? (otherTotalSP / secTotalSP) * 100 : 100;
-                                                if (chart.type === 'Pie Chart' || chart.type === 'Donut Chart') {
-                                                  let cumOffsetSP = 25;
-                                                  const segsSP = [
-                                                    { label: 'Target Keywords', value: keyTotalSP, pct: pctKeySP, color: '#6366f1' },
-                                                    { label: 'Sector General', value: otherTotalSP, pct: pctOtherSP, color: '#e2e8f0' }
-                                                  ];
-                                                  return (
-                                                    <div className="flex flex-col sm:flex-row items-center justify-center gap-10 w-full py-4">
-                                                      <div className="relative w-44 h-44 shrink-0">
-                                                        <svg viewBox="0 0 32 32" className="w-full h-full transform -rotate-90">
-                                                          {segsSP.map((seg) => {
-                                                            if (seg.pct === 0 || isNaN(seg.pct)) return null;
-                                                            const cur = isNaN(cumOffsetSP) ? 25 : cumOffsetSP;
-                                                            cumOffsetSP -= seg.pct;
-                                                            return (
-                                                              <circle key={seg.label} r="15.9154943" cx="16" cy="16" fill="transparent" stroke={seg.color} strokeWidth={chart.type === 'Donut Chart' ? "6" : "15.9154943"} strokeDasharray={`${seg.pct} ${Math.max(0, 100 - seg.pct)}`} strokeDashoffset={cur} />
-                                                            );
-                                                          })}
-                                                        </svg>
-                                                        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                                          <span className="text-xl font-black text-indigo-700">{isNaN(pctKeySP) ? '0' : pctKeySP.toFixed(1)}%</span>
-                                                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Penetration</span>
-                                                        </div>
-                                                      </div>
-                                                      <div className="space-y-2.5 max-w-xs w-full">
-                                                        {segsSP.map(seg => (
-                                                          <div key={seg.label} className="flex items-center justify-between text-xs font-bold">
-                                                            <div className="flex items-center gap-2 truncate pr-2">
-                                                              <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: seg.color }}></span>
-                                                              <span className="text-slate-700 truncate">{seg.label}</span>
-                                                            </div>
-                                                            <span className="font-black shrink-0 text-slate-900">{seg.value} ({isNaN(seg.pct) ? '0' : seg.pct.toFixed(1)}%)</span>
-                                                          </div>
-                                                        ))}
-                                                      </div>
-                                                    </div>
-                                                  );
-                                                }
-                                                return (
-                                                  <div className="space-y-4 w-full max-w-xl mx-auto py-4">
-                                                    <div className="text-xs font-black text-slate-700 uppercase tracking-wider">Keyword vs Sector Coverage</div>
-                                                    <div className="h-3.5 w-full rounded-full flex overflow-hidden bg-slate-200/80 shadow-inner">
-                                                      <div style={{ width: `${isNaN(pctKeySP) ? 0 : pctKeySP}%`, backgroundColor: '#6366f1' }} className="h-full transition-all duration-700" />
-                                                      <div style={{ width: `${isNaN(pctOtherSP) ? 0 : pctOtherSP}%`, backgroundColor: '#e2e8f0' }} className="h-full" />
-                                                    </div>
-                                                    <div className="flex justify-between text-xs font-bold">
-                                                      <div className="flex items-center gap-2">
-                                                        <span className="w-3 h-3 rounded-full bg-indigo-500 shrink-0"></span>
-                                                        <span className="text-slate-700">Target Keywords</span>
-                                                        <span className="text-indigo-700 font-black">{keyTotalSP} ({isNaN(pctKeySP) ? '0' : pctKeySP.toFixed(1)}%)</span>
-                                                      </div>
-                                                      <div className="flex items-center gap-2">
-                                                        <span className="w-3 h-3 rounded-full bg-slate-300 shrink-0"></span>
-                                                        <span className="text-slate-500">Sector Base</span>
-                                                        <span className="text-slate-600 font-black">{otherTotalSP}</span>
-                                                      </div>
-                                                    </div>
-                                                  </div>
-                                                );
-                                              }
-
-                                              // 8. Timeline / Trend Chart (general – no specific field match)
-                                              if (chart.type === 'Trend Chart' || chart.type === 'Area Chart') {
-                                                const datesSet = new Set();
-                                                brandNames.forEach(b => Object.keys(brandsObj[b]?.timeline || {}).forEach(dt => datesSet.add(dt)));
-                                                const dates = Array.from(datesSet).sort();
-                                                if (dates.length === 0) return <div className="text-xs font-bold text-slate-400 py-8">No timeline data available.</div>;
-                                                const maxDt = Math.max(...dates.map(dt => brandNames.reduce((s, b) => s + (Number(brandsObj[b]?.timeline?.[dt]) || 0), 0)), 1);
-
-                                                return (
-                                                  <div className="w-full space-y-6 py-4 px-4 max-w-2xl mx-auto">
-                                                    <div className="h-44 flex items-end gap-3 pt-6 pb-2 border-b border-slate-200 px-2">
-                                                      {dates.map((dt) => {
-                                                        const dtTotal = brandNames.reduce((s, b) => s + (Number(brandsObj[b]?.timeline?.[dt]) || 0), 0);
-                                                        const hPct = maxDt > 0 && !isNaN(dtTotal / maxDt) ? (dtTotal / maxDt) * 100 : 0;
-                                                        return (
-                                                          <div key={dt} className="flex-1 flex flex-col justify-end items-center h-full group relative">
-                                                            <div className="absolute -top-10 bg-slate-900 text-white text-[10px] font-bold px-2.5 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-10 shadow-lg">
-                                                              {dt}: {dtTotal} Mentions
-                                                            </div>
-                                                            <div className="w-full max-w-[32px] h-full flex flex-col justify-end gap-0.5 rounded-t-lg overflow-hidden">
-                                                              {brandNames.map((b, bIdx) => {
-                                                                const cnt = Number(brandsObj[b]?.timeline?.[dt]) || 0;
-                                                                if (cnt === 0 || dtTotal === 0) return null;
-                                                                const sh = isNaN(cnt / dtTotal) ? 0 : (cnt / dtTotal) * hPct;
-                                                                return (
-                                                                  <div key={b} style={{ height: `${isNaN(sh) ? 0 : sh}%`, backgroundColor: BRAND_COLORS[bIdx % BRAND_COLORS.length] }} className="w-full hover:brightness-110 transition-all" />
-                                                                );
-                                                              })}
-                                                            </div>
-                                                            <span className="text-[9px] font-bold text-slate-400 mt-2 transform -rotate-45 origin-top-left max-w-[50px] truncate">
-                                                              {dt ? String(dt).substring(5) : ''}
-                                                            </span>
-                                                          </div>
-                                                        );
-                                                      })}
-                                                    </div>
-                                                    <div className="flex flex-wrap items-center justify-center gap-5 pt-3">
-                                                      {brandNames.map((b, idx) => (
-                                                        <div key={b} className="flex items-center gap-2 text-xs font-bold text-slate-700">
-                                                          <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: BRAND_COLORS[idx % BRAND_COLORS.length] }}></span>
-                                                          <span>{b}</span>
-                                                        </div>
-                                                      ))}
-                                                    </div>
-                                                  </div>
-                                                );
-                                              }
-
-                                              // 9. Default Share of Voice / Reach Index (Bar / Pie / Donut)
-                                              if (totalMentions === 0) return <div className="text-xs font-bold text-slate-400 py-8">No mentions detected for specified brands.</div>;
-
-                                              if (chart.type === 'Pie Chart' || chart.type === 'Donut Chart') {
-                                                let cumOffset = 25;
-                                                return (
-                                                  <div className="flex flex-col sm:flex-row items-center justify-center gap-10 w-full py-4">
-                                                    <div className="relative w-44 h-44 shrink-0">
-                                                      <svg viewBox="0 0 32 32" className="w-full h-full transform -rotate-90">
-                                                        {brandNames.map((b, idx) => {
-                                                          const m = Number(brandsObj[b]?.mentions) || 0;
-                                                          if (m === 0 || totalMentions === 0) return null;
-                                                          const pct = isNaN(m / totalMentions) ? 0 : (m / totalMentions) * 100;
-                                                          const color = BRAND_COLORS[idx % BRAND_COLORS.length];
-                                                          const cur = isNaN(cumOffset) ? 25 : cumOffset;
-                                                          cumOffset -= pct;
-                                                          return (
-                                                            <circle key={b} r="15.9154943" cx="16" cy="16" fill="transparent" stroke={color} strokeWidth={chart.type === 'Donut Chart' ? "6" : "15.9154943"} strokeDasharray={`${pct} ${Math.max(0, 100 - pct)}`} strokeDashoffset={cur} />
-                                                          );
-                                                        })}
-                                                      </svg>
-                                                      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                                        <span className="text-2xl font-black text-slate-900">{totalMentions}</span>
-                                                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Mentions</span>
-                                                      </div>
-                                                    </div>
-                                                    <div className="space-y-2.5 max-w-xs w-full">
-                                                      {brandNames.map((b, idx) => {
-                                                        const m = Number(brandsObj[b]?.mentions) || 0;
-                                                        const pct = totalMentions > 0 && !isNaN(m / totalMentions) ? ((m / totalMentions) * 100).toFixed(1) : '0.0';
-                                                        const color = BRAND_COLORS[idx % BRAND_COLORS.length];
-                                                        return (
-                                                          <div key={b} className="flex items-center justify-between text-xs">
-                                                            <div className="flex items-center gap-2 truncate pr-2">
-                                                              <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: color }}></span>
-                                                              <span className="font-bold text-slate-700 truncate">{b}</span>
-                                                            </div>
-                                                            <span className="font-black shrink-0" style={{ color }}>{pct}% ({m})</span>
-                                                          </div>
-                                                        );
-                                                      })}
-                                                    </div>
-                                                  </div>
-                                                );
-                                              }
-
-                                              // Bar Chart or other for Share of Voice
-                                              return (
-                                                <div className="space-y-3.5 w-full max-w-xl mx-auto py-4">
-                                                  {brandNames.map((b, idx) => {
-                                                    const m = Number(brandsObj[b]?.mentions) || 0;
-                                                    const pct = totalMentions > 0 && !isNaN(m / totalMentions) ? ((m / totalMentions) * 100).toFixed(1) : '0.0';
-                                                    const color = BRAND_COLORS[idx % BRAND_COLORS.length];
+                                            {/* Visual Chart Graphic Representation */}
+                                            <div className="py-8 px-6 flex flex-col items-center justify-center bg-slate-50/90 dark:bg-slate-950/40 rounded-2xl border border-slate-200/60 dark:border-slate-800 shadow-inner min-h-[260px] w-full overflow-hidden">
+                                              {(() => {
+                                                try {
+                                                  if (isFetchingTelemetry) {
                                                     return (
-                                                      <div key={b} className="space-y-1">
-                                                        <div className="flex justify-between text-xs font-bold">
-                                                          <span className="text-slate-800">{b}</span>
-                                                          <span style={{ color }}>{m} mentions ({pct}%)</span>
+                                                      <div className="flex flex-col items-center justify-center space-y-3 py-12">
+                                                        <div className="w-8 h-8 border-4 border-indigo-600/30 border-t-indigo-600 rounded-full animate-spin"></div>
+                                                        <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Compiling Live Telemetry...</span>
+                                                      </div>
+                                                    );
+                                                  }
+                                                  if (!reportTelemetryData || !filteredBrandsObj || Object.keys(filteredBrandsObj).length === 0) {
+                                                    return (
+                                                      <div className="flex flex-col items-center justify-center py-12 text-center">
+                                                        <Activity size={32} className="text-slate-350 mb-2 animate-pulse" />
+                                                        <span className="text-xs font-bold text-slate-400">No telemetry data matching current filters.</span>
+                                                      </div>
+                                                    );
+                                                  }
+
+                                                  // Render KPI Card directly
+                                                  if (config.type === 'KPI Card') {
+                                                    const brandNames = Object.keys(filteredBrandsObj);
+                                                    let valueStr = '';
+                                                    let trendDirection = 'neutral';
+                                                    let trendPct = '0%';
+                                                    let sparklineVal = [];
+
+                                                    const totalMentions = brandNames.reduce((s, b) => s + (Number(filteredBrandsObj[b]?.mentions) || 0), 0);
+                                                    const totalArticles = brandNames.reduce((s, b) => s + (Number(filteredBrandsObj[b]?.articles) || 0), 0);
+
+                                                    // Aggregated timeline for sparkline
+                                                    const aggTimeline = {};
+                                                    brandNames.forEach(b => {
+                                                      Object.entries(filteredBrandsObj[b]?.timeline || {}).forEach(([dt, val]) => {
+                                                        aggTimeline[dt] = (aggTimeline[dt] || 0) + val;
+                                                      });
+                                                    });
+                                                    const sortedTimeline = Object.entries(aggTimeline).sort((a, b) => a[0].localeCompare(b[0]));
+                                                    sparklineVal = sortedTimeline.map(e => e[1]);
+
+                                                    if (config.field === 'Total Mentions') {
+                                                      valueStr = totalMentions.toLocaleString();
+                                                      if (sparklineVal.length >= 2) {
+                                                        const diff = sparklineVal[sparklineVal.length - 1] - sparklineVal[0];
+                                                        trendDirection = diff >= 0 ? 'up' : 'down';
+                                                        trendPct = sparklineVal[0] > 0 ? `${Math.abs((diff / sparklineVal[0]) * 100).toFixed(0)}%` : '100%';
+                                                      }
+                                                    } else if (config.field === 'Total Articles') {
+                                                      valueStr = totalArticles.toLocaleString();
+                                                      if (sparklineVal.length >= 2) {
+                                                        const diff = sparklineVal[sparklineVal.length - 1] - sparklineVal[0];
+                                                        trendDirection = diff >= 0 ? 'up' : 'down';
+                                                        trendPct = sparklineVal[0] > 0 ? `${Math.abs((diff / sparklineVal[0]) * 100).toFixed(0)}%` : '100%';
+                                                      }
+                                                    } else if (config.field === 'Net Sentiment Score') {
+                                                      let pos = 0, neu = 0, neg = 0;
+                                                      brandNames.forEach(b => {
+                                                        pos += Number(filteredBrandsObj[b]?.sentiment?.Positive) || 0;
+                                                        neu += Number(filteredBrandsObj[b]?.sentiment?.Neutral) || 0;
+                                                        neg += Number(filteredBrandsObj[b]?.sentiment?.Negative) || 0;
+                                                      });
+                                                      const sTot = pos + neu + neg;
+                                                      const nsi = sTot > 0 ? ((pos - neg) / sTot) * 100 : 0;
+                                                      valueStr = `${nsi >= 0 ? '+' : ''}${nsi.toFixed(1)}%`;
+                                                      trendDirection = nsi >= 0 ? 'up' : 'down';
+                                                      trendPct = `${pos > 0 ? ((pos / sTot) * 100).toFixed(0) : 0}% Pos`;
+                                                    } else if (config.field === 'Top Brand Share %') {
+                                                      let topBrand = '';
+                                                      let topMentions = 0;
+                                                      brandNames.forEach(b => {
+                                                        const m = Number(filteredBrandsObj[b]?.mentions) || 0;
+                                                        if (m > topMentions) {
+                                                          topMentions = m;
+                                                          topBrand = b;
+                                                        }
+                                                      });
+                                                      const share = totalMentions > 0 ? (topMentions / totalMentions) * 100 : 0;
+                                                      valueStr = `${share.toFixed(1)}%`;
+                                                      trendDirection = 'neutral';
+                                                      trendPct = topBrand ? `Share of ${topBrand}` : 'N/A';
+                                                    } else if (config.field === 'Media Diversity Count') {
+                                                      const uniqueOutlets = new Set();
+                                                      brandNames.forEach(b => {
+                                                        Object.keys(filteredBrandsObj[b]?.sources || {}).forEach(src => uniqueOutlets.add(src));
+                                                      });
+                                                      valueStr = uniqueOutlets.size.toString();
+                                                      trendDirection = 'up';
+                                                      trendPct = 'Outlets';
+                                                    } else {
+                                                      valueStr = 'N/A';
+                                                    }
+
+                                                    const kpiColor = config.color || '#6366f1';
+
+                                                    return (
+                                                      <div className="w-full flex items-center justify-between p-2">
+                                                        <div className="space-y-1">
+                                                          <span className="text-[10px] font-bold text-slate-450 uppercase tracking-widest block">{config.field}</span>
+                                                          <div className="flex items-baseline gap-2.5">
+                                                            <span className="text-3xl font-black tracking-tight" style={{ color: kpiColor }}>{valueStr}</span>
+                                                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5 ${
+                                                              trendDirection === 'up' ? 'bg-emerald-500/10 text-emerald-600' :
+                                                              trendDirection === 'down' ? 'bg-red-500/10 text-red-600' : 'bg-slate-500/10 text-slate-500'
+                                                            }`}>
+                                                              {trendDirection === 'up' ? '↑' : trendDirection === 'down' ? '↓' : '•'} {trendPct}
+                                                            </span>
+                                                          </div>
                                                         </div>
-                                                        <div className="h-3.5 w-full bg-slate-200/80 rounded-full overflow-hidden">
-                                                          <div className="h-full rounded-full transition-all duration-700" style={{ width: `${isNaN(Number(pct)) ? 0 : Number(pct)}%`, backgroundColor: color }}></div>
+                                                        <div className="flex flex-col items-end gap-1.5 shrink-0">
+                                                          {renderSparkline(sparklineVal, kpiColor)}
+                                                          <span className="text-[9px] text-slate-450 font-semibold tracking-wide">Dynamic Period Trend</span>
                                                         </div>
                                                       </div>
                                                     );
-                                                  })}
-                                                </div>
-                                              );
-                                            } catch (renderError) {
-                                              console.error('Error rendering telemetry widget:', renderError);
-                                              return (
-                                                <div className="text-xs font-bold text-red-500 py-8 text-center">
-                                                  Visualization failed to render. Please check dataset metrics.
-                                                </div>
-                                              );
-                                            }
-                                          })()}
-                                        </div>
+                                                  }
 
-                                        <div className="mt-4 text-center">
-                                          <span className="text-xs font-serif italic text-slate-500">
-                                            Figure {cIdx + 1}: Data mapping detailing cross-platform amplification vectors for {chart.field}.
-                                          </span>
-                                        </div>
-                                      </div>
-                                    ))}
+                                                  // Preprocess chart data
+                                                  const processedData = processChartData(filteredBrandsObj, config);
+                                                  if (processedData.length === 0) {
+                                                    return <div className="text-xs font-bold text-slate-400 py-8 text-center">No visual data generated under filters.</div>;
+                                                  }
+
+                                                  // Dynamic visual render based on type
+                                                  if (config.type === 'Pie Chart' || config.type === 'Donut Chart') {
+                                                    const sum = processedData.reduce((acc, curr) => acc + curr.value, 0);
+                                                    let cumOffset = 25;
+                                                    return (
+                                                      <div className="flex flex-col sm:flex-row items-center justify-center gap-10 w-full py-4">
+                                                        <div className="relative w-44 h-44 shrink-0">
+                                                          <svg viewBox="0 0 32 32" className="w-full h-full transform -rotate-90">
+                                                            {processedData.map((item, idx) => {
+                                                              const pct = sum > 0 ? (item.value / sum) * 100 : 0;
+                                                              if (pct === 0) return null;
+                                                              const defaultColor = currentBrandColors[idx % currentBrandColors.length];
+                                                              const color = getConditionalColor(chart.id, item.value, defaultColor);
+                                                              const cur = cumOffset;
+                                                              cumOffset -= pct;
+                                                              return (
+                                                                <circle
+                                                                  key={item.name || idx}
+                                                                  r="15.9154943"
+                                                                  cx="16"
+                                                                  cy="16"
+                                                                  fill="transparent"
+                                                                  stroke={color}
+                                                                  strokeWidth={config.type === 'Donut Chart' ? "6" : "15.9154943"}
+                                                                  strokeDasharray={`${pct} ${Math.max(0, 100 - pct)}`}
+                                                                  strokeDashoffset={cur}
+                                                                  className="cursor-pointer hover:opacity-80 transition-opacity"
+                                                                  onClick={() => handleSegmentClick(config.groupBy === 'Brand' ? 'brand' : config.groupBy === 'Publication' ? 'publication' : 'date', item.name)}
+                                                                />
+                                                              );
+                                                            })}
+                                                          </svg>
+                                                          {config.type === 'Donut Chart' && (
+                                                            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center">
+                                                              <span className="text-xl font-black">{sum.toLocaleString()}</span>
+                                                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block mt-0.5">Total</span>
+                                                            </div>
+                                                          )}
+                                                        </div>
+                                                        <div className="space-y-2.5 max-w-xs w-full">
+                                                          {processedData.map((item, idx) => {
+                                                            const pct = sum > 0 ? ((item.value / sum) * 100).toFixed(1) : '0.0';
+                                                            const defaultColor = currentBrandColors[idx % currentBrandColors.length];
+                                                            const color = getConditionalColor(chart.id, item.value, defaultColor);
+                                                            return (
+                                                              <div
+                                                                key={item.name || idx}
+                                                                onClick={() => handleSegmentClick(config.groupBy === 'Brand' ? 'brand' : config.groupBy === 'Publication' ? 'publication' : 'date', item.name)}
+                                                                className="flex items-center justify-between text-xs font-bold cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 p-1.5 rounded-lg transition-colors"
+                                                              >
+                                                                <div className="flex items-center gap-2 truncate pr-2">
+                                                                  <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: color }}></span>
+                                                                  <span className={`${labelColor} truncate`}>{item.name}</span>
+                                                                </div>
+                                                                <span className="font-black shrink-0">{item.value.toFixed(0)} ({pct}%)</span>
+                                                              </div>
+                                                            );
+                                                          })}
+                                                        </div>
+                                                      </div>
+                                                    );
+                                                  }
+
+                                                  if (config.type === 'Trend Chart' || config.type === 'Area Chart') {
+                                                    const maxVal = Math.max(...processedData.map(item => item.value), 1);
+                                                    return (
+                                                      <div className="w-full space-y-6 py-4 px-4 max-w-2xl mx-auto">
+                                                        <div className="h-44 flex items-end gap-3 pt-6 pb-2 border-b border-slate-200/80 px-2">
+                                                          {processedData.map((item, idx) => {
+                                                            const pct = maxVal > 0 ? (item.value / maxVal) * 100 : 0;
+                                                            const defaultColor = currentBrandColors[idx % currentBrandColors.length];
+                                                            const color = getConditionalColor(chart.id, item.value, defaultColor);
+                                                            return (
+                                                              <div
+                                                                key={item.name || idx}
+                                                                onClick={() => handleSegmentClick(config.groupBy === 'Brand' ? 'brand' : config.groupBy === 'Publication' ? 'publication' : 'date', item.name)}
+                                                                className="flex-1 flex flex-col justify-end items-center h-full group relative cursor-pointer"
+                                                              >
+                                                                <div className="absolute -top-10 bg-slate-900 text-white text-[10px] font-bold px-2.5 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-10 shadow-lg">
+                                                                  {item.name}: {item.value.toFixed(1)}
+                                                                </div>
+                                                                <div className="w-full max-w-[36px] h-full flex flex-col justify-end gap-0.5 rounded-t-lg overflow-hidden">
+                                                                  {config.type === 'Area Chart' ? (
+                                                                    <div
+                                                                      style={{ height: `${pct}%`, backgroundColor: color }}
+                                                                      className="w-full opacity-80 hover:opacity-100 transition-opacity"
+                                                                    />
+                                                                  ) : (
+                                                                    <div
+                                                                      style={{ height: `${pct}%`, backgroundColor: color }}
+                                                                      className="w-full hover:brightness-110 transition-all rounded-t"
+                                                                    />
+                                                                  )}
+                                                                </div>
+                                                                <span className="text-[9px] font-bold text-slate-400 mt-2 transform -rotate-45 origin-top-left max-w-[55px] truncate block">
+                                                                  {item.name}
+                                                                </span>
+                                                              </div>
+                                                            );
+                                                          })}
+                                                        </div>
+                                                      </div>
+                                                    );
+                                                  }
+
+                                                  // Default / Bar Chart rendering
+                                                  const maxVal = Math.max(...processedData.map(item => item.value), 1);
+                                                  return (
+                                                    <div className="space-y-3.5 w-full max-w-xl mx-auto py-4">
+                                                      {processedData.map((item, idx) => {
+                                                        const pct = maxVal > 0 ? (item.value / maxVal) * 100 : 0;
+                                                        const defaultColor = currentBrandColors[idx % currentBrandColors.length];
+                                                        const color = getConditionalColor(chart.id, item.value, defaultColor);
+                                                        return (
+                                                          <div
+                                                            key={item.name || idx}
+                                                            onClick={() => handleSegmentClick(config.groupBy === 'Brand' ? 'brand' : config.groupBy === 'Publication' ? 'publication' : 'date', item.name)}
+                                                            className="space-y-1 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 p-2 rounded-xl transition-all"
+                                                          >
+                                                            <div className="flex justify-between text-xs font-bold">
+                                                              <span className={labelColor}>{item.name}</span>
+                                                              <span style={{ color }}>{item.value.toFixed(1)}</span>
+                                                            </div>
+                                                            <div className="h-3.5 w-full bg-slate-200/80 dark:bg-slate-800 rounded-full overflow-hidden">
+                                                              <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, backgroundColor: color }}></div>
+                                                            </div>
+                                                          </div>
+                                                        );
+                                                      })}
+                                                    </div>
+                                                  );
+                                                } catch (renderError) {
+                                                  console.error('Error rendering telemetry widget:', renderError);
+                                                  return (
+                                                    <div className="text-xs font-bold text-red-500 py-8 text-center">
+                                                      Visualization failed to render. Please check dataset metrics.
+                                                    </div>
+                                                  );
+                                                }
+                                              })()}
+                                            </div>
+
+                                            <div className="mt-4 text-center">
+                                              <span className={`text-xs font-serif italic ${textMuted}`}>
+                                                Figure {cIdx + 1}: Data mapping detailing cross-platform amplification vectors for {config.field}.
+                                              </span>
+                                            </div>
+                                          </div>
+                                        );
+                                      });
+                                      if (reportLayout === 'Dashboard Grid') {
+                                        return <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8 relative z-10">{chartItems}</div>;
+                                      }
+                                      return chartItems;
+                                    })()}
 
                                     {/* Floated Embedded External Images */}
                                     {sec.images && sec.images.map((imgItem, imgIdx) => {
@@ -6640,6 +7248,103 @@ const spec = JSON.parse(response.text);
               </button>
             </form>
           </div>
+
+          {/* Drill-Through Slide-Over Explorer (Feature 5) */}
+          {drillThroughContext && drillThroughContext.isOpen && (
+            <div className="fixed inset-0 z-[140] flex justify-end animate-in fade-in duration-300">
+              {/* Dark Overlay Background */}
+              <div 
+                className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity" 
+                onClick={() => setDrillThroughContext(prev => ({ ...prev, isOpen: false }))}
+              />
+              
+              {/* Panel Container */}
+              <div className="relative w-full max-w-[500px] bg-slate-900 text-white h-full shadow-2xl flex flex-col z-10 animate-in slide-in-from-right duration-350 ease-out border-l border-slate-800">
+                {/* Header */}
+                <div className="p-6 bg-slate-950 border-b border-slate-800 flex items-center justify-between relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-48 h-48 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none -mr-10 -mt-10"></div>
+                  <div className="relative">
+                    <h3 className="text-lg font-black tracking-tight flex items-center gap-2">
+                      <Sparkles className="text-indigo-400" size={18} />
+                      Data Explorer
+                    </h3>
+                    <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-wider mt-0.5">
+                      Drill-Through: {drillThroughContext.field} = {drillThroughContext.value}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setDrillThroughContext(prev => ({ ...prev, isOpen: false }))}
+                    className="p-2 bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white rounded-full transition-all relative z-10 shadow-md"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+
+                {/* Body / Article List */}
+                <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-900/50 custom-scrollbar">
+                  {drillThroughContext.articles && drillThroughContext.articles.length > 0 ? (
+                    <div className="space-y-4">
+                      <p className="text-[11px] text-slate-400 font-semibold tracking-wide uppercase">
+                        Showing {drillThroughContext.articles.length} underlying records
+                      </p>
+                      
+                      {drillThroughContext.articles.map((article, idx) => (
+                        <div 
+                          key={article.id || idx} 
+                          className="p-4 bg-slate-950/65 border border-slate-800/80 rounded-2xl space-y-3 shadow-md hover:border-slate-700/80 transition-all group"
+                        >
+                          <div className="flex justify-between items-start gap-3">
+                            <span className="text-xs font-bold text-slate-350 group-hover:text-indigo-300 transition-colors leading-snug">
+                              {article.title}
+                            </span>
+                            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded shrink-0 border ${
+                              article.sentiment === 'Positive' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+                              article.sentiment === 'Negative' ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' :
+                              'bg-slate-500/10 text-slate-400 border-slate-500/20'
+                            }`}>
+                              {article.sentiment}
+                            </span>
+                          </div>
+                          
+                          <div className="flex items-center justify-between text-[10px] font-medium text-slate-500 font-mono">
+                            <span className="font-bold text-slate-400">{article.source}</span>
+                            <span>{article.published || article.date || 'Recent'}</span>
+                          </div>
+
+                          <div className="flex items-center gap-2 pt-1.5 border-t border-slate-800/60">
+                            {article.url && (
+                              <a 
+                                href={article.url} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-[10px] font-bold transition-all flex items-center gap-1 active:scale-95 shadow-sm"
+                              >
+                                View Article
+                              </a>
+                            )}
+                            <button
+                              onClick={() => insertCitation(article)}
+                              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] font-bold transition-all flex items-center gap-1 active:scale-95 shadow-md shadow-indigo-600/10"
+                            >
+                              + Cite Reference
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-20 text-center space-y-3">
+                      <FileText size={40} className="text-slate-700" />
+                      <span className="text-sm font-black text-slate-500">No article records found</span>
+                      <p className="text-xs text-slate-500 max-w-xs leading-relaxed font-semibold">
+                        We could not parse any article snippets mapping to this specific aggregate segment.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
         </div>
       </div>
