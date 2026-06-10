@@ -449,35 +449,74 @@ app.get('/api/articles/:id/content', getUserId, async (req, res) => {
 
     const cheerio = require('cheerio');
     const axios = require('axios');
+    const { HttpsProxyAgent } = require('https-proxy-agent');
     const { GoogleDecoder } = require('google-news-url-decoder');
     const decoder = new GoogleDecoder();
 
-    let targetUrl = article.link;
-    if (article.link.includes('news.google.com')) {
+    // Configure Proxy Agent
+    let agent = null;
+    if (process.env.DATAIMPULSE_PROXY_URL) {
       try {
-        const decoded = await decoder.decode(article.link);
-        if (decoded && decoded.decoded_url) {
-          targetUrl = decoded.decoded_url;
-        }
-      } catch (decErr) {
-        console.warn(`[Fetcher] Decode error for article ${id}: ${decErr.message}`);
+        agent = new HttpsProxyAgent(process.env.DATAIMPULSE_PROXY_URL);
+        console.log(`[ContentScraper] Proxy agent initialized.`);
+      } catch (err) {
+        console.error(`[ContentScraper] Error initializing HttpsProxyAgent:`, err.message);
       }
     }
 
-    let bodyText = '';
-    try {
-      const response = await axios.get(targetUrl, {
-        timeout: 10000,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.9'
+    let targetUrl = article.link;
+    if (article.link.includes('news.google.com')) {
+      // Decode using direct IP (unproxied) to avoid anti-bot/consent walls on proxies
+      try {
+        console.log(`[ContentScraper] Decoding Google News URL directly (unproxied)...`);
+        const decoded = await decoder.decode(article.link);
+        if (decoded && decoded.decoded_url) {
+          targetUrl = decoded.decoded_url;
+          console.log(`[ContentScraper] Successfully decoded via local decoder: ${targetUrl}`);
         }
-      });
+      } catch (decErr) {
+        console.warn(`[ContentScraper] Decode error for article ${id} (direct): ${decErr.message}`);
+      }
 
-      const $ = cheerio.load(response.data);
-      $('script, style, nav, header, footer, iframe, noscript, .ad, .ads, .comment, .social-share').remove();
+      // Fallback: If still unresolved, fetch redirection headers directly (unproxied) in a loop
+      if (targetUrl.includes('news.google.com')) {
+        try {
+          console.log(`[ContentScraper] Running fallback unproxied redirect loop resolver...`);
+          let currentUrl = targetUrl;
+          let resolveCount = 0;
+          while (currentUrl.includes('news.google.com') && resolveCount < 5) {
+            resolveCount++;
+            const redirectRes = await axios.get(currentUrl, {
+              maxRedirects: 0,
+              timeout: 8000,
+              validateStatus: (status) => status >= 300 && status < 400,
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+              }
+            });
+            if (redirectRes.headers.location) {
+              currentUrl = redirectRes.headers.location;
+            } else {
+              break;
+            }
+          }
+          if (!currentUrl.includes('news.google.com')) {
+            targetUrl = currentUrl;
+            console.log(`[ContentScraper] Successfully resolved direct redirect URL: ${targetUrl}`);
+          } else {
+            console.warn(`[ContentScraper] Unresolved google news URL after redirect loop: ${currentUrl}`);
+          }
+        } catch (redirErr) {
+          console.warn(`[ContentScraper] Fallback direct redirect loop resolver failed: ${redirErr.message}`);
+        }
+      }
+    }
 
+    // Extraction helper
+    function extractTextFromHtml(html) {
+      const $ = cheerio.load(html);
+      $('script, style, nav, header, footer, iframe, noscript, .ad, .ads, .comment, .social-share, svg, form').remove();
+      
       const selectors = [
         'article',
         '.caas-body', // Yahoo
@@ -488,6 +527,7 @@ app.get('/api/articles/:id/content', getUserId, async (req, res) => {
         'main'
       ];
 
+      let bodyText = '';
       for (const selector of selectors) {
         const el = $(selector);
         if (el.length > 0) {
@@ -512,9 +552,158 @@ app.get('/api/articles/:id/content', getUserId, async (req, res) => {
         bodyText = paragraphs.join('\n\n');
       }
 
-      bodyText = bodyText.trim().slice(0, 8000);
+      const resultText = bodyText.trim().slice(0, 8000);
+      const lower = resultText.toLowerCase();
+      const isConsentWall = 
+        (lower.includes('accept all') && lower.includes('reject all')) ||
+        (lower.includes('accept cookie') || lower.includes('reject cookie')) ||
+        lower.includes('cookie consent') ||
+        lower.includes('choose to accept all') ||
+        lower.includes('managing your privacy settings') ||
+        lower.includes('utiliser des cookies') ||
+        lower.includes('non-personalized content');
+
+      if (isConsentWall) {
+        throw new Error('Parsed text is a Cookie Consent/Privacy Wall');
+      }
+      return resultText;
+    }
+
+    let bodyText = '';
+
+    // Attempt 1: Direct Axios with Proxy
+    try {
+      console.log(`[ContentScraper] Attempt 1: Direct Axios fetch for ${targetUrl}`);
+      const axiosConfig = {
+        timeout: 15000,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9'
+        }
+      };
+      if (agent) {
+        axiosConfig.httpAgent = agent;
+        axiosConfig.httpsAgent = agent;
+      }
+
+      const response = await axios.get(targetUrl, axiosConfig);
+      if (response.status === 200 && response.data) {
+        bodyText = extractTextFromHtml(response.data);
+      }
     } catch (scrapeErr) {
-      console.warn(`[Fetcher] Scraping failed for ${targetUrl}: ${scrapeErr.message}`);
+      console.warn(`[ContentScraper] Attempt 1 failed for ${targetUrl}: ${scrapeErr.message}`);
+    }
+
+    // Attempt 2: Google Cache Axios with Proxy
+    if (!bodyText || bodyText.length < 100) {
+      try {
+        if (targetUrl.includes('news.google.com')) {
+          throw new Error('Skipping Google Cache for undecoded Google News link');
+        }
+
+        const cacheUrl = `https://webcache.googleusercontent.com/search?q=cache:${encodeURIComponent(targetUrl)}`;
+        console.log(`[ContentScraper] Attempt 2: Google Cache Axios fetch for ${cacheUrl}`);
+        const axiosConfig = {
+          timeout: 15000,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+          }
+        };
+        if (agent) {
+          axiosConfig.httpAgent = agent;
+          axiosConfig.httpsAgent = agent;
+        }
+
+        const response = await axios.get(cacheUrl, axiosConfig);
+        if (response.status === 200 && response.data) {
+          const htmlText = response.data.toLowerCase();
+          const isGoogleError = 
+            htmlText.includes('aucun document ne correspond') || 
+            htmlText.includes('did not match any documents') ||
+            htmlText.includes('error 404');
+          
+          if (isGoogleError) {
+            throw new Error('Google Cache search returned no results / error page');
+          }
+          
+          bodyText = extractTextFromHtml(response.data);
+        }
+      } catch (cacheErr) {
+        console.warn(`[ContentScraper] Attempt 2 Google Cache failed: ${cacheErr.message}`);
+      }
+    }
+
+    // Attempt 3: Puppeteer Stealth Fallback with Proxy
+    if (!bodyText || bodyText.length < 100) {
+      let browser;
+      try {
+        console.log(`[ContentScraper] Attempt 3: Puppeteer Stealth fallback for ${targetUrl}`);
+        const puppeteer = require('puppeteer-extra');
+        const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+        const puppeteerExtra = puppeteer.default || puppeteer;
+        
+        // Only add plugins if not already added in registry
+        try {
+          puppeteerExtra.use(StealthPlugin());
+        } catch (e) {}
+
+        const puppeteerOptions = {
+          headless: true,
+          executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-blink-features=AutomationControlled',
+            '--window-size=1920,1080'
+          ]
+        };
+
+        if (process.env.DATAIMPULSE_PROXY_URL) {
+          const parsed = new URL(process.env.DATAIMPULSE_PROXY_URL);
+          puppeteerOptions.args.push(`--proxy-server=${parsed.host}`);
+        }
+
+        browser = await puppeteerExtra.launch(puppeteerOptions);
+        const page = await browser.newPage();
+        
+        // Intelligent request interception to speed up loads
+        await page.setRequestInterception(true);
+        page.on('request', (req) => {
+          if (['image', 'font', 'stylesheet', 'media'].includes(req.resourceType())) {
+            req.abort();
+          } else {
+            req.continue();
+          }
+        });
+
+        if (process.env.DATAIMPULSE_PROXY_URL) {
+          const parsed = new URL(process.env.DATAIMPULSE_PROXY_URL);
+          if (parsed.username && parsed.password) {
+            await page.authenticate({
+              username: decodeURIComponent(parsed.username),
+              password: decodeURIComponent(parsed.password)
+            });
+          }
+        }
+
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+        
+        try {
+          await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+        } catch (navErr) {
+          console.warn(`[ContentScraper] Puppeteer navigation timeout/warning (continuing): ${navErr.message}`);
+        }
+
+        const html = await page.content();
+        bodyText = extractTextFromHtml(html);
+
+      } catch (pupErr) {
+        console.warn(`[ContentScraper] Attempt 3 Puppeteer failed: ${pupErr.message}`);
+      } finally {
+        if (browser) await browser.close();
+      }
     }
 
     if (bodyText && bodyText.length > 100) {

@@ -135,12 +135,59 @@ async function fetchRssForCompany(company) {
     const newsUrl = `https://news.google.com/rss/search?q=${encodedQuery}+when:2d${suffix}`;
 
     try {
-      const feed = await parser.parseURL(newsUrl);
-      
-      const filteredItems = feed.items.filter(item => {
-        const pubDateStr = item.pubDate || item.isoDate || new Date().toISOString();
-        return isWithin2Days(pubDateStr);
-      });
+      let feed = null;
+      let usedProxy = false;
+
+      // Helper to fetch and parse RSS feeds
+    async function tryFetchFeed(useProxyAgent) {
+      const config = {
+        timeout: 10000,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36'
+        }
+      };
+      if (useProxyAgent && process.env.DATAIMPULSE_PROXY_URL) {
+        const { HttpsProxyAgent } = require('https-proxy-agent');
+        const agent = new HttpsProxyAgent(process.env.DATAIMPULSE_PROXY_URL);
+        config.httpAgent = agent;
+        config.httpsAgent = agent;
+        config.timeout = 15000;
+      }
+      const response = await axios.get(newsUrl, config);
+      if (response.status === 200 && response.data) {
+        return await parser.parseString(response.data);
+      }
+      throw new Error(`Invalid response status: ${response.status}`);
+    }
+
+    try {
+      // Attempt 1: Direct IP
+      feed = await tryFetchFeed(false);
+      if (!feed || !feed.items || feed.items.length === 0) {
+        throw new Error('Fetched feed is empty (below expected output)');
+      }
+    } catch (err) {
+      console.warn(`[Fetcher] Direct RSS fetch failed or empty for ${company.name} (${r}): ${err.message}. Retrying via proxy...`);
+      // Attempt 2: DataImpulse Proxy Failover
+      if (process.env.DATAIMPULSE_PROXY_URL) {
+        try {
+          feed = await tryFetchFeed(true);
+          usedProxy = true;
+          console.log(`[Fetcher] Successfully polled RSS via proxy for ${company.name} (${r}).`);
+        } catch (proxyErr) {
+          console.error(`[Fetcher] Proxy RSS fetch also failed for ${company.name} (${r}): ${proxyErr.message}`);
+        }
+      }
+    }
+
+    if (!feed || !feed.items) {
+      continue;
+    }
+
+    const filteredItems = feed.items.filter(item => {
+      const pubDateStr = item.pubDate || item.isoDate || new Date().toISOString();
+      return isWithin2Days(pubDateStr);
+    });
 
       // Concurrency limit of 3 parallel requests
       const concurrencyLimit = 3;
@@ -162,34 +209,11 @@ async function fetchRssForCompany(company) {
           // Resolve Google News redirect link
           const decodedUrl = await decodeGoogleNewsUrl(link);
           
-          let fullContent = "Could not fetch full article content.";
-
-          // Attempt to extract full content
-          try {
-            const response = await axios.get(decodedUrl, {
-              headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36'
-              },
-              timeout: 8000
-            });
-
-            if (response.status === 200 && response.data) {
-              const html = response.data;
-              const extractedText = extractMainContent(html);
-              if (extractedText && extractedText.length >= 150) {
-                fullContent = extractedText;
-              }
-            }
-          } catch (fetchErr) {
-            console.warn(`Could not extract full content for ${decodedUrl}: ${fetchErr.message}`);
-          }
-
-          // Fallback to RSS snippet if full content parsing failed
-          if (fullContent === "Could not fetch full article content.") {
-            const rawContent = item.contentSnippet || item.content || item.summary || '';
-            const cleanContent = cheerio.load(rawContent).text().trim();
-            fullContent = cleanContent ? cleanContent : rawContent;
-          }
+          // Background fetcher: Skip direct page crawling.
+          // Save the Google News RSS item snippet directly to be extracted on-demand later.
+          const rawContent = item.contentSnippet || item.content || item.summary || 'Summary pending extraction...';
+          const cleanContent = cheerio.load(rawContent).text().trim();
+          const fullContent = cleanContent ? cleanContent : rawContent;
 
           // Duplicate checking based on company_id and title
           const dupRes = await db.query('SELECT id FROM articles WHERE company_id = $1 AND title = $2', [company.id, title]);

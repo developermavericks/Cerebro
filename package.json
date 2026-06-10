@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "server": "nodemon --no-deprecation server/index.js",
+    "server": "nodemon --no-deprecation --max-http-header-size=32768 server/index.js",
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run"
