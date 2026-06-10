@@ -305,7 +305,9 @@ const SearchableDropdown = ({ value, onChange, placeholder, items, label, theme 
           className={`w-full py-4 pl-12 pr-10 bg-white border-2 border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none transition-all shadow-sm ${isOpen ? colors.border + ' ring-4 ' + colors.focus : 'hover:border-slate-200'}`}
           value={search}
           onChange={(e) => {
-            setSearch(e.target.value);
+            const val = e.target.value;
+            setSearch(val);
+            onChange(val);
             setIsOpen(true);
           }}
           onFocus={() => setIsOpen(true)}
@@ -595,6 +597,8 @@ function App() {
   const [history, setHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
   const [isAnalysing, setIsAnalysing] = useState(false);
+  const [comp1Mentions, setComp1Mentions] = useState(0);
+  const [comp2Mentions, setComp2Mentions] = useState(0);
   const [keyword, setKeyword] = useState('');
   const [mustHave, setMustHave] = useState('');
   const [shouldNotHave, setShouldNotHave] = useState('');
@@ -1073,7 +1077,7 @@ function App() {
   };
 
   React.useEffect(() => {
-    if (activeTab === 'brand-tracker' && user && user.id) {
+    if ((activeTab === 'brand-tracker' || activeTab === 'competitor-analysis') && user && user.id) {
       fetchTrackedBrands();
     }
   }, [activeTab, user]);
@@ -1744,9 +1748,27 @@ function App() {
     }
   };
 
-  const handleAnalyse = () => {
+  const handleAnalyse = async () => {
     if (comp1 && comp2) {
       setIsAnalysing(true);
+      try {
+        const res = await fetch(`http://localhost:3000/api/competitor-mentions?keyword1=${encodeURIComponent(comp1)}&keyword2=${encodeURIComponent(comp2)}`, {
+          headers: { 'X-User-Id': user?.id }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setComp1Mentions(data.comp1.mentions);
+          setComp2Mentions(data.comp2.mentions);
+        } else {
+          setComp1Mentions(0);
+          setComp2Mentions(0);
+        }
+      } catch (err) {
+        console.error('Error in handleAnalyse:', err);
+        setComp1Mentions(0);
+        setComp2Mentions(0);
+      }
+
       const newEntry = {
         id: Date.now(),
         comp1,
@@ -1755,7 +1777,6 @@ function App() {
         date: new Date().toLocaleDateString([], { month: 'short', day: 'numeric' })
       };
       setHistory(prev => [newEntry, ...prev].slice(0, 10));
-      alert(`Starting analysis: ${comp1} vs ${comp2}`);
     }
   };
 
@@ -3014,7 +3035,7 @@ function App() {
                           <SearchableDropdown
                             label="Primary Entity"
                             placeholder="Search entity..."
-                            items={COMPETITORS}
+                            items={trackedBrands.map(b => b.name)}
                             value={search1}
                             onChange={(val) => {
                               setSearch1(val);
@@ -3034,7 +3055,7 @@ function App() {
                           <SearchableDropdown
                             label="Competitor"
                             placeholder="Search entity..."
-                            items={COMPETITORS}
+                            items={trackedBrands.map(b => b.name)}
                             value={search2}
                             onChange={(val) => {
                               setSearch2(val);
@@ -3064,8 +3085,10 @@ function App() {
                           <div>
                             <h4 className="text-slate-500 text-sm font-bold uppercase tracking-wider mb-2">Total Mentions</h4>
                             <div className="flex items-baseline gap-2">
-                              <span className="text-5xl font-black text-black tracking-tighter">1,248</span>
-                              <span className="text-green-500 text-xs font-black">+12.5%</span>
+                              <span className="text-5xl font-black text-black tracking-tighter">
+                                {comp1Mentions.toLocaleString()}
+                              </span>
+                              <span className="text-slate-400 text-xs font-bold">in Database</span>
                             </div>
                           </div>
                         </div>
@@ -3085,8 +3108,10 @@ function App() {
                           <div>
                             <h4 className="text-slate-500 text-sm font-bold uppercase tracking-wider mb-2">Total Mentions</h4>
                             <div className="flex items-baseline gap-2">
-                              <span className="text-5xl font-black text-black tracking-tighter">842</span>
-                              <span className="text-red-500 text-xs font-black">-4.2%</span>
+                              <span className="text-5xl font-black text-black tracking-tighter">
+                                {comp2Mentions.toLocaleString()}
+                              </span>
+                              <span className="text-slate-400 text-xs font-bold">in Database</span>
                             </div>
                           </div>
                         </div>

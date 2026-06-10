@@ -318,6 +318,50 @@ app.get('/api/brands', getUserId, async (req, res) => {
   }
 });
 
+// Get competitor mentions for two keywords
+app.get('/api/competitor-mentions', getUserId, async (req, res) => {
+  const { keyword1, keyword2 } = req.query;
+  if (!keyword1 || !keyword2) {
+    return res.status(400).json({ error: 'Two keywords are required' });
+  }
+
+  try {
+    const getMentionsForKeyword = async (keyword) => {
+      const cleanKeyword = keyword.trim();
+      // First, check if there is a company matching this name for the user
+      const compRes = await db.query(
+        'SELECT id, mentions FROM companies WHERE user_id = $1 AND LOWER(name) = LOWER($2)',
+        [req.userId, cleanKeyword]
+      );
+      
+      if (compRes.rows.length > 0) {
+        return parseInt(compRes.rows[0].mentions, 10) || 0;
+      }
+
+      // Fallback: search the articles table for occurrences of the keyword in title or summary
+      const articleRes = await db.query(
+        `SELECT COUNT(DISTINCT a.title) as count 
+         FROM articles a 
+         JOIN companies c ON a.company_id = c.id 
+         WHERE c.user_id = $1 AND (a.title ILIKE $2 OR a.summary ILIKE $2)`,
+        [req.userId, `%${cleanKeyword}%`]
+      );
+      return parseInt(articleRes.rows[0].count, 10) || 0;
+    };
+
+    const count1 = await getMentionsForKeyword(keyword1);
+    const count2 = await getMentionsForKeyword(keyword2);
+
+    res.status(200).json({
+      comp1: { name: keyword1, mentions: count1 },
+      comp2: { name: keyword2, mentions: count2 }
+    });
+  } catch (err) {
+    console.error('Error in GET /api/competitor-mentions:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Add a brand
 app.post('/api/brands', getUserId, async (req, res) => {
   const { name, region = 'Global' } = req.body;
