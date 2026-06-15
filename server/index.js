@@ -1,4 +1,4 @@
-process.noDeprecation = true;
+﻿process.noDeprecation = true;
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -318,7 +318,7 @@ app.get('/api/brands', getUserId, async (req, res) => {
   }
 });
 
-// Get competitor mentions for two keywords
+// Get competitor mentions for two keywords globally
 app.get('/api/competitor-mentions', getUserId, async (req, res) => {
   const { keyword1, keyword2 } = req.query;
   if (!keyword1 || !keyword2) {
@@ -328,23 +328,26 @@ app.get('/api/competitor-mentions', getUserId, async (req, res) => {
   try {
     const getMentionsForKeyword = async (keyword) => {
       const cleanKeyword = keyword.trim();
-      // First, check if there is a company matching this name for the user
+      // First, check if there is a company matching this name globally
       const compRes = await db.query(
-        'SELECT id, mentions FROM companies WHERE user_id = $1 AND LOWER(name) = LOWER($2)',
-        [req.userId, cleanKeyword]
+        'SELECT id, mentions FROM companies WHERE LOWER(name) = LOWER($1)',
+        [cleanKeyword]
       );
       
       if (compRes.rows.length > 0) {
-        return parseInt(compRes.rows[0].mentions, 10) || 0;
+        let total = 0;
+        for (const row of compRes.rows) {
+          total += parseInt(row.mentions, 10) || 0;
+        }
+        return total;
       }
 
-      // Fallback: search the articles table for occurrences of the keyword in title or summary
+      // Fallback: search the articles table globally for occurrences of the keyword in title or summary
       const articleRes = await db.query(
         `SELECT COUNT(DISTINCT a.title) as count 
          FROM articles a 
-         JOIN companies c ON a.company_id = c.id 
-         WHERE c.user_id = $1 AND (a.title ILIKE $2 OR a.summary ILIKE $2)`,
-        [req.userId, `%${cleanKeyword}%`]
+         WHERE a.title ILIKE $1 OR a.summary ILIKE $1`,
+        [`%${cleanKeyword}%`]
       );
       return parseInt(articleRes.rows[0].count, 10) || 0;
     };
@@ -358,6 +361,182 @@ app.get('/api/competitor-mentions', getUserId, async (req, res) => {
     });
   } catch (err) {
     console.error('Error in GET /api/competitor-mentions:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get competitor analysis telemetry (mentions, sentiment, sources, trends, reach) for two keywords globally
+app.get('/api/competitor-analysis', getUserId, async (req, res) => {
+  const { keyword1, keyword2 } = req.query;
+  if (!keyword1 || !keyword2) {
+    return res.status(400).json({ error: 'Two keywords are required' });
+  }
+
+  try {
+    const getLast7DaysLabels = () => {
+      const labels = [];
+      const dates = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        labels.push(label);
+        dates.push(d.toISOString().split('T')[0]);
+      }
+      return { labels, dates };
+    };
+
+    const { labels: trendLabels, dates: trendDates } = getLast7DaysLabels();
+
+    const getAnalysisForKeyword = async (keyword) => {
+      const cleanKeyword = keyword.trim();
+      
+      // Check if there is a company matching this name globally
+      const compRes = await db.query(
+        'SELECT id FROM companies WHERE LOWER(name) = LOWER($1)',
+        [cleanKeyword]
+      );
+      
+      let queryText = '';
+      let params = [];
+      
+      if (compRes.rows.length > 0) {
+        const companyIds = compRes.rows.map(r => r.id);
+        queryText = `
+          SELECT DISTINCT ON (LOWER(a.title))
+                 a.title, a.link, a.source, a.sentiment, a.created_at, 
+                 d.page_rank_decimal, d.rank
+          FROM articles a
+          LEFT JOIN domain_authority_cache d 
+            ON d.domain = regexp_replace(substring(a.link from 'https?://([^/]+)'), '^www\\\\.', '')
+          WHERE a.company_id = ANY($1)
+          ORDER BY LOWER(a.title), a.created_at DESC
+        `;
+        params = [companyIds];
+      } else {
+        queryText = `
+          SELECT DISTINCT ON (LOWER(a.title))
+                 a.title, a.link, a.source, a.sentiment, a.created_at, 
+                 d.page_rank_decimal, d.rank
+          FROM articles a
+          LEFT JOIN domain_authority_cache d 
+            ON d.domain = regexp_replace(substring(a.link from 'https?://([^/]+)'), '^www\\\\.', '')
+          WHERE a.title ILIKE $1 OR a.summary ILIKE $1
+          ORDER BY LOWER(a.title), a.created_at DESC
+        `;
+        params = [`%${cleanKeyword}%`];
+      }
+
+      const articleRes = await db.query(queryText, params);
+      const rows = articleRes.rows;
+
+      // 1. Mentions
+      const mentionsCount = rows.length;
+
+      // 2. Sentiment Breakdown
+      const sentiment = { positive: 0, negative: 0, neutral: 0 };
+
+      // 3. Top Sources Count
+      const sourceMap = {};
+
+      // 4. Trend counts for last 7 days
+      const trendMap = {};
+      trendDates.forEach(dateStr => { trendMap[dateStr] = 0; });
+
+      // 5. Reach + extras
+      let totalReach = 0;
+      let totalAgeDays = 0;
+      let ageCount = 0;
+      const authorityTiers = { high: 0, mid: 0, low: 0 };
+      const articleReaches = [];
+
+      rows.forEach(row => {
+        const sent = (row.sentiment || '').toLowerCase();
+        if (sent === 'positive') sentiment.positive++;
+        else if (sent === 'negative') sentiment.negative++;
+        else sentiment.neutral++;
+
+        const src = row.source || 'Unknown Source';
+        sourceMap[src] = (sourceMap[src] || 0) + 1;
+
+        if (row.created_at) {
+          const rowDateStr = new Date(row.created_at).toISOString().split('T')[0];
+          if (rowDateStr in trendMap) trendMap[rowDateStr]++;
+          const ageDays = (Date.now() - new Date(row.created_at).getTime()) / (1000 * 60 * 60 * 24);
+          totalAgeDays += ageDays;
+          ageCount++;
+        }
+
+        let reach = 5000;
+        let hostname = '';
+        try { if (row.link) hostname = new URL(row.link).hostname.toLowerCase().replace('www.', ''); } catch(e) {}
+
+        const pr = row.page_rank_decimal ? parseFloat(row.page_rank_decimal) : null;
+        if (pr !== null) {
+          reach = Math.floor(pr * 100000 + 5000);
+          if (pr >= 5) authorityTiers.high++;
+          else if (pr >= 2) authorityTiers.mid++;
+          else authorityTiers.low++;
+        } else {
+          authorityTiers.low++;
+          if (hostname && (hostname.includes('news') || hostname.includes('times') || hostname.includes('post') || hostname.includes('reuters') || hostname.includes('bloomberg'))) {
+            reach = 50000;
+          }
+        }
+
+        if (sent === 'positive') reach = Math.floor(reach * 1.2);
+        else if (sent === 'negative') reach = Math.floor(reach * 1.5);
+
+        totalReach += reach;
+        articleReaches.push({ title: row.title, link: row.link, source: src, sentiment: row.sentiment || 'Neutral', reach });
+      });
+
+      const sortedSources = Object.keys(sourceMap)
+        .map(src => ({ source: src, count: sourceMap[src] }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5);
+
+      const trendValues = trendDates.map(dateStr => trendMap[dateStr]);
+      const avgArticleAgeDays = ageCount > 0 ? parseFloat((totalAgeDays / ageCount).toFixed(1)) : null;
+      const topArticles = articleReaches.sort((a, b) => b.reach - a.reach).slice(0, 3);
+      const coverageIntensityScore = Math.floor((totalReach / Math.max(mentionsCount, 1)) * (mentionsCount / 7));
+
+      return {
+        name: keyword,
+        mentions: mentionsCount,
+        sentiment,
+        sources: sortedSources,
+        trends: trendValues,
+        estimatedReach: totalReach,
+        avgArticleAgeDays,
+        topArticles,
+        sourceAuthorityTiers: authorityTiers,
+        coverageIntensityScore
+      };
+    };
+
+    const comp1Data = await getAnalysisForKeyword(keyword1);
+    const comp2Data = await getAnalysisForKeyword(keyword2);
+
+    res.status(200).json({
+      comp1: comp1Data,
+      comp2: comp2Data,
+      trendLabels
+    });
+  } catch (err) {
+    console.error('Error in GET /api/competitor-analysis:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get all unique company names tracked globally in the system
+app.get('/api/global-company-names', async (req, res) => {
+  try {
+    const result = await db.query('SELECT DISTINCT name FROM companies ORDER BY name');
+    const names = result.rows.map(r => r.name);
+    res.status(200).json(names);
+  } catch (err) {
+    console.error('Error in GET /api/global-company-names:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

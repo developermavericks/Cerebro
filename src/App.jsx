@@ -311,6 +311,11 @@ const SearchableDropdown = ({ value, onChange, placeholder, items, label, theme 
             setIsOpen(true);
           }}
           onFocus={() => setIsOpen(true)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              setIsOpen(false);
+            }
+          }}
         />
         <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
           {search && (
@@ -333,31 +338,25 @@ const SearchableDropdown = ({ value, onChange, placeholder, items, label, theme 
       </div>
 
 
-      {isOpen && (
+      {isOpen && filteredItems.length > 0 && (
         <>
           <div className="absolute z-[60] w-full mt-3 bg-white/95 backdrop-blur-xl border border-slate-200 rounded-[2rem] shadow-2xl shadow-slate-200/80 max-h-72 overflow-y-auto animate-in fade-in zoom-in-95 duration-300 custom-scrollbar p-2">
-            {filteredItems.length > 0 ? (
-              filteredItems.map((item, idx) => (
-                <button
-                  key={idx}
-                  className={`w-full text-left px-5 py-3 rounded-xl text-sm font-bold text-slate-700 ${colors.hover} hover:text-white transition-all flex items-center gap-3 group/item mb-1 last:mb-0`}
-                  onClick={() => {
-                    onChange(item);
-                    setSearch(item);
-                    setIsOpen(false);
-                  }}
-                >
-                  <div className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center group-hover/item:bg-white/20 transition-colors">
-                    <span className="text-[10px] font-black">{item[0]}</span>
-                  </div>
-                  <span className="truncate">{item}</span>
-                </button>
-              ))
-            ) : (
-              <div className="px-6 py-8 text-center">
-                <p className="text-slate-400 text-xs font-black uppercase tracking-widest">No matching entities</p>
-              </div>
-            )}
+            {filteredItems.map((item, idx) => (
+              <button
+                key={idx}
+                className={`w-full text-left px-5 py-3 rounded-xl text-sm font-bold text-slate-700 ${colors.hover} hover:text-white transition-all flex items-center gap-3 group/item mb-1 last:mb-0`}
+                onClick={() => {
+                  onChange(item);
+                  setSearch(item);
+                  setIsOpen(false);
+                }}
+              >
+                <div className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center group-hover/item:bg-white/20 transition-colors">
+                  <span className="text-[10px] font-black">{item[0]}</span>
+                </div>
+                <span className="truncate">{item}</span>
+              </button>
+            ))}
           </div>
           <div className="fixed inset-0 z-40 bg-black/0" onClick={() => setIsOpen(false)} />
         </>
@@ -538,6 +537,851 @@ const SectionRichEditor = ({ id, content, onUpdate, style, className, savedRange
 };
 
 
+// --- Advanced Competitor Telemetry Components ---
+
+const ShareOfVoiceDonut = ({ val1, val2, name1, name2 }) => {
+  const total = val1 + val2;
+  const pct1 = total > 0 ? (val1 / total) * 100 : 50;
+  const pct2 = total > 0 ? (val2 / total) * 100 : 50;
+
+  const r = 45;
+  const circ = 2 * Math.PI * r;
+  const strokeDash1 = (pct1 / 100) * circ;
+  const strokeDash2 = (pct2 / 100) * circ;
+  
+  const offset1 = 0;
+  const offset2 = -strokeDash1;
+
+  return (
+    <div className="flex flex-col items-center justify-center p-8 bg-white border border-slate-100 rounded-[2.5rem] shadow-xl shadow-slate-100/40 w-full h-full relative group">
+      <div className="absolute top-0 right-0 w-32 h-32 bg-slate-50 rounded-full -mr-16 -mt-16 transition-transform group-hover:scale-110 -z-10"></div>
+      <h5 className="text-xs font-black text-slate-400 uppercase tracking-widest leading-none mb-6">Share of Voice</h5>
+      <div className="relative w-44 h-44 flex items-center justify-center">
+        <svg viewBox="0 0 120 120" className="w-full h-full transform -rotate-90">
+          <circle cx="60" cy="60" r={r} fill="transparent" stroke="#f1f5f9" strokeWidth="12" />
+          <circle
+            cx="60"
+            cy="60"
+            r={r}
+            fill="transparent"
+            stroke="#4f46e5"
+            strokeWidth="12"
+            strokeDasharray={`${strokeDash1} ${circ - strokeDash1}`}
+            strokeDashoffset={offset1}
+            strokeLinecap="round"
+          />
+          {total > 0 && (
+            <circle
+              cx="60"
+              cy="60"
+              r={r}
+              fill="transparent"
+              stroke="#0f172a"
+              strokeWidth="12"
+              strokeDasharray={`${strokeDash2} ${circ - strokeDash2}`}
+              strokeDashoffset={offset2}
+              strokeLinecap="round"
+            />
+          )}
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+          <span className="text-4xl font-black text-black tracking-tight">{Math.round(pct1)}%</span>
+          <span className="text-xs font-black text-indigo-600 uppercase tracking-widest">{name1}</span>
+        </div>
+      </div>
+      <div className="flex gap-6 mt-6 text-sm font-bold w-full justify-center">
+        <div className="flex items-center gap-2">
+          <span className="w-3.5 h-3.5 rounded-full bg-indigo-600"></span>
+          <span className="text-slate-600">{name1}: {Math.round(pct1)}%</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="w-3.5 h-3.5 rounded-full bg-slate-900"></span>
+          <span className="text-slate-600">{name2}: {Math.round(pct2)}%</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const SentimentDonut = ({ sentiment, name, isPrimary }) => {
+  const { positive, neutral, negative } = sentiment;
+  const total = positive + neutral + negative;
+  
+  const posPct = total > 0 ? (positive / total) * 100 : 33.3;
+  const neuPct = total > 0 ? (neutral / total) * 100 : 33.3;
+  const negPct = total > 0 ? (negative / total) * 100 : 33.3;
+
+  const r = 45;
+  const circ = 2 * Math.PI * r;
+  
+  const strokeDashPos = (posPct / 100) * circ;
+  const strokeDashNeu = (neuPct / 100) * circ;
+  const strokeDashNeg = (negPct / 100) * circ;
+
+  const offsetPos = 0;
+  const offsetNeu = -strokeDashPos;
+  const offsetNeg = -(strokeDashPos + strokeDashNeu);
+
+  return (
+    <div className="flex flex-col items-center p-8 bg-white border border-slate-100 rounded-[2.5rem] shadow-xl shadow-slate-100/40 w-full relative group">
+      <div className="absolute top-0 right-0 w-32 h-32 bg-slate-50 rounded-full -mr-16 -mt-16 transition-transform group-hover:scale-110 -z-10"></div>
+      <h6 className="text-xs font-black text-slate-400 uppercase tracking-widest leading-none mb-6">
+        {isPrimary ? 'Primary Entity' : 'Competitor'} Sentiment Breakup
+      </h6>
+      
+      <div className="relative w-44 h-44 flex items-center justify-center mb-6">
+        <svg viewBox="0 0 120 120" className="w-full h-full transform -rotate-90">
+          <circle cx="60" cy="60" r={r} fill="transparent" stroke="#f1f5f9" strokeWidth="10" />
+          {posPct > 0 && (
+            <circle
+              cx="60"
+              cy="60"
+              r={r}
+              fill="transparent"
+              stroke="#10b981"
+              strokeWidth="10"
+              strokeDasharray={`${strokeDashPos} ${circ - strokeDashPos}`}
+              strokeDashoffset={offsetPos}
+              strokeLinecap="round"
+            />
+          )}
+          {neuPct > 0 && (
+            <circle
+              cx="60"
+              cy="60"
+              r={r}
+              fill="transparent"
+              stroke="#f59e0b"
+              strokeWidth="10"
+              strokeDasharray={`${strokeDashNeu} ${circ - strokeDashNeu}`}
+              strokeDashoffset={offsetNeu}
+              strokeLinecap="round"
+            />
+          )}
+          {negPct > 0 && (
+            <circle
+              cx="60"
+              cy="60"
+              r={r}
+              fill="transparent"
+              stroke="#f43f5e"
+              strokeWidth="10"
+              strokeDasharray={`${strokeDashNeg} ${circ - strokeDashNeg}`}
+              strokeDashoffset={offsetNeg}
+              strokeLinecap="round"
+            />
+          )}
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+          <span className="text-4xl font-black text-slate-900 tracking-tight">
+            {total > 0 ? Math.round((positive / total) * 100) : 0}%
+          </span>
+          <span className="text-xs font-bold text-emerald-500 uppercase tracking-widest">{name}</span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-3 w-full font-black text-center mt-2">
+        <div className="bg-emerald-50/70 border border-emerald-100/50 text-emerald-700 px-3 py-3 rounded-2xl">
+          <div className="text-slate-400 uppercase font-bold text-[10px] mb-1">Positive</div>
+          <div className="text-base font-black">{positive}</div>
+        </div>
+        <div className="bg-amber-50/70 border border-amber-100/50 text-amber-700 px-3 py-3 rounded-2xl">
+          <div className="text-slate-400 uppercase font-bold text-[10px] mb-1">Neutral</div>
+          <div className="text-base font-black">{neutral}</div>
+        </div>
+        <div className="bg-rose-50/70 border border-rose-100/50 text-rose-700 px-3 py-3 rounded-2xl">
+          <div className="text-slate-400 uppercase font-bold text-[10px] mb-1">Negative</div>
+          <div className="text-base font-black">{negative}</div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const TrendLineChart = ({ trends1, trends2, labels, name1, name2 }) => {
+  const maxVal = Math.max(...trends1, ...trends2, 5);
+  
+  const width = 900;
+  const height = 280;
+  const paddingLeft = 52;
+  const paddingRight = 20;
+  const paddingTop = 20;
+  const paddingBottom = 40;
+  
+  const graphWidth = width - paddingLeft - paddingRight;
+  const graphHeight = height - paddingTop - paddingBottom;
+  
+  const getPoints = (trends) => {
+    return trends.map((val, i) => {
+      const x = paddingLeft + (i * (graphWidth / Math.max(1, trends.length - 1)));
+      const y = paddingTop + graphHeight - ((val / maxVal) * graphHeight);
+      return { x, y, val };
+    });
+  };
+  
+  const points1 = getPoints(trends1);
+  const points2 = getPoints(trends2);
+  
+  const linePath1 = points1.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+  const linePath2 = points2.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+  
+  const areaPath1 = `${linePath1} L ${points1[points1.length - 1].x} ${paddingTop + graphHeight} L ${points1[0].x} ${paddingTop + graphHeight} Z`;
+  const areaPath2 = `${linePath2} L ${points2[points2.length - 1].x} ${paddingTop + graphHeight} L ${points2[0].x} ${paddingTop + graphHeight} Z`;
+
+  const gridlines = [0, 0.25, 0.5, 0.75, 1];
+
+  return (
+    <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl shadow-slate-100/40 w-full flex flex-col relative group">
+      <div className="absolute top-0 right-0 w-32 h-32 bg-slate-50 rounded-full -mr-16 -mt-16 transition-transform group-hover:scale-110 -z-10"></div>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h5 className="text-xs font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Mention Trends</h5>
+          <p className="text-2xl font-black text-slate-900 tracking-tight">7-Day Mentions Velocity</p>
+        </div>
+        <div className="flex gap-6 text-sm font-bold">
+          <div className="flex items-center gap-2">
+            <span className="w-4 h-4 rounded-full bg-indigo-600"></span>
+            <span className="text-slate-600 font-black">{name1}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="w-4 h-4 rounded-full bg-slate-900"></span>
+            <span className="text-slate-600 font-black">{name2}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="w-full relative h-80">
+        <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full overflow-visible">
+          <defs>
+            <linearGradient id="grad_comp1" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#4f46e5" stopOpacity="0.3" />
+              <stop offset="100%" stopColor="#4f46e5" stopOpacity="0.0" />
+            </linearGradient>
+            <linearGradient id="grad_comp2" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#0f172a" stopOpacity="0.15" />
+              <stop offset="100%" stopColor="#0f172a" stopOpacity="0.0" />
+            </linearGradient>
+          </defs>
+
+          {/* Grid lines */}
+          {gridlines.map((ratio, idx) => {
+            const y = paddingTop + graphHeight - (ratio * graphHeight);
+            const val = Math.round(ratio * maxVal);
+            return (
+              <g key={idx}>
+                <line x1={paddingLeft} y1={y} x2={width - paddingRight} y2={y} stroke="#f1f5f9" strokeWidth="1.5" />
+                <text x={paddingLeft - 10} y={y + 4} textAnchor="end" fontSize="13" fill="#94a3b8" fontWeight="700">
+                  {val}
+                </text>
+              </g>
+            );
+          })}
+
+          {/* Area under curves */}
+          <path d={areaPath1} fill="url(#grad_comp1)" />
+          <path d={areaPath2} fill="url(#grad_comp2)" />
+
+          {/* Trend lines */}
+          <path d={linePath1} fill="none" stroke="#4f46e5" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+          <path d={linePath2} fill="none" stroke="#0f172a" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+
+          {/* Data points markers (comp 1) */}
+          {points1.map((p, idx) => (
+            <g key={`m1-${idx}`}>
+              <circle cx={p.x} cy={p.y} r="7" fill="#ffffff" stroke="#4f46e5" strokeWidth="3" />
+              <circle cx={p.x} cy={p.y} r="12" fill="#4f46e5" fillOpacity="0" className="cursor-pointer" />
+              <title>{name1}: {p.val} mentions</title>
+            </g>
+          ))}
+
+          {/* Data points markers (comp 2) */}
+          {points2.map((p, idx) => (
+            <g key={`m2-${idx}`}>
+              <circle cx={p.x} cy={p.y} r="6" fill="#ffffff" stroke="#0f172a" strokeWidth="2.5" />
+              <circle cx={p.x} cy={p.y} r="12" fill="#0f172a" fillOpacity="0" className="cursor-pointer" />
+              <title>{name2}: {p.val} mentions</title>
+            </g>
+          ))}
+
+          {/* X-axis labels */}
+          {labels.map((lbl, idx) => {
+            const x = paddingLeft + (idx * (graphWidth / Math.max(1, labels.length - 1)));
+            return (
+              <text key={idx} x={x} y={height - 10} textAnchor="middle" fontSize="13" fill="#94a3b8" fontWeight="800">
+                {lbl}
+              </text>
+            );
+          })}
+        </svg>
+      </div>
+    </div>
+  );
+};
+
+const TopSourcesCard = ({ sources, name, isPrimary }) => {
+  const maxCount = sources.length > 0 ? Math.max(...sources.map(s => s.count)) : 10;
+  const headerColor = isPrimary ? 'bg-indigo-600' : 'bg-slate-900';
+  const barColor = isPrimary ? 'bg-indigo-600' : 'bg-slate-900';
+
+  return (
+    <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl shadow-slate-100/40 w-full relative group">
+      <div className="absolute top-0 right-0 w-32 h-32 bg-slate-50 rounded-full -mr-16 -mt-16 transition-transform group-hover:scale-110 -z-10"></div>
+      <div className="flex items-center gap-3 mb-6">
+        <div className={`w-3 h-10 rounded-full ${headerColor}`}></div>
+        <div>
+          <h5 className="text-xs font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Publishers</h5>
+          <p className="text-xl font-black text-slate-900 tracking-tight">{name} Top Sources</p>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-5">
+        {sources.length === 0 ? (
+          <div className="text-center py-8 text-sm font-bold text-slate-400">No source data available</div>
+        ) : (
+          sources.map((item, idx) => {
+            const percentage = (item.count / maxCount) * 100;
+            return (
+              <div key={idx} className="flex flex-col">
+                <div className="flex items-center justify-between text-sm font-bold mb-2">
+                  <span className="text-slate-700 truncate max-w-[280px]">{item.source}</span>
+                  <span className="text-slate-900 font-black">{item.count} articles</span>
+                </div>
+                <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-1000 ${barColor}`}
+                    style={{ width: `${percentage}%` }}
+                  ></div>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+};
+
+
+// --- 11 New Advanced Competitor Telemetry Components ---
+
+const SentimentRatioBar = ({ comp1, comp2 }) => {
+  const tot1 = comp1.sentiment.positive + comp1.sentiment.neutral + comp1.sentiment.negative || 1;
+  const tot2 = comp2.sentiment.positive + comp2.sentiment.neutral + comp2.sentiment.negative || 1;
+  
+  const p1 = (comp1.sentiment.positive / tot1) * 100;
+  const n1 = (comp1.sentiment.neutral / tot1) * 100;
+  const ng1 = (comp1.sentiment.negative / tot1) * 100;
+
+  const p2 = (comp2.sentiment.positive / tot2) * 100;
+  const n2 = (comp2.sentiment.neutral / tot2) * 100;
+  const ng2 = (comp2.sentiment.negative / tot2) * 100;
+
+  return (
+    <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl shadow-slate-100/40 w-full relative group">
+      <div className="absolute top-0 right-0 w-32 h-32 bg-slate-50 rounded-full -mr-16 -mt-16 transition-transform group-hover:scale-110 -z-10"></div>
+      <h5 className="text-xs font-black text-slate-400 uppercase tracking-widest leading-none mb-6">Sentiment Ratio Comparison</h5>
+      <div className="flex flex-col gap-6">
+        <div>
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-sm font-black text-slate-900">{comp1.name} (Primary)</span>
+            <span className="text-xs font-bold text-slate-400">Total: {tot1}</span>
+          </div>
+          <div className="w-full h-8 rounded-2xl overflow-hidden flex shadow-inner">
+            {p1 > 0 && <div style={{ width: `${p1}%` }} className="bg-emerald-500 h-full flex items-center justify-center text-[10px] font-black text-white">{Math.round(p1)}%</div>}
+            {n1 > 0 && <div style={{ width: `${n1}%` }} className="bg-amber-500 h-full flex items-center justify-center text-[10px] font-black text-white">{Math.round(n1)}%</div>}
+            {ng1 > 0 && <div style={{ width: `${ng1}%` }} className="bg-rose-500 h-full flex items-center justify-center text-[10px] font-black text-white">{Math.round(ng1)}%</div>}
+          </div>
+        </div>
+        <div>
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-sm font-black text-slate-900">{comp2.name} (Competitor)</span>
+            <span className="text-xs font-bold text-slate-400">Total: {tot2}</span>
+          </div>
+          <div className="w-full h-8 rounded-2xl overflow-hidden flex shadow-inner">
+            {p2 > 0 && <div style={{ width: `${p2}%` }} className="bg-emerald-500 h-full flex items-center justify-center text-[10px] font-black text-white">{Math.round(p2)}%</div>}
+            {n2 > 0 && <div style={{ width: `${n2}%` }} className="bg-amber-500 h-full flex items-center justify-center text-[10px] font-black text-white">{Math.round(n2)}%</div>}
+            {ng2 > 0 && <div style={{ width: `${ng2}%` }} className="bg-rose-500 h-full flex items-center justify-center text-[10px] font-black text-white">{Math.round(ng2)}%</div>}
+          </div>
+        </div>
+      </div>
+      <div className="flex gap-6 mt-6 text-xs font-bold justify-center">
+        <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-emerald-500"></span><span className="text-slate-600">Positive</span></div>
+        <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-amber-500"></span><span className="text-slate-600">Neutral</span></div>
+        <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-rose-500"></span><span className="text-slate-600">Negative</span></div>
+      </div>
+    </div>
+  );
+};
+
+const PositivityGauge = ({ sentiment, name, isPrimary }) => {
+  const { positive, neutral, negative } = sentiment;
+  const total = positive + neutral + negative;
+  const pct = total > 0 ? Math.round((positive / total) * 100) : 0;
+  
+  const r = 50;
+  const circ = Math.PI * r;
+  const strokeDash = (pct / 100) * circ;
+  const strokeColor = isPrimary ? '#4f46e5' : '#0f172a';
+
+  return (
+    <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl shadow-slate-100/40 w-full flex flex-col items-center justify-center relative group">
+      <div className="absolute top-0 right-0 w-32 h-32 bg-slate-50 rounded-full -mr-16 -mt-16 transition-transform group-hover:scale-110 -z-10"></div>
+      <h5 className="text-xs font-black text-slate-400 uppercase tracking-widest leading-none mb-6">
+        {isPrimary ? 'Primary' : 'Competitor'} Positivity Rate
+      </h5>
+      <div className="relative w-48 h-28 flex items-center justify-center overflow-hidden">
+        <svg viewBox="0 0 120 70" className="w-full h-full">
+          <path
+            d="M 10 60 A 50 50 0 0 1 110 60"
+            fill="none"
+            stroke="#f1f5f9"
+            strokeWidth="10"
+            strokeLinecap="round"
+          />
+          <path
+            d="M 10 60 A 50 50 0 0 1 110 60"
+            fill="none"
+            stroke={strokeColor}
+            strokeWidth="10"
+            strokeDasharray={`${strokeDash} ${circ}`}
+            strokeLinecap="round"
+            className="transition-all duration-1000 ease-out"
+          />
+        </svg>
+        <div className="absolute bottom-1 flex flex-col items-center text-center">
+          <span className="text-3xl font-black text-slate-900 leading-none">{pct}%</span>
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">{name}</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const GroupedBarChart = ({ trends1, trends2, labels, name1, name2 }) => {
+  const maxVal = Math.max(...trends1, ...trends2, 5);
+  
+  return (
+    <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl shadow-slate-100/40 w-full relative group">
+      <div className="absolute top-0 right-0 w-32 h-32 bg-slate-50 rounded-full -mr-16 -mt-16 transition-transform group-hover:scale-110 -z-10"></div>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+        <div>
+          <h5 className="text-xs font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Daily Volume</h5>
+          <p className="text-2xl font-black text-slate-900 tracking-tight">Mentions Side-by-Side</p>
+        </div>
+        <div className="flex gap-4 text-xs font-bold">
+          <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-indigo-600"></span><span className="text-slate-600 font-black">{name1}</span></div>
+          <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-slate-900"></span><span className="text-slate-600 font-black">{name2}</span></div>
+        </div>
+      </div>
+      
+      <div className="w-full flex items-end justify-between h-48 px-4 border-b border-slate-100 pb-2">
+        {labels.map((label, i) => {
+          const val1 = trends1[i] || 0;
+          const val2 = trends2[i] || 0;
+          const h1 = maxVal > 0 ? (val1 / maxVal) * 100 : 0;
+          const h2 = maxVal > 0 ? (val2 / maxVal) * 100 : 0;
+          
+          return (
+            <div key={i} className="flex-1 flex flex-col items-center group/bar max-w-[80px]">
+              <div className="w-full flex items-end justify-center gap-1 h-36 relative">
+                <div className="absolute bottom-full mb-2 bg-slate-900 text-white text-[9px] font-black py-1 px-2 rounded-lg opacity-0 group-hover/bar:opacity-100 transition-opacity pointer-events-none z-10 whitespace-nowrap shadow-xl">
+                  {name1}: {val1} | {name2}: {val2}
+                </div>
+                
+                <div
+                  style={{ height: `${Math.max(h1, 3)}%` }}
+                  className="w-3 bg-indigo-600 rounded-t-md hover:opacity-80 transition-all duration-500"
+                />
+                <div
+                  style={{ height: `${Math.max(h2, 3)}%` }}
+                  className="w-3 bg-slate-900 rounded-t-md hover:opacity-80 transition-all duration-500"
+                />
+              </div>
+              <span className="text-[10px] font-bold text-slate-400 mt-2 whitespace-nowrap">{label}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+const SourceOverlapCard = ({ sources1, sources2, name1, name2 }) => {
+  const set1 = new Set(sources1.map(s => s.source));
+  const set2 = new Set(sources2.map(s => s.source));
+  const overlap = sources1.filter(s => set2.has(s.source)).map(s => s.source);
+  
+  const totalUnique = new Set([...set1, ...set2]).size || 1;
+  const overlapPct = Math.round((overlap.length / totalUnique) * 100);
+
+  return (
+    <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl shadow-slate-100/40 w-full relative group flex flex-col justify-between">
+      <div className="absolute top-0 right-0 w-32 h-32 bg-slate-50 rounded-full -mr-16 -mt-16 transition-transform group-hover:scale-110 -z-10"></div>
+      <div>
+        <h5 className="text-xs font-black text-slate-400 uppercase tracking-widest leading-none mb-6">Source Overlap</h5>
+        <div className="flex items-center gap-6 mb-6">
+          <div className="relative w-20 h-20 flex items-center justify-center rounded-2xl bg-indigo-50 border border-indigo-100">
+            <span className="text-2xl font-black text-indigo-600">{overlapPct}%</span>
+          </div>
+          <div>
+            <p className="text-sm font-black text-slate-900">Media Intersection</p>
+            <p className="text-xs font-bold text-slate-400 mt-1">Percentage of shared publishers between {name1} and {name2}.</p>
+          </div>
+        </div>
+      </div>
+      <div className="space-y-2.5">
+        <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Shared Channels ({overlap.length})</p>
+        {overlap.length === 0 ? (
+          <p className="text-xs font-bold text-slate-400 italic">No common sources detected in top publishers.</p>
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
+            {overlap.map((src, i) => (
+              <span key={i} className="px-2.5 py-1 bg-slate-50 border border-slate-100 rounded-lg text-[10px] font-bold text-slate-600">{src}</span>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const CadenceHeatmap = ({ trends1, trends2, labels, name1, name2 }) => {
+  const getIntensityClass = (val) => {
+    if (val === 0) return 'bg-slate-50 border border-slate-100 text-slate-300';
+    if (val <= 2) return 'bg-indigo-100 border border-indigo-200 text-indigo-600';
+    if (val <= 5) return 'bg-indigo-300 border border-indigo-400 text-white';
+    return 'bg-indigo-600 border border-indigo-700 text-white font-black';
+  };
+
+  return (
+    <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl shadow-slate-100/40 w-full relative group">
+      <div className="absolute top-0 right-0 w-32 h-32 bg-slate-50 rounded-full -mr-16 -mt-16 transition-transform group-hover:scale-110 -z-10"></div>
+      <h5 className="text-xs font-black text-slate-400 uppercase tracking-widest leading-none mb-6">Mentions Cadence Heatmap</h5>
+      
+      <div className="grid grid-cols-8 gap-2.5 text-center items-center">
+        <div className="text-left text-[10px] font-black text-slate-400 uppercase tracking-wider">Brand</div>
+        {labels.map((lbl, idx) => (
+          <div key={idx} className="text-[10px] font-black text-slate-400 uppercase tracking-wider">{lbl}</div>
+        ))}
+        
+        <div className="text-left text-xs font-black text-slate-800 truncate">{name1}</div>
+        {trends1.map((val, idx) => (
+          <div
+            key={idx}
+            className={`h-11 rounded-xl flex items-center justify-center text-xs font-bold ${getIntensityClass(val)} transition-all hover:scale-105`}
+            title={`${val} mentions`}
+          >
+            {val}
+          </div>
+        ))}
+        
+        <div className="text-left text-xs font-black text-slate-800 truncate">{name2}</div>
+        {trends2.map((val, idx) => (
+          <div
+            key={idx}
+            className={`h-11 rounded-xl flex items-center justify-center text-xs font-bold ${getIntensityClass(val)} transition-all hover:scale-105`}
+            title={`${val} mentions`}
+          >
+            {val}
+          </div>
+        ))}
+      </div>
+      
+      <div className="flex gap-4 mt-6 text-[10px] font-bold text-slate-400 justify-end items-center">
+        <span>Intensity:</span>
+        <div className="flex items-center gap-1"><span className="w-3 h-3 bg-slate-50 border border-slate-100 rounded"></span><span>0</span></div>
+        <div className="flex items-center gap-1"><span className="w-3 h-3 bg-indigo-100 rounded"></span><span>1-2</span></div>
+        <div className="flex items-center gap-1"><span className="w-3 h-3 bg-indigo-300 rounded"></span><span>3-5</span></div>
+        <div className="flex items-center gap-1"><span className="w-3 h-3 bg-indigo-600 rounded"></span><span>6+</span></div>
+      </div>
+    </div>
+  );
+};
+
+const MomentumCard = ({ trends, name, isPrimary }) => {
+  const half = Math.floor(trends.length / 2);
+  const firstHalfSum = trends.slice(0, half).reduce((a, b) => a + b, 0);
+  const secondHalfSum = trends.slice(half).reduce((a, b) => a + b, 0);
+  
+  const diff = secondHalfSum - firstHalfSum;
+  const pct = firstHalfSum > 0 ? Math.round((diff / firstHalfSum) * 100) : secondHalfSum * 100;
+  
+  const isUp = diff >= 0;
+  const themeColor = isPrimary ? 'text-indigo-600' : 'text-slate-900';
+  const badgeBg = isUp ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-rose-50 text-rose-600 border border-rose-100';
+
+  return (
+    <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl shadow-slate-100/40 w-full relative group flex flex-col justify-between">
+      <div className="absolute top-0 right-0 w-32 h-32 bg-slate-50 rounded-full -mr-16 -mt-16 transition-transform group-hover:scale-110 -z-10"></div>
+      <div>
+        <h5 className="text-xs font-black text-slate-400 uppercase tracking-widest leading-none mb-4">
+          {isPrimary ? 'Primary' : 'Competitor'} Brand Momentum
+        </h5>
+        <h4 className={`text-lg font-black ${themeColor} mb-6`}>{name}</h4>
+      </div>
+      <div className="flex items-end justify-between">
+        <div>
+          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Weekly Delta</span>
+          <span className="text-3xl font-black text-slate-900">{isUp ? '+' : ''}{diff} mentions</span>
+        </div>
+        <span className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-widest ${badgeBg}`}>
+          {isUp ? '▲' : '▼'} {Math.abs(pct)}%
+        </span>
+      </div>
+    </div>
+  );
+};
+
+const ReachAccumulationChart = ({ trends1, trends2, totalReach1, totalReach2, labels, name1, name2 }) => {
+  const sum1 = trends1.reduce((a, b) => a + b, 0) || 1;
+  const sum2 = trends2.reduce((a, b) => a + b, 0) || 1;
+  
+  let current1 = 0;
+  const accum1 = trends1.map(t => {
+    current1 += (t / sum1) * totalReach1;
+    return Math.round(current1);
+  });
+
+  let current2 = 0;
+  const accum2 = trends2.map(t => {
+    current2 += (t / sum2) * totalReach2;
+    return Math.round(current2);
+  });
+
+  const maxVal = Math.max(...accum1, ...accum2, 10000);
+  
+  const width = 900;
+  const height = 250;
+  const paddingLeft = 65;
+  const paddingRight = 20;
+  const paddingTop = 20;
+  const paddingBottom = 40;
+  
+  const graphWidth = width - paddingLeft - paddingRight;
+  const graphHeight = height - paddingTop - paddingBottom;
+
+  const getPoints = (accum) => {
+    return accum.map((val, i) => {
+      const x = paddingLeft + (i * (graphWidth / Math.max(1, accum.length - 1)));
+      const y = paddingTop + graphHeight - ((val / maxVal) * graphHeight);
+      return { x, y, val };
+    });
+  };
+
+  const points1 = getPoints(accum1);
+  const points2 = getPoints(accum2);
+
+  const linePath1 = points1.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+  const linePath2 = points2.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+
+  const formatNum = (num) => {
+    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+    if (num >= 1000) return (num / 1000).toFixed(0) + 'K';
+    return num;
+  };
+
+  return (
+    <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl shadow-slate-100/40 w-full relative group">
+      <div className="absolute top-0 right-0 w-32 h-32 bg-slate-50 rounded-full -mr-16 -mt-16 transition-transform group-hover:scale-110 -z-10"></div>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div>
+          <h5 className="text-xs font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Audience Reach</h5>
+          <p className="text-2xl font-black text-slate-900 tracking-tight">Cumulative Reach Accumulation</p>
+        </div>
+        <div className="flex gap-4 text-xs font-bold">
+          <div className="flex items-center gap-1.5"><span className="w-3.5 h-3.5 rounded-full bg-indigo-600"></span><span className="text-slate-600 font-black">{name1}</span></div>
+          <div className="flex items-center gap-1.5"><span className="w-3.5 h-3.5 rounded-full bg-slate-900"></span><span className="text-slate-600 font-black">{name2}</span></div>
+        </div>
+      </div>
+      
+      <div className="w-full relative h-72">
+        <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full overflow-visible">
+          {[0, 0.25, 0.5, 0.75, 1].map((ratio, idx) => {
+            const y = paddingTop + graphHeight - (ratio * graphHeight);
+            const val = ratio * maxVal;
+            return (
+              <g key={idx}>
+                <line x1={paddingLeft} y1={y} x2={width - paddingRight} y2={y} stroke="#f1f5f9" strokeWidth="1.5" />
+                <text x={paddingLeft - 10} y={y + 4} textAnchor="end" fontSize="11" fill="#94a3b8" fontWeight="700">
+                  {formatNum(val)}
+                </text>
+              </g>
+            );
+          })}
+          
+          <path d={linePath1} fill="none" stroke="#4f46e5" strokeWidth="3" strokeLinecap="round" />
+          <path d={linePath2} fill="none" stroke="#0f172a" strokeWidth="3" strokeLinecap="round" />
+          
+          {points1.map((p, idx) => (
+            <circle key={`p1-${idx}`} cx={p.x} cy={p.y} r="5" fill="#ffffff" stroke="#4f46e5" strokeWidth="2.5" />
+          ))}
+          {points2.map((p, idx) => (
+            <circle key={`p2-${idx}`} cx={p.x} cy={p.y} r="5" fill="#ffffff" stroke="#0f172a" strokeWidth="2.5" />
+          ))}
+          
+          {labels.map((lbl, idx) => {
+            const x = paddingLeft + (idx * (graphWidth / Math.max(1, labels.length - 1)));
+            return (
+              <text key={idx} x={x} y={height - 10} textAnchor="middle" fontSize="11" fill="#94a3b8" fontWeight="800">
+                {lbl}
+              </text>
+            );
+          })}
+        </svg>
+      </div>
+    </div>
+  );
+};
+
+const FreshnessCard = ({ age1, age2, name1, name2 }) => {
+  return (
+    <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl shadow-slate-100/40 w-full relative group flex flex-col justify-between">
+      <div className="absolute top-0 right-0 w-32 h-32 bg-slate-50 rounded-full -mr-16 -mt-16 transition-transform group-hover:scale-110 -z-10"></div>
+      <div>
+        <h5 className="text-xs font-black text-slate-400 uppercase tracking-widest leading-none mb-6">Media Freshness Index</h5>
+        <div className="grid grid-cols-2 gap-6">
+          <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-1 truncate">{name1}</span>
+            <span className="text-3xl font-black text-indigo-600">{age1 !== null && age1 !== undefined ? `${age1}d` : 'N/A'}</span>
+            <span className="text-[9px] font-bold text-slate-400 block mt-1">Avg Article Age</span>
+          </div>
+          <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-1 truncate">{name2}</span>
+            <span className="text-3xl font-black text-slate-900">{age2 !== null && age2 !== undefined ? `${age2}d` : 'N/A'}</span>
+            <span className="text-[9px] font-bold text-slate-400 block mt-1">Avg Article Age</span>
+          </div>
+        </div>
+      </div>
+      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-6">Lower is fresher/more active coverage</p>
+    </div>
+  );
+};
+
+const TopHeadlinesTable = ({ top1, top2, name1, name2 }) => {
+  const combined = [
+    ...(top1 || []).map(a => ({ ...a, brand: name1, isPrimary: true })),
+    ...(top2 || []).map(a => ({ ...a, brand: name2, isPrimary: false }))
+  ].sort((a, b) => b.reach - a.reach).slice(0, 5);
+
+  return (
+    <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl shadow-slate-100/40 w-full relative group">
+      <div className="absolute top-0 right-0 w-32 h-32 bg-slate-50 rounded-full -mr-16 -mt-16 transition-transform group-hover:scale-110 -z-10"></div>
+      <h5 className="text-xs font-black text-slate-400 uppercase tracking-widest leading-none mb-6">Top High-Impact Headlines</h5>
+      
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-wider">
+              <th className="pb-3">Headline</th>
+              <th className="pb-3">Source</th>
+              <th className="pb-3">Brand</th>
+              <th className="pb-3 text-right">Reach</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50">
+            {combined.length === 0 ? (
+              <tr>
+                <td colSpan="4" className="py-8 text-center text-xs font-bold text-slate-400">No headlines available.</td>
+              </tr>
+            ) : (
+              combined.map((art, idx) => (
+                <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                  <td className="py-3.5 pr-4 text-xs font-black text-slate-800 max-w-[320px] truncate">
+                    <a href={art.link} target="_blank" rel="noopener noreferrer" className="hover:text-indigo-600 transition-colors">
+                      {art.title}
+                    </a>
+                  </td>
+                  <td className="py-3.5 text-xs font-bold text-slate-500">{art.source}</td>
+                  <td className="py-3.5">
+                    <span className={`px-2.5 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider ${art.isPrimary ? 'bg-indigo-50 text-indigo-600 border border-indigo-100' : 'bg-slate-900 text-white'}`}>
+                      {art.brand}
+                    </span>
+                  </td>
+                  <td className="py-3.5 text-right text-xs font-black text-slate-900">
+                    {art.reach.toLocaleString()}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+const SourceAuthorityChart = ({ tiers, name, isPrimary }) => {
+  const { high, mid, low } = tiers || { high: 0, mid: 0, low: 0 };
+  const total = high + mid + low || 1;
+  const hp = (high / total) * 100;
+  const mp = (mid / total) * 100;
+  const lp = (low / total) * 100;
+  
+  const themeBg = isPrimary ? 'bg-indigo-600' : 'bg-slate-900';
+
+  return (
+    <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl shadow-slate-100/40 w-full relative group">
+      <div className="absolute top-0 right-0 w-32 h-32 bg-slate-50 rounded-full -mr-16 -mt-16 transition-transform group-hover:scale-110 -z-10"></div>
+      <h5 className="text-xs font-black text-slate-400 uppercase tracking-widest leading-none mb-6">
+        {isPrimary ? 'Primary' : 'Competitor'} Source Authority
+      </h5>
+      <p className="text-sm font-black text-slate-800 mb-6 truncate">{name}</p>
+      
+      <div className="space-y-4">
+        <div>
+          <div className="flex justify-between text-xs font-bold mb-1.5">
+            <span className="text-slate-600">High Authority (PR ≥5)</span>
+            <span className="text-slate-900 font-black">{high} ({Math.round(hp)}%)</span>
+          </div>
+          <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+            <div style={{ width: `${hp}%` }} className={`h-full rounded-full ${themeBg}`} />
+          </div>
+        </div>
+        <div>
+          <div className="flex justify-between text-xs font-bold mb-1.5">
+            <span className="text-slate-600">Mid Authority (PR 2-5)</span>
+            <span className="text-slate-900 font-black">{mid} ({Math.round(mp)}%)</span>
+          </div>
+          <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+            <div style={{ width: `${mp}%` }} className={`h-full rounded-full ${themeBg}`} />
+          </div>
+        </div>
+        <div>
+          <div className="flex justify-between text-xs font-bold mb-1.5">
+            <span className="text-slate-600">Low Authority (PR &lt;2)</span>
+            <span className="text-slate-900 font-black">{low} ({Math.round(lp)}%)</span>
+          </div>
+          <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+            <div style={{ width: `${lp}%` }} className={`h-full rounded-full ${themeBg}`} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const CoverageIntensityCard = ({ score, name, isPrimary }) => {
+  const themeBg = isPrimary ? 'bg-indigo-50 border-indigo-100 text-indigo-600' : 'bg-slate-900 text-white';
+  const descColor = isPrimary ? 'text-indigo-400' : 'text-slate-400';
+  
+  return (
+    <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl shadow-slate-100/40 w-full relative group flex flex-col justify-between">
+      <div className="absolute top-0 right-0 w-32 h-32 bg-slate-50 rounded-full -mr-16 -mt-16 transition-transform group-hover:scale-110 -z-10"></div>
+      <div>
+        <h5 className="text-xs font-black text-slate-400 uppercase tracking-widest leading-none mb-6">
+          {isPrimary ? 'Primary' : 'Competitor'} Media Intensity
+        </h5>
+        <div className={`p-6 rounded-3xl ${themeBg} border flex flex-col items-center justify-center text-center shadow-sm`}>
+          <span className="text-4xl font-black tracking-tight">{score || 0}</span>
+          <span className={`text-[10px] font-black uppercase tracking-widest mt-2 ${descColor}`}>{name}</span>
+        </div>
+      </div>
+      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-6">Estimated reach / mentions normalized weekly</p>
+    </div>
+  );
+};
+
+
 function App() {
   const [view, setViewInternal] = useState('login'); // 'login', 'signup', 'forgot', 'reset', 'landing'
 
@@ -594,11 +1438,56 @@ function App() {
   const [comp2, setComp2] = useState('');
   const [search1, setSearch1] = useState('');
   const [search2, setSearch2] = useState('');
-  const [history, setHistory] = useState([]);
+  const [history, setHistory] = useState(() => {
+    try {
+      const saved = localStorage.getItem('cerebro_competitor_history');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('cerebro_competitor_history', JSON.stringify(history));
+  }, [history]);
+
+
   const [showHistory, setShowHistory] = useState(false);
   const [isAnalysing, setIsAnalysing] = useState(false);
   const [comp1Mentions, setComp1Mentions] = useState(0);
   const [comp2Mentions, setComp2Mentions] = useState(0);
+  const [compAnalysisData, setCompAnalysisData] = useState(null);
+  const [isLoadingAnalysis, setIsLoadingAnalysis] = useState(false);
+  const ALL_CARDS_VISIBLE = {
+    summary_sov: true,
+    coverage_intensity: true,
+    momentum: true,
+    freshness: true,
+    sentiment_ratio: true,
+    positivity_gauge: true,
+    source_overlap: true,
+    grouped_bar: true,
+    sentiment_donut: true,
+    cadence_heatmap: true,
+    reach_accumulation: true,
+    source_authority: true,
+    top_headlines: true,
+    top_sources: true
+  };
+  const [visibleCards, setVisibleCards] = useState(() => {
+    try {
+      const stored = localStorage.getItem('cerebro_comp_cards');
+      return stored ? JSON.parse(stored) : ALL_CARDS_VISIBLE;
+    } catch (e) {
+      return ALL_CARDS_VISIBLE;
+    }
+  });
+  const [showCustomizePanel, setShowCustomizePanel] = useState(false);
+  const [showPets, setShowPets] = useState(() => {
+    const stored = localStorage.getItem('cerebro_show_pets');
+    return stored === null ? true : stored === 'true';
+  });
+  const [globalCompanies, setGlobalCompanies] = useState([]);
   const [keyword, setKeyword] = useState('');
   const [mustHave, setMustHave] = useState('');
   const [shouldNotHave, setShouldNotHave] = useState('');
@@ -1061,6 +1950,28 @@ function App() {
       .finally(() => setIsFetchingTelemetry(false));
   }, [selectedReport?.id, selectedReport?.brandKeywords, selectedReport?.competitorKeywords, selectedReport?.keywords, selectedReport?.topic]);
 
+  useEffect(() => {
+    if (activeTab === 'dashboard' && showPets && window.initWebmeji) {
+      const timer = setTimeout(() => {
+        window.initWebmeji();
+      }, 100);
+      return () => {
+        clearTimeout(timer);
+        if (window.activeCreatures) {
+          window.activeCreatures.forEach(c => c.destroy());
+          window.activeCreatures = [];
+        }
+        document.querySelectorAll('.webmeji-container').forEach(el => el.remove());
+      };
+    } else {
+      if (window.activeCreatures) {
+        window.activeCreatures.forEach(c => c.destroy());
+        window.activeCreatures = [];
+      }
+      document.querySelectorAll('.webmeji-container').forEach(el => el.remove());
+    }
+  }, [activeTab, showPets]);
+
   const fetchTrackedBrands = async () => {
     if (!user || !user.id) return;
     try {
@@ -1076,9 +1987,24 @@ function App() {
     }
   };
 
+  const fetchGlobalCompanies = async () => {
+    try {
+      const res = await fetch('http://localhost:3000/api/global-company-names');
+      if (res.ok) {
+        const data = await res.json();
+        setGlobalCompanies(data);
+      }
+    } catch (err) {
+      console.error('Error fetching global company names:', err);
+    }
+  };
+
   React.useEffect(() => {
     if ((activeTab === 'brand-tracker' || activeTab === 'competitor-analysis') && user && user.id) {
       fetchTrackedBrands();
+    }
+    if (activeTab === 'competitor-analysis') {
+      fetchGlobalCompanies();
     }
   }, [activeTab, user]);
 
@@ -1751,22 +2677,28 @@ function App() {
   const handleAnalyse = async () => {
     if (comp1 && comp2) {
       setIsAnalysing(true);
+      setIsLoadingAnalysis(true);
       try {
-        const res = await fetch(`http://localhost:3000/api/competitor-mentions?keyword1=${encodeURIComponent(comp1)}&keyword2=${encodeURIComponent(comp2)}`, {
+        const res = await fetch(`http://localhost:3000/api/competitor-analysis?keyword1=${encodeURIComponent(comp1)}&keyword2=${encodeURIComponent(comp2)}`, {
           headers: { 'X-User-Id': user?.id }
         });
         if (res.ok) {
           const data = await res.json();
+          setCompAnalysisData(data);
           setComp1Mentions(data.comp1.mentions);
           setComp2Mentions(data.comp2.mentions);
         } else {
+          setCompAnalysisData(null);
           setComp1Mentions(0);
           setComp2Mentions(0);
         }
       } catch (err) {
         console.error('Error in handleAnalyse:', err);
+        setCompAnalysisData(null);
         setComp1Mentions(0);
         setComp2Mentions(0);
+      } finally {
+        setIsLoadingAnalysis(false);
       }
 
       const newEntry = {
@@ -1778,6 +2710,17 @@ function App() {
       };
       setHistory(prev => [newEntry, ...prev].slice(0, 10));
     }
+  };
+
+  const handleRefreshCompetitorTab = () => {
+    setIsAnalysing(false);
+    setCompAnalysisData(null);
+    setComp1('');
+    setComp2('');
+    setSearch1('');
+    setSearch2('');
+    setComp1Mentions(0);
+    setComp2Mentions(0);
   };
 
   const handleSubmit = async (e) => {
@@ -1893,6 +2836,9 @@ function App() {
   if (view === 'landing') {
     return (
       <div className={`fixed inset-0 flex flex-col font-body transition-colors duration-500 ${darkMode ? 'dark bg-[#011627]' : 'bg-white'}`}>
+        {!showPets && (
+          <style>{`.webmeji-container { display: none !important; }`}</style>
+        )}
         <div className="print-watermark">CEREBRO</div>
         {/* Navbar */}
         <nav className={`h-16 border-b flex items-center justify-between px-6 z-30 shadow-sm transition-colors duration-500 ${darkMode ? 'bg-[#011627] border-white/5' : 'bg-[#8ecae6] border-[#a8dadc]/30'}`}>
@@ -2027,7 +2973,7 @@ function App() {
           <main className="flex-1 overflow-hidden flex flex-col relative">
             <div className="flex-1 flex flex-col overflow-hidden">
               {/* Header with Create Report Button for Report Analysis */}
-              {activeTab !== 'competitor-analysis' && (
+              {activeTab !== 'competitor-analysis' && activeTab !== 'dashboard' && (
                 <div className={`px-8 pt-8 flex items-center justify-between ${activeTab === 'report-analysis' ? 'mb-4' : 'mb-10'}`}>
                   <div className="flex items-center gap-6">
                     {activeTab === 'report-analysis' || activeTab === 'brand-tracker' ? (
@@ -2080,9 +3026,14 @@ function App() {
 
 
               {/* Main Page Content */}
-              <div className={`flex-1 min-h-0 p-8 overflow-y-auto custom-scrollbar ${activeTab === 'competitor-analysis' ? 'pt-6' : 'pt-0'}`}>
+              <div className={`flex-1 min-h-0 p-8 custom-scrollbar ${activeTab === 'dashboard' ? 'overflow-hidden' : 'overflow-y-auto'} ${activeTab === 'competitor-analysis' ? 'pt-6' : 'pt-0'}`}>
                 {activeTab === 'dashboard' ? (
-                  <div className="flex flex-col space-y-8 animate-in fade-in duration-700 w-full pb-10">
+                  <div className="flex flex-col space-y-8 animate-in fade-in duration-700 w-full h-full pb-0 relative">
+                    {showPets && (
+                      <div id="pets-playground" className="absolute inset-0 overflow-hidden pointer-events-none z-30">
+                        {/* Mascots will roam freely in the entire dashboard tab main area */}
+                      </div>
+                    )}
                     {/* Welcome Banner */}
                     <div className="relative w-full bg-gradient-to-r from-indigo-600 to-indigo-800 rounded-[2.5rem] p-10 text-white shadow-xl shadow-indigo-100/50 overflow-hidden flex flex-col md:flex-row items-center justify-between">
                       <div className="absolute top-0 right-0 w-80 h-80 bg-white/10 rounded-full blur-3xl -mr-40 -mt-40"></div>
@@ -2964,16 +3915,75 @@ function App() {
                     )}
                   </div>
                 ) : activeTab === 'competitor-analysis' ? (
-                  <div className={`h-full flex flex-col items-center justify-start ${sidebarCollapsed ? 'max-w-7xl' : 'max-w-5xl'} mx-auto w-full transition-all duration-500`}>
+                  <div className={`h-full flex flex-col items-center justify-start ${sidebarCollapsed ? 'max-w-[1850px]' : 'max-w-[1700px]'} mx-auto w-full transition-all duration-500`}>
                     {/* Top Actions Bar */}
-                    <div className="w-full flex justify-end gap-3 mb-8 animate-in fade-in slide-in-from-right-4 duration-700">
+                    <div className="w-full flex justify-end items-center gap-3 mb-8 animate-in fade-in slide-in-from-right-4 duration-700 relative">
+                      <div className="relative">
+                        <button
+                          onClick={() => setShowCustomizePanel(!showCustomizePanel)}
+                          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all duration-500 ${showCustomizePanel
+                            ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-200'
+                            : 'bg-white border border-slate-200 text-slate-500 hover:border-indigo-600 hover:text-indigo-600 shadow-sm'
+                            }`}
+                        >
+                          <Settings size={14} />
+                          Customize Board
+                        </button>
+                        {showCustomizePanel && (
+                          <div className="absolute right-0 mt-2 w-80 bg-white border border-slate-100 rounded-3xl p-6 shadow-2xl z-50 animate-in fade-in slide-in-from-top-2 duration-300">
+                            <div className="flex justify-between items-center mb-4">
+                              <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">Toggle Cards</h4>
+                              <button
+                                onClick={() => {
+                                  setVisibleCards(ALL_CARDS_VISIBLE);
+                                  localStorage.setItem('cerebro_comp_cards', JSON.stringify(ALL_CARDS_VISIBLE));
+                                }}
+                                className="text-[9px] font-black text-indigo-600 uppercase tracking-widest hover:underline"
+                              >
+                                Reset to Default
+                              </button>
+                            </div>
+                            <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1 custom-scrollbar">
+                              {[
+                                { id: 'summary_sov', label: '📊 Summary & SOV', desc: 'Brand mentions, reach, and share of voice' },
+                                { id: 'coverage_intensity', label: '🔥 Coverage Intensity', desc: 'Average daily media pressure metric' },
+                                { id: 'momentum', label: '📈 Brand Momentum', desc: 'Growth trend comparing week periods' },
+                                { id: 'freshness', label: '🍃 Media Freshness Index', desc: 'Average article age comparison' },
+                                { id: 'sentiment_ratio', label: '📊 Sentiment Ratio Bar', desc: 'Sentiment percentages compared side-by-side' },
+                                { id: 'positivity_gauge', label: '🎯 Positivity Gauge', desc: 'Circular positivity rate indicator' },
+                                { id: 'source_overlap', label: '🤝 Source Overlap', desc: 'Shared publishers and overlap score' },
+                                { id: 'grouped_bar', label: '📊 Grouped Bar Chart', desc: 'Mentions side-by-side for last 7 days' },
+                                { id: 'sentiment_donut', label: '🍩 Sentiment Donut', desc: 'Sentiment breakdowns individually' },
+                                { id: 'cadence_heatmap', label: '📅 Cadence Heatmap', desc: 'Daily volume intensity grid' },
+                                { id: 'reach_accumulation', label: '📈 Reach Accumulation', desc: 'Cumulative reach trend line chart' },
+                                { id: 'source_authority', label: '🛡️ Source Authority', desc: 'Authority tier breakdowns (PR metrics)' },
+                                { id: 'top_headlines', label: '📰 Top Headlines', desc: 'Table of top 5 highest-impact articles' },
+                                { id: 'top_sources', label: '🏢 Top Sources', desc: 'Most frequent publishing outlets list' }
+                              ].map(card => (
+                                <label key={card.id} className="flex items-start gap-3 p-2 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors">
+                                  <input
+                                    type="checkbox"
+                                    checked={!!visibleCards[card.id]}
+                                    onChange={(e) => {
+                                      const next = { ...visibleCards, [card.id]: e.target.checked };
+                                      setVisibleCards(next);
+                                      localStorage.setItem('cerebro_comp_cards', JSON.stringify(next));
+                                    }}
+                                    className="mt-1 accent-indigo-600 rounded cursor-pointer"
+                                  />
+                                  <div>
+                                    <span className="text-xs font-black text-slate-800 block">{card.label}</span>
+                                    <span className="text-[10px] text-slate-400 font-bold block mt-0.5">{card.desc}</span>
+                                  </div>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                       <button
-                        onClick={() => {
-                          setComp1(''); setComp2(''); setSearch1(''); setSearch2('');
-                          setShowHistory(false);
-                          setIsAnalysing(false);
-                        }}
-                        className="flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-500 hover:border-red-500 hover:text-red-500 transition-all duration-500 shadow-sm"
+                        onClick={handleRefreshCompetitorTab}
+                        className="flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-500 hover:border-indigo-600 hover:text-indigo-600 transition-all duration-500 shadow-sm"
                       >
                         <RotateCcw size={14} />
                         Refresh Tab
@@ -2990,7 +4000,7 @@ function App() {
                       </button>
                     </div>
 
-                    <div className="w-full bg-white/50 backdrop-blur-xl border border-slate-200 rounded-[3rem] p-12 shadow-2xl shadow-slate-200/50">
+                    <div className="w-full max-w-4xl mx-auto bg-white/50 backdrop-blur-xl border border-slate-200 rounded-[3rem] p-12 shadow-2xl shadow-slate-200/50">
                       {showHistory ? (
                         <div className="relative z-10 animate-in fade-in zoom-in-95 duration-500">
                           <div className="flex items-center justify-between mb-8">
@@ -3004,19 +4014,51 @@ function App() {
                           </div>
                           <div className="grid grid-cols-1 gap-4 max-h-[400px] overflow-y-auto pr-4 custom-scrollbar">
                             {history.length > 0 ? history.map((item) => (
-                              <div key={item.id} className="p-5 bg-white border border-slate-100 rounded-2xl hover:border-indigo-200 hover:shadow-lg transition-all group">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-6">
-                                    <div className="flex items-center gap-3">
-                                      <div className="w-8 h-8 bg-indigo-600 text-white rounded-lg flex items-center justify-center font-black text-xs">{item.comp1[0]}</div>
-                                      <span className="text-sm font-black text-slate-900">{item.comp1}</span>
-                                    </div>
-                                    <div className="text-slate-300 font-black">VS</div>
-                                    <div className="flex items-center gap-3">
-                                      <div className="w-8 h-8 bg-slate-900 text-white rounded-lg flex items-center justify-center font-black text-xs">{item.comp2[0]}</div>
-                                      <span className="text-sm font-black text-slate-900">{item.comp2}</span>
-                                    </div>
+                              <div
+                                key={item.id}
+                                onClick={async () => {
+                                  setComp1(item.comp1);
+                                  setComp2(item.comp2);
+                                  setSearch1(item.comp1);
+                                  setSearch2(item.comp2);
+                                  setShowHistory(false);
+                                  setIsAnalysing(true);
+                                  setIsLoadingAnalysis(true);
+                                  try {
+                                    const res = await fetch(`http://localhost:3000/api/competitor-analysis?keyword1=${encodeURIComponent(item.comp1)}&keyword2=${encodeURIComponent(item.comp2)}`, {
+                                      headers: { 'X-User-Id': user?.id }
+                                    });
+                                    if (res.ok) {
+                                      const data = await res.json();
+                                      setCompAnalysisData(data);
+                                      setComp1Mentions(data.comp1.mentions);
+                                      setComp2Mentions(data.comp2.mentions);
+                                    } else {
+                                      setCompAnalysisData(null);
+                                      setComp1Mentions(0);
+                                      setComp2Mentions(0);
+                                    }
+                                  } catch (err) {
+                                    console.error('Error loading history item:', err);
+                                  } finally {
+                                    setIsLoadingAnalysis(false);
+                                  }
+                                }}
+                                className="p-5 bg-white border border-slate-100 rounded-2xl hover:border-indigo-200 hover:shadow-lg transition-all group cursor-pointer flex justify-between items-center"
+                              >
+                                <div className="flex items-center gap-6">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 bg-indigo-600 text-white rounded-lg flex items-center justify-center font-black text-xs">{item.comp1[0]}</div>
+                                    <span className="text-sm font-black text-slate-900">{item.comp1}</span>
                                   </div>
+                                  <div className="text-slate-300 font-black">VS</div>
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 bg-slate-900 text-white rounded-lg flex items-center justify-center font-black text-xs">{item.comp2[0]}</div>
+                                    <span className="text-sm font-black text-slate-900">{item.comp2}</span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-4">
+                                  <span className="text-[10px] font-black uppercase tracking-wider text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity">Restore Session →</span>
                                   <div className="text-right text-xs font-bold text-slate-400 uppercase tracking-widest">{item.date} • {item.time}</div>
                                 </div>
                               </div>
@@ -3030,90 +4072,348 @@ function App() {
                             )}
                           </div>
                         </div>
-                      ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] items-center gap-8">
-                          <SearchableDropdown
-                            label="Primary Entity"
-                            placeholder="Search entity..."
-                            items={trackedBrands.map(b => b.name)}
-                            value={search1}
-                            onChange={(val) => {
-                              setSearch1(val);
-                              setComp1(val);
-                            }}
-                            theme="indigo"
-                            exclude={comp2}
-                          />
+                      ) : (() => {
+                        const suggestionItems = globalCompanies.length > 0 ? globalCompanies : ["Google", "Apple", "Nvidia", "Microsoft", "Amazon", "Meta", "Netflix", "Tesla"];
+                        return (
+                          <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] items-center gap-8">
+                            <SearchableDropdown
+                              label="Primary Entity"
+                              placeholder="Search entity..."
+                              items={suggestionItems}
+                              value={search1}
+                              onChange={(val) => {
+                                setSearch1(val);
+                                setComp1(val);
+                              }}
+                              theme="indigo"
+                              exclude={comp2}
+                            />
 
-                          <div className="flex flex-col items-center py-8 md:py-0">
-                            <div className="w-16 h-16 bg-black rounded-full flex items-center justify-center text-white font-black text-xl shadow-2xl shadow-indigo-200/50 transform md:-rotate-12 border-4 border-white z-10 relative">
-                              <div className="absolute inset-0 bg-indigo-600/20 rounded-full blur-xl animate-pulse"></div>
-                              <span className="relative">VS</span>
+                            <div className="flex flex-col items-center py-8 md:py-0">
+                              <div className="w-16 h-16 bg-black rounded-full flex items-center justify-center text-white font-black text-xl shadow-2xl shadow-indigo-200/50 transform md:-rotate-12 border-4 border-white z-10 relative">
+                                <div className="absolute inset-0 bg-indigo-600/20 rounded-full blur-xl animate-pulse"></div>
+                                <span className="relative">VS</span>
+                              </div>
                             </div>
-                          </div>
 
-                          <SearchableDropdown
-                            label="Competitor"
-                            placeholder="Search entity..."
-                            items={trackedBrands.map(b => b.name)}
-                            value={search2}
-                            onChange={(val) => {
-                              setSearch2(val);
-                              setComp2(val);
-                            }}
-                            theme="slate"
-                            exclude={comp1}
-                          />
-                        </div>
-                      )}
+                            <SearchableDropdown
+                              label="Competitor"
+                              placeholder="Search entity..."
+                              items={suggestionItems}
+                              value={search2}
+                              onChange={(val) => {
+                                setSearch2(val);
+                                setComp2(val);
+                              }}
+                              theme="slate"
+                              exclude={comp1}
+                            />
+                          </div>
+                        );
+                      })()}
                     </div>
 
-                    {isAnalysing && !showHistory && (
-                      <div className="w-full mt-12 grid grid-cols-1 md:grid-cols-2 gap-8 animate-in fade-in slide-in-from-top-6 duration-1000">
-                        {/* Card for Brand 1 */}
-                        <div className="bg-white border border-indigo-100 rounded-[2.5rem] p-8 shadow-xl shadow-indigo-50 relative overflow-hidden group">
-                          <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50 rounded-full -mr-16 -mt-16 transition-transform group-hover:scale-110"></div>
-                          <div className="relative flex items-center justify-between mb-6">
-                            <div className="w-14 h-14 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-indigo-200">
-                              <Activity size={28} />
-                            </div>
-                            <div className="text-right">
-                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Entity Analytics</p>
-                              <p className="text-lg font-black text-indigo-600 truncate max-w-[150px]">{comp1}</p>
-                            </div>
-                          </div>
-                          <div>
-                            <h4 className="text-slate-500 text-sm font-bold uppercase tracking-wider mb-2">Total Mentions</h4>
-                            <div className="flex items-baseline gap-2">
-                              <span className="text-5xl font-black text-black tracking-tighter">
-                                {comp1Mentions.toLocaleString()}
-                              </span>
-                              <span className="text-slate-400 text-xs font-bold">in Database</span>
-                            </div>
+                    {isAnalysing && !showHistory && isLoadingAnalysis && (
+                      <div className="w-full mt-16 flex flex-col items-center justify-center py-20 animate-pulse">
+                        <div className="relative w-24 h-24 mb-6">
+                          <div className="absolute inset-0 border-4 border-slate-100 rounded-full"></div>
+                          <div className="absolute inset-0 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                          <div className="absolute inset-4 bg-slate-50 rounded-full flex items-center justify-center">
+                            <Activity size={24} className="text-indigo-600 animate-pulse" />
                           </div>
                         </div>
+                        <h4 className="text-lg font-black text-slate-800 uppercase tracking-tighter mb-1">Synthesizing Comparative Intelligence...</h4>
+                        <p className="text-slate-400 text-xs font-bold">Parsing articles, mapping domains, and computing estimated reach trends</p>
+                      </div>
+                    )}
 
-                        {/* Card for Brand 2 */}
-                        <div className="bg-white border border-slate-200 rounded-[2.5rem] p-8 shadow-xl shadow-slate-100 relative overflow-hidden group">
-                          <div className="absolute top-0 right-0 w-32 h-32 bg-slate-50 rounded-full -mr-16 -mt-16 transition-transform group-hover:scale-110"></div>
-                          <div className="relative flex items-center justify-between mb-6">
-                            <div className="w-14 h-14 bg-slate-900 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-slate-200">
-                              <Activity size={28} />
+                    {isAnalysing && !showHistory && !isLoadingAnalysis && compAnalysisData && (
+                      <div className="w-full mt-4 flex flex-col items-center">
+                        
+                        {/* Row 1: Summary / Share of Voice Section */}
+                        {visibleCards.summary_sov && (
+                          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 w-full mt-8 animate-in fade-in slide-in-from-top-6 duration-1000">
+                            {/* Primary Entity Card */}
+                            <div className="bg-white border border-indigo-100 rounded-[2.5rem] p-8 shadow-xl shadow-indigo-50/40 relative overflow-hidden group">
+                              <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50 rounded-full -mr-16 -mt-16 transition-transform group-hover:scale-110 -z-10"></div>
+                              <div className="relative flex items-center justify-between mb-6">
+                                <div className="w-14 h-14 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-indigo-200">
+                                  <Activity size={28} />
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-xs font-black text-indigo-400 uppercase tracking-widest leading-none mb-1">Primary Entity</p>
+                                  <p className="text-2xl font-black text-indigo-600 truncate max-w-[180px]">{compAnalysisData.comp1.name}</p>
+                                </div>
+                              </div>
+                              <div className="flex flex-col gap-4">
+                                <div>
+                                  <h4 className="text-slate-400 text-[11px] font-black uppercase tracking-widest mb-1.5 leading-none">Total Mentions</h4>
+                                  <div className="flex items-baseline gap-2">
+                                    <span className="text-5xl font-black text-black tracking-tight">
+                                      {compAnalysisData.comp1.mentions.toLocaleString()}
+                                    </span>
+                                    <span className="text-slate-400 text-xs font-bold">in Database</span>
+                                  </div>
+                                </div>
+                                <div className="h-px bg-slate-100 my-1"></div>
+                                <div>
+                                  <h4 className="text-slate-400 text-[11px] font-black uppercase tracking-widest mb-1.5 leading-none">Estimated Reach</h4>
+                                  <div className="flex items-baseline gap-2">
+                                    <span className="text-4xl font-black text-indigo-600 tracking-tight">
+                                      {compAnalysisData.comp1.estimatedReach.toLocaleString()}
+                                    </span>
+                                    <span className="text-slate-400 text-xs font-bold">potential views</span>
+                                  </div>
+                                </div>
+                              </div>
                             </div>
-                            <div className="text-right">
-                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Competitor Analytics</p>
-                              <p className="text-lg font-black text-slate-900 truncate max-w-[150px]">{comp2}</p>
+
+                            {/* Competitor Entity Card */}
+                            <div className="bg-white border border-slate-200 rounded-[2.5rem] p-8 shadow-xl shadow-slate-100/30 relative overflow-hidden group">
+                              <div className="absolute top-0 right-0 w-32 h-32 bg-slate-50 rounded-full -mr-16 -mt-16 transition-transform group-hover:scale-110 -z-10"></div>
+                              <div className="relative flex items-center justify-between mb-6">
+                                <div className="w-14 h-14 bg-slate-900 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-slate-200">
+                                  <Activity size={28} />
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-xs font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Competitor</p>
+                                  <p className="text-2xl font-black text-slate-900 truncate max-w-[180px]">{compAnalysisData.comp2.name}</p>
+                                </div>
+                              </div>
+                              <div className="flex flex-col gap-4">
+                                <div>
+                                  <h4 className="text-slate-400 text-[11px] font-black uppercase tracking-widest mb-1.5 leading-none">Total Mentions</h4>
+                                  <div className="flex items-baseline gap-2">
+                                    <span className="text-5xl font-black text-black tracking-tight">
+                                      {compAnalysisData.comp2.mentions.toLocaleString()}
+                                    </span>
+                                    <span className="text-slate-400 text-xs font-bold">in Database</span>
+                                  </div>
+                                </div>
+                                <div className="h-px bg-slate-100 my-1"></div>
+                                <div>
+                                  <h4 className="text-slate-400 text-[11px] font-black uppercase tracking-widest mb-1.5 leading-none">Estimated Reach</h4>
+                                  <div className="flex items-baseline gap-2">
+                                    <span className="text-4xl font-black text-slate-900 tracking-tight">
+                                      {compAnalysisData.comp2.estimatedReach.toLocaleString()}
+                                    </span>
+                                    <span className="text-slate-400 text-xs font-bold">potential views</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Share of Voice Pie Chart */}
+                            <ShareOfVoiceDonut
+                              val1={compAnalysisData.comp1.mentions}
+                              val2={compAnalysisData.comp2.mentions}
+                              name1={compAnalysisData.comp1.name}
+                              name2={compAnalysisData.comp2.name}
+                            />
+                          </div>
+                        )}
+
+                        {/* Row 2: Coverage Intensity, Momentum, and Freshness */}
+                        {(visibleCards.coverage_intensity || visibleCards.momentum || visibleCards.freshness) && (
+                          <div className="w-full flex flex-col gap-8 mt-8">
+                            {/* Coverage Intensity Row */}
+                            {visibleCards.coverage_intensity && (
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full animate-in fade-in slide-in-from-top-6 duration-1000">
+                                <CoverageIntensityCard
+                                  score={compAnalysisData.comp1.coverageIntensityScore}
+                                  name={compAnalysisData.comp1.name}
+                                  isPrimary={true}
+                                />
+                                <CoverageIntensityCard
+                                  score={compAnalysisData.comp2.coverageIntensityScore}
+                                  name={compAnalysisData.comp2.name}
+                                  isPrimary={false}
+                                />
+                              </div>
+                            )}
+
+                            {/* Momentum and Freshness side-by-side or stacked */}
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 w-full">
+                              {visibleCards.momentum ? (
+                                <>
+                                  <MomentumCard
+                                    trends={compAnalysisData.comp1.trends}
+                                    name={compAnalysisData.comp1.name}
+                                    isPrimary={true}
+                                  />
+                                  <MomentumCard
+                                    trends={compAnalysisData.comp2.trends}
+                                    name={compAnalysisData.comp2.name}
+                                    isPrimary={false}
+                                  />
+                                </>
+                              ) : (
+                                <div className="hidden lg:block lg:col-span-2" />
+                              )}
+                              
+                              {visibleCards.freshness && (
+                                <FreshnessCard
+                                  age1={compAnalysisData.comp1.avgArticleAgeDays}
+                                  age2={compAnalysisData.comp2.avgArticleAgeDays}
+                                  name1={compAnalysisData.comp1.name}
+                                  name2={compAnalysisData.comp2.name}
+                                />
+                              )}
                             </div>
                           </div>
-                          <div>
-                            <h4 className="text-slate-500 text-sm font-bold uppercase tracking-wider mb-2">Total Mentions</h4>
-                            <div className="flex items-baseline gap-2">
-                              <span className="text-5xl font-black text-black tracking-tighter">
-                                {comp2Mentions.toLocaleString()}
-                              </span>
-                              <span className="text-slate-400 text-xs font-bold">in Database</span>
-                            </div>
+                        )}
+
+                        {/* Row 3: Sentiment Ratio Bar (Full Width) */}
+                        {visibleCards.sentiment_ratio && (
+                          <div className="w-full mt-8 animate-in fade-in slide-in-from-top-6 duration-1000">
+                            <SentimentRatioBar
+                              comp1={compAnalysisData.comp1}
+                              comp2={compAnalysisData.comp2}
+                            />
                           </div>
+                        )}
+
+                        {/* Row 4: Positivity Gauge & Source Overlap */}
+                        {(visibleCards.positivity_gauge || visibleCards.source_overlap) && (
+                          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 w-full mt-8 animate-in fade-in slide-in-from-top-6 duration-1000">
+                            {visibleCards.positivity_gauge ? (
+                              <>
+                                <PositivityGauge
+                                  sentiment={compAnalysisData.comp1.sentiment}
+                                  name={compAnalysisData.comp1.name}
+                                  isPrimary={true}
+                                />
+                                <PositivityGauge
+                                  sentiment={compAnalysisData.comp2.sentiment}
+                                  name={compAnalysisData.comp2.name}
+                                  isPrimary={false}
+                                />
+                              </>
+                            ) : (
+                              <div className="hidden lg:block lg:col-span-2" />
+                            )}
+                            
+                            {visibleCards.source_overlap && (
+                              <SourceOverlapCard
+                                sources1={compAnalysisData.comp1.sources}
+                                sources2={compAnalysisData.comp2.sources}
+                                name1={compAnalysisData.comp1.name}
+                                name2={compAnalysisData.comp2.name}
+                              />
+                            )}
+                          </div>
+                        )}
+
+                        {/* Row 5: Grouped Bar Chart (Full Width) */}
+                        {visibleCards.grouped_bar && (
+                          <div className="w-full mt-8 animate-in fade-in slide-in-from-top-6 duration-1000">
+                            <GroupedBarChart
+                              trends1={compAnalysisData.comp1.trends}
+                              trends2={compAnalysisData.comp2.trends}
+                              labels={compAnalysisData.trendLabels}
+                              name1={compAnalysisData.comp1.name}
+                              name2={compAnalysisData.comp2.name}
+                            />
+                          </div>
+                        )}
+
+                        {/* Row 6: Sentiment Donut (Primary & Competitor side-by-side) */}
+                        {visibleCards.sentiment_donut && (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full mt-8 animate-in fade-in slide-in-from-top-6 duration-1000">
+                            <SentimentDonut
+                              sentiment={compAnalysisData.comp1.sentiment}
+                              name={compAnalysisData.comp1.name}
+                              isPrimary={true}
+                            />
+                            <SentimentDonut
+                              sentiment={compAnalysisData.comp2.sentiment}
+                              name={compAnalysisData.comp2.name}
+                              isPrimary={false}
+                            />
+                          </div>
+                        )}
+
+                        {/* Row 7: Cadence Heatmap (Full Width) */}
+                        {visibleCards.cadence_heatmap && (
+                          <div className="w-full mt-8 animate-in fade-in slide-in-from-top-6 duration-1000">
+                            <CadenceHeatmap
+                              trends1={compAnalysisData.comp1.trends}
+                              trends2={compAnalysisData.comp2.trends}
+                              labels={compAnalysisData.trendLabels}
+                              name1={compAnalysisData.comp1.name}
+                              name2={compAnalysisData.comp2.name}
+                            />
+                          </div>
+                        )}
+
+                        {/* Row 8: Reach Accumulation Chart (Full Width) */}
+                        {visibleCards.reach_accumulation && (
+                          <div className="w-full mt-8 animate-in fade-in slide-in-from-top-6 duration-1000">
+                            <ReachAccumulationChart
+                              trends1={compAnalysisData.comp1.trends}
+                              trends2={compAnalysisData.comp2.trends}
+                              totalReach1={compAnalysisData.comp1.estimatedReach}
+                              totalReach2={compAnalysisData.comp2.estimatedReach}
+                              labels={compAnalysisData.trendLabels}
+                              name1={compAnalysisData.comp1.name}
+                              name2={compAnalysisData.comp2.name}
+                            />
+                          </div>
+                        )}
+
+                        {/* Row 9: Source Authority Chart */}
+                        {visibleCards.source_authority && (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full mt-8 animate-in fade-in slide-in-from-top-6 duration-1000">
+                            <SourceAuthorityChart
+                              tiers={compAnalysisData.comp1.sourceAuthorityTiers}
+                              name={compAnalysisData.comp1.name}
+                              isPrimary={true}
+                            />
+                            <SourceAuthorityChart
+                              tiers={compAnalysisData.comp2.sourceAuthorityTiers}
+                              name={compAnalysisData.comp2.name}
+                              isPrimary={false}
+                            />
+                          </div>
+                        )}
+
+                        {/* Row 10: Top Headlines Table (Full Width) */}
+                        {visibleCards.top_headlines && (
+                          <div className="w-full mt-8 animate-in fade-in slide-in-from-top-6 duration-1000">
+                            <TopHeadlinesTable
+                              top1={compAnalysisData.comp1.topArticles}
+                              top2={compAnalysisData.comp2.topArticles}
+                              name1={compAnalysisData.comp1.name}
+                              name2={compAnalysisData.comp2.name}
+                            />
+                          </div>
+                        )}
+
+                        {/* Row 11: Top Publishers / Sources Row */}
+                        {visibleCards.top_sources && (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full mt-8 animate-in fade-in slide-in-from-top-6 duration-1000">
+                            <TopSourcesCard
+                              sources={compAnalysisData.comp1.sources}
+                              name={compAnalysisData.comp1.name}
+                              isPrimary={true}
+                            />
+                            <TopSourcesCard
+                              sources={compAnalysisData.comp2.sources}
+                              name={compAnalysisData.comp2.name}
+                              isPrimary={false}
+                            />
+                          </div>
+                        )}
+
+                        {/* Reset / New Comparison button */}
+                        <div className="mt-12 flex justify-center animate-in fade-in duration-500">
+                          <button
+                            onClick={handleRefreshCompetitorTab}
+                            className="px-8 py-4 bg-slate-100 text-slate-700 hover:bg-slate-200 transition-all font-black text-xs uppercase tracking-widest rounded-2xl flex items-center gap-2"
+                          >
+                            <RotateCcw size={16} />
+                            Reset Comparison
+                          </button>
                         </div>
                       </div>
                     )}
@@ -3311,6 +4611,38 @@ function App() {
                         </div>
                       </div>
                     )}
+
+                    {/* Virtual Pets Toggle — shown for all users */}
+                    <div className="mt-8 max-w-2xl mx-auto w-full bg-white/50 backdrop-blur-xl border border-slate-200 rounded-[3rem] p-10 shadow-2xl shadow-slate-200/50 animate-in fade-in duration-500">
+                      <div className="flex items-center gap-5 mb-8">
+                        <div className="w-16 h-16 bg-indigo-600 rounded-3xl flex items-center justify-center text-white shadow-xl shadow-indigo-100 transition-transform hover:rotate-3">
+                          <span className="text-2xl">🐾</span>
+                        </div>
+                        <div>
+                          <h4 className="text-xl font-black text-slate-900 uppercase tracking-tighter">Display Preferences</h4>
+                          <p className="text-xs font-bold text-slate-400">Customize ambient UI elements</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between p-6 bg-white border border-slate-100 rounded-2xl shadow-sm hover:border-indigo-200 transition-all group">
+                        <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-xl">🐱</div>
+                          <div>
+                            <p className="text-sm font-black text-slate-900">Virtual Pets</p>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Animated characters on screen</p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => {
+                            const next = !showPets;
+                            setShowPets(next);
+                            localStorage.setItem('cerebro_show_pets', String(next));
+                          }}
+                          className={`relative w-14 h-7 rounded-full transition-all duration-300 focus:outline-none ${showPets ? 'bg-indigo-600 shadow-lg shadow-indigo-200' : 'bg-slate-200'}`}
+                        >
+                          <span className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full shadow-md transition-all duration-300 ${showPets ? 'translate-x-7' : 'translate-x-0'}`} />
+                        </button>
+                      </div>
+                    </div>
 
                     <div className="mt-12 flex justify-center gap-4">
                       <button className="px-10 py-4 bg-indigo-600 text-white rounded-full font-black uppercase tracking-widest text-xs shadow-2xl shadow-indigo-200 hover:scale-105 active:scale-95 transition-all">Save Changes</button>
