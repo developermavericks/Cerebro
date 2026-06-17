@@ -1,11 +1,11 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Outfit:wght@400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Outfit:wght@400;500;600;700;800;900&family=Science+Gothic:ydeg,wght@1,400;1,700;1,900&family=Oxanium:wght@400;600;800&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
   --font-body: "Inter", system-ui, sans-serif;
-  --font-heading: "Outfit", system-ui, sans-serif;
+  --font-heading: "New Science", "Science Gothic", "Oxanium", "Outfit", sans-serif;
   --bg-primary: #ffffff;
   --bg-secondary: #f8fafc;
   --text-primary: #023047;
@@ -15,12 +15,12 @@
 }
 
 .dark {
-  --bg-primary: #023047;
-  --bg-secondary: #011627;
+  --bg-primary: #0B121F;
+  --bg-secondary: #060B13;
   --text-primary: #ffffff;
   --text-secondary: #94a3b8;
-  --border-color: #1e293b;
-  --card-bg: rgba(1, 22, 39, 0.8);
+  --border-color: rgba(255, 255, 255, 0.08);
+  --card-bg: rgba(17, 26, 46, 0.8);
 }
 
 /* Global Dark Mode Text Overrides */
@@ -55,7 +55,7 @@
 .dark .bg-slate-100\/50,
 .dark .bg-slate-200,
 .dark .bg-teal-50\/50 {
-  background-color: #011627 !important;
+  background-color: #0B121F !important;
   border-color: rgba(255, 255, 255, 0.08) !important;
 }
 
@@ -78,6 +78,10 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+h1, h2, h3, h4, h5, h6, .font-heading, aside button, aside span, aside label {
+  font-family: var(--font-heading) !important;
 }
 
 

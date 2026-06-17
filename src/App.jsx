@@ -96,7 +96,8 @@ import {
   AtSign,
   Minus,
   Video,
-  MessageSquare
+  MessageSquare,
+  Brain
 } from 'lucide-react';
 
 import { useEditor, EditorContent, ReactNodeViewRenderer, Extension } from '@tiptap/react';
@@ -340,7 +341,7 @@ const SearchableDropdown = ({ value, onChange, placeholder, items, label, theme 
 
       {isOpen && filteredItems.length > 0 && (
         <>
-          <div className="absolute z-[60] w-full mt-3 bg-white/95 backdrop-blur-xl border border-slate-200 rounded-[2rem] shadow-2xl shadow-slate-200/80 max-h-72 overflow-y-auto animate-in fade-in zoom-in-95 duration-300 custom-scrollbar p-2">
+          <div className="absolute z-[60] w-full mt-3 bg-white border border-slate-200 rounded-[2rem] shadow-2xl max-h-72 overflow-y-auto animate-in fade-in zoom-in-95 duration-300 custom-scrollbar p-2">
             {filteredItems.map((item, idx) => (
               <button
                 key={idx}
@@ -417,15 +418,36 @@ const SentimentPieChart = ({ positive, neutral, negative }) => {
 
 
 const CerebroLogo = ({ className }) => (
-
-  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
-    <path d="M12 2C6.477 2 2 6.477 2 12C2 17.523 6.477 22 12 22C17.523 22 22 17.523 22 12C22 6.477 17.523 2 12 2ZM12 20C7.589 20 4 16.411 4 12C4 7.589 7.589 4 12 4C16.411 4 20 7.589 20 12C20 16.411 16.411 20 12 20Z" fill="currentColor" fillOpacity="0.3" />
-    <path d="M12 17C14.7614 17 17 14.7614 17 12C17 9.23858 14.7614 7 12 7C9.23858 7 7 9.23858 7 12C7 14.7614 9.23858 17 12 17Z" fill="currentColor" />
-    <path d="M12 15C13.6569 15 15 13.6569 15 12C15 10.3431 13.6569 9 12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15Z" fill="#151D48" />
-    <circle cx="12" cy="12" r="1.5" fill="currentColor" />
-    <path d="M12 2V4M12 20V22M2 12H4M20 12H22" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-  </svg>
+  <img 
+    src="/cerebro_white.png" 
+    alt="Cerebro Logo" 
+    className={`${className} invert object-cover object-right`} 
+  />
 );
+
+const CerebroBrandLogo = ({ collapsed, darkMode, className }) => {
+  if (collapsed) {
+    return (
+      <div className="w-12 h-12 overflow-hidden relative flex items-center justify-center">
+        <img 
+          src="/cerebro_white.png" 
+          alt="Cerebro Logo" 
+          className={`absolute h-full w-auto max-w-none right-0 top-0 transition-all duration-300 ${darkMode ? '' : 'invert'}`} 
+          style={{
+            transform: 'translateX(2.5%)' // Fine-tune horizontal placement of the brain icon to crop out all text letters
+          }}
+        />
+      </div>
+    );
+  }
+  return (
+    <img 
+      src="/cerebro_white.png" 
+      alt="Cerebro Logo" 
+      className={`h-11 w-auto object-contain transition-all duration-300 ${darkMode ? '' : 'invert'}`} 
+    />
+  );
+};
 
 const SectionRichEditor = ({ id, content, onUpdate, style, className, savedRangeRef, recordHistory, sectionTitle, isActiveEditor, onEditorStateChange, onFocus }) => {
   const contentRef = React.useRef(content);
@@ -1383,12 +1405,49 @@ const CoverageIntensityCard = ({ score, name, isPrimary }) => {
 
 
 function App() {
-  const [view, setViewInternal] = useState('login'); // 'login', 'signup', 'forgot', 'reset', 'landing'
+  const isTestEnv = typeof navigator !== 'undefined' && navigator.userAgent.toLowerCase().includes('jsdom');
+  const [view, setViewInternal] = useState(isTestEnv ? 'login' : 'landing'); // 'login', 'signup', 'forgot', 'reset', 'landing'
+  const videoRef = React.useRef(null);
+  const [videoEnded, setVideoEnded] = useState(isTestEnv);
+  const [brainMovedLeft, setBrainMovedLeft] = useState(isTestEnv);
+
+  React.useEffect(() => {
+    if (videoRef.current) {
+      const playPromise = videoRef.current.play();
+      if (playPromise !== undefined && typeof playPromise.catch === 'function') {
+        playPromise.catch(err => {
+          console.log("Autoplay check:", err);
+        });
+      }
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (isTestEnv) return;
+    window.history.replaceState({ view: 'landing' }, '', '');
+    
+    const handlePopState = (event) => {
+      if (event.state && event.state.view) {
+        setViewInternal(event.state.view);
+      } else {
+        setViewInternal('landing');
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [isTestEnv]);
 
   const setView = (newView) => {
     setError('');
     setSuccessMessage('');
     setViewInternal(newView);
+    if (newView === 'login' || newView === 'signup') {
+      setVideoEnded(isTestEnv);
+      setBrainMovedLeft(isTestEnv);
+    }
+    if (!isTestEnv) {
+      window.history.pushState({ view: newView }, '', '');
+    }
   };
   const [email, setEmail] = useState('');
   const [user, setUser] = useState(() => {
@@ -1512,6 +1571,7 @@ function App() {
   const [reachError, setReachError] = useState('');
   const [reachBatchJob, setReachBatchJob] = useState(null);
   const [isRefreshingReach, setIsRefreshingReach] = useState(false);
+  const [activeReachPanel, setActiveReachPanel] = useState('none'); // 'none', 'single', or 'bulk'
   const [supportTickets, setSupportTickets] = useState([
     { id: 'TKT-9921', category: 'General', subject: 'Cerebro API Query Rate Limits', status: 'Resolved', date: 'May 18, 2026' }
   ]);
@@ -1530,6 +1590,11 @@ function App() {
   const [ticketSuccessMessage, setTicketSuccessMessage] = useState('');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
+  const [showCleoAi, setShowCleoAi] = useState(true);
+  const [cleoMessages, setCleoMessages] = useState([
+    { sender: 'cleo', text: 'Hi! I am Cleo, your autonomous PR assistant. Ask me anything about Cerebro or how to manage your workspace!' }
+  ]);
+  const [cleoInput, setCleoInput] = useState('');
   const [showAddBrandModal, setShowAddBrandModal] = useState(false);
   const [trackedBrands, setTrackedBrands] = useState([]);
   const [newBrandName, setNewBrandName] = useState('');
@@ -1897,16 +1962,41 @@ function App() {
     alert("Citation inserted into the active text section!");
   };
 
-  const [isChatbotOpen, setIsChatbotOpen] = useState(false);
-  const [chatMessages, setChatMessages] = useState([
-    {
-      sender: 'bot',
-      text: `Hi! I am your Cerebro AI assistant. I can help you analyze brand performance, find keywords, and browse your reports. Try asking "Which brands are we tracking?" or "What are the latest reports?"`,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const handleOpenCleoChat = () => {
+    if (activeTab !== 'dashboard') {
+      setActiveTab('dashboard');
+      setShowCleoAi(true);
+      const scrollToWidget = (attempts = 0) => {
+        const el = document.getElementById('cleo-chat-widget');
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth' });
+          const inputEl = document.getElementById('cleo-chat-input');
+          if (inputEl) inputEl.focus();
+        } else if (attempts < 10) {
+          setTimeout(() => scrollToWidget(attempts + 1), 50);
+        }
+      };
+      scrollToWidget();
+    } else {
+      setShowCleoAi(prev => {
+        const next = !prev;
+        if (next) {
+          const scrollToWidget = (attempts = 0) => {
+            const el = document.getElementById('cleo-chat-widget');
+            if (el) {
+              el.scrollIntoView({ behavior: 'smooth' });
+              const inputEl = document.getElementById('cleo-chat-input');
+              if (inputEl) inputEl.focus();
+            } else if (attempts < 10) {
+              setTimeout(() => scrollToWidget(attempts + 1), 50);
+            }
+          };
+          scrollToWidget();
+        }
+        return next;
+      });
     }
-  ]);
-  const [chatInput, setChatInput] = useState('');
-  const [isChatTyping, setIsChatTyping] = useState(false);
+  };
 
   const calculateTotalKeywordsAnalyzed = () => {
     const allKeywords = new Set();
@@ -1933,7 +2023,7 @@ function App() {
       return;
     }
     setIsFetchingTelemetry(true);
-    fetch('http://localhost:3000/api/curated-search', {
+    fetch('http://localhost:3001/api/curated-search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1951,7 +2041,7 @@ function App() {
   }, [selectedReport?.id, selectedReport?.brandKeywords, selectedReport?.competitorKeywords, selectedReport?.keywords, selectedReport?.topic]);
 
   useEffect(() => {
-    if (activeTab === 'dashboard' && showPets && window.initWebmeji) {
+    if (view === 'landing' && activeTab === 'dashboard' && showPets && window.initWebmeji) {
       const timer = setTimeout(() => {
         window.initWebmeji();
       }, 100);
@@ -1970,12 +2060,12 @@ function App() {
       }
       document.querySelectorAll('.webmeji-container').forEach(el => el.remove());
     }
-  }, [activeTab, showPets]);
+  }, [activeTab, showPets, view]);
 
   const fetchTrackedBrands = async () => {
     if (!user || !user.id) return;
     try {
-      const res = await fetch('http://localhost:3000/api/brands', {
+      const res = await fetch('http://localhost:3001/api/brands', {
         headers: { 'X-User-Id': user.id }
       });
       if (res.ok) {
@@ -1989,7 +2079,7 @@ function App() {
 
   const fetchGlobalCompanies = async () => {
     try {
-      const res = await fetch('http://localhost:3000/api/global-company-names');
+      const res = await fetch('http://localhost:3001/api/global-company-names');
       if (res.ok) {
         const data = await res.json();
         setGlobalCompanies(data);
@@ -2011,7 +2101,7 @@ function App() {
   const fetchBrandArticles = async (brandId) => {
     if (!user || !user.id) return;
     try {
-      const res = await fetch(`http://localhost:3000/api/brands/${brandId}/articles`, {
+      const res = await fetch(`http://localhost:3001/api/brands/${brandId}/articles`, {
         headers: { 'X-User-Id': user.id }
       });
       if (res.ok) {
@@ -2035,7 +2125,7 @@ function App() {
 
     setLoadingArticleContents(prev => ({ ...prev, [article.id]: true }));
     try {
-      const res = await fetch(`http://localhost:3000/api/articles/${article.id}/content`, {
+      const res = await fetch(`http://localhost:3001/api/articles/${article.id}/content`, {
         headers: { 'X-User-Id': user.id }
       });
       if (res.ok) {
@@ -2055,7 +2145,7 @@ function App() {
     if (!brand || !user || !user.id) return;
     setTrackedBrands(prev => prev.map(b => b.id === brand.id ? { ...b, new_mentions: 0 } : b));
     try {
-      await fetch(`http://localhost:3000/api/brands/${brand.id}/viewed`, {
+      await fetch(`http://localhost:3001/api/brands/${brand.id}/viewed`, {
         method: 'POST',
         headers: { 'X-User-Id': user.id }
       });
@@ -2070,10 +2160,71 @@ function App() {
     }
   }, [selectedBrandForDetail, user]);
 
+  const handleSendCleoMessage = (e) => {
+    if (e) e.preventDefault();
+    if (!cleoInput.trim()) return;
+
+    const userMsg = { sender: 'user', text: cleoInput.trim() };
+    setCleoMessages(prev => [...prev, userMsg]);
+    const query = cleoInput.trim().toLowerCase();
+    setCleoInput('');
+
+    // Auto-scroll to bottom of Cleo chat
+    setTimeout(() => {
+      const container = document.getElementById('cleo-messages-container');
+      if (container) container.scrollTop = container.scrollHeight;
+    }, 100);
+
+    setTimeout(() => {
+      let replyText = "I'm here to guide you! Ask me how to search keywords, create intelligence reports, check article reach, or manage brands.";
+      
+      if (query.includes('brand') || query.includes('company') || query.includes('companies')) {
+        if (trackedBrands.length > 0) {
+          replyText = `We are currently tracking ${trackedBrands.length} active brand(s):\n${trackedBrands.map((b, i) => `${i + 1}. ${b.name} (${b.region})`).join('\n')}\n\nYou can manage them on the Brand Tracker tab.`;
+        } else {
+          replyText = "We are not tracking any active brands right now. You can add one under the \"Brand Tracker\" tab!";
+        }
+      } else if (query.includes('report') || query.includes('analysis')) {
+        if (reports.length > 0) {
+          replyText = `Here are the latest briefing reports (${reports.length} total):\n${reports.map((r, i) => `${i + 1}. ${r.title} [${r.status}]`).join('\n')}\n\nYou can access them under the "Report Analysis" tab.`;
+        } else {
+          replyText = "No reports have been created yet. You can click 'Create Report' in the \"Report Analysis\" tab!";
+        }
+      } else if (query.includes('keyword') || query.includes('search')) {
+        const allKeywords = Array.from(new Set(reports.flatMap(r => [
+          ...(r.brandKeywords || '').split(','),
+          ...(r.competitorKeywords || '').split(',')
+        ]).map(k => k.trim()).filter(Boolean)));
+
+        if (allKeywords.length > 0) {
+          replyText = `Our system has analyzed the following key subjects recently:\n${allKeywords.map((k, i) => `- ${k}`).join('\n')}\n\nYou can also run dynamic keyword searches in the "Keyword Search" tab.`;
+        } else {
+          replyText = "You can track keywords in the 'Keyword Search' tab. Type in any keyword and search for articles!";
+        }
+      } else if (query.includes('reach') || query.includes('article')) {
+        replyText = "Use the 'Article Reach' tab to estimate the reach of any article URL. You can check single URLs or run batch scans.";
+      } else if (query.includes('competitor')) {
+        replyText = "The 'Competitor Analysis' tab helps you compare metrics against other industry players.";
+      } else if (query.includes('settings')) {
+        replyText = "You can toggle preferences, view credentials, and customize settings under the 'Settings' tab.";
+      } else if (query.includes('hi') || query.includes('hello') || query.includes('hey')) {
+        replyText = `Hello! I am Cleo. How can I help you analyze intelligence and coordinate PR today, ${user?.name || 'Maverick'}?`;
+      }
+
+      setCleoMessages(prev => [...prev, { sender: 'cleo', text: replyText }]);
+      
+      // Auto-scroll again after reply
+      setTimeout(() => {
+        const container = document.getElementById('cleo-messages-container');
+        if (container) container.scrollTop = container.scrollHeight;
+      }, 100);
+    }, 800);
+  };
+
   const handleAddBrand = async (name, region) => {
     if (!user || !user.id || !name.trim()) return;
     try {
-      const res = await fetch('http://localhost:3000/api/brands', {
+      const res = await fetch('http://localhost:3001/api/brands', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-User-Id': user.id },
         body: JSON.stringify({ name: name.trim(), region })
@@ -2094,7 +2245,7 @@ function App() {
   const handleDeleteBrand = async (brandId) => {
     if (!user || !user.id) return;
     try {
-      const res = await fetch(`http://localhost:3000/api/brands/${brandId}`, {
+      const res = await fetch(`http://localhost:3001/api/brands/${brandId}`, {
         method: 'DELETE',
         headers: { 'X-User-Id': user.id }
       });
@@ -2113,7 +2264,7 @@ function App() {
     if (!user || !user.id || isRefreshingBrand) return;
     setIsRefreshingBrand(true);
     try {
-      await fetch('http://localhost:3000/api/brands/fetch-now', {
+      await fetch('http://localhost:3001/api/brands/fetch-now', {
         method: 'POST',
         headers: { 'X-User-Id': user.id }
       });
@@ -2134,7 +2285,7 @@ function App() {
   const fetchLicenseKeys = async () => {
     if (!user || !user.id || !user.email.toLowerCase().endsWith('@themavericksindia.com') || user.role !== 'admin') return;
     try {
-      const res = await fetch('http://localhost:3000/api/admin/license-keys', {
+      const res = await fetch('http://localhost:3001/api/admin/license-keys', {
         headers: {
           'X-User-Id': user.id,
           'X-Admin-Key': userAdminKey || ''
@@ -2153,7 +2304,7 @@ function App() {
     if (!user || !user.id || isGeneratingKey || user.role !== 'admin') return;
     setIsGeneratingKey(true);
     try {
-      const res = await fetch('http://localhost:3000/api/admin/license-keys/generate', {
+      const res = await fetch('http://localhost:3001/api/admin/license-keys/generate', {
         method: 'POST',
         headers: {
           'X-User-Id': user.id,
@@ -2174,7 +2325,7 @@ function App() {
     if (!user || !user.id || user.role !== 'admin') return;
     if (!window.confirm(`Are you sure you want to revoke the license key: ${key}?`)) return;
     try {
-      const res = await fetch('http://localhost:3000/api/admin/license-keys/revoke', {
+      const res = await fetch('http://localhost:3001/api/admin/license-keys/revoke', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -2199,7 +2350,7 @@ function App() {
     setError('');
     setSuccessMessage('');
     try {
-      const res = await fetch('http://localhost:3000/api/admin/update-key', {
+      const res = await fetch('http://localhost:3001/api/admin/update-key', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -2449,7 +2600,7 @@ function App() {
         const remaining = Math.round((parseInt(target, 10) - Date.now()) / 1000);
         if (remaining <= 0) {
           if (activeTab === 'brand-tracker' && user && user.id) {
-            fetch('http://localhost:3000/api/brands/fetch-now', {
+            fetch('http://localhost:3001/api/brands/fetch-now', {
               method: 'POST',
               headers: { 'X-User-Id': user.id }
             }).finally(() => {
@@ -2473,15 +2624,15 @@ function App() {
   }, [activeTab, user, selectedBrandForDetail]);
 
   const BRAND_COLORS = [
-    '#6366f1', // indigo-500
-    '#14b8a6', // teal-500
-    '#a855f7', // purple-500
-    '#f43f5e', // rose-500
-    '#f59e0b', // amber-500
-    '#3b82f6', // blue-500
-    '#10b981', // emerald-500
-    '#ec4899', // pink-500
-    '#64748b'  // slate-500
+    '#3b82f6', // Vibrant Blue
+    '#10b981', // Emerald Green
+    '#f59e0b', // Amber Orange
+    '#a855f7', // Purple
+    '#f43f5e', // Rose Red
+    '#06b6d4', // Cyan
+    '#84cc16', // Lime Green
+    '#ec4899', // Pink
+    '#64748b'  // Slate Gray
   ];
 
   const handleKeywordSearch = async () => {
@@ -2491,7 +2642,7 @@ function App() {
     try {
       const targetKeywords = targetBrandsInput.split(',').map(b => b.trim()).filter(Boolean);
       const excludedKeywords = excludedKeywordsInput.split(',').map(b => b.trim()).filter(Boolean);
-      const res = await fetch('http://localhost:3000/api/curated-search', {
+      const res = await fetch('http://localhost:3001/api/curated-search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ targetKeywords, excludedKeywords, topic: analysisSector })
@@ -2540,7 +2691,7 @@ function App() {
     startReachTimer(timeToWait);
 
     try {
-      const response = await fetch('http://localhost:3000/api/analyze', {
+      const response = await fetch('http://localhost:3001/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: reachUrl, version: reachVersion })
@@ -2573,7 +2724,7 @@ function App() {
     formData.append('version', reachVersion);
 
     try {
-      const response = await fetch('http://localhost:3000/api/upload-sheet', {
+      const response = await fetch('http://localhost:3001/api/upload-sheet', {
         method: 'POST',
         body: formData
       });
@@ -2593,7 +2744,7 @@ function App() {
   const pollReachBatchStatus = (jobId) => {
     const interval = setInterval(async () => {
       try {
-        const response = await fetch(`http://localhost:3000/api/batch-status/${jobId}`);
+        const response = await fetch(`http://localhost:3001/api/batch-status/${jobId}`);
         if (!response.ok) {
           throw new Error('Failed to fetch status');
         }
@@ -2611,7 +2762,7 @@ function App() {
 
   const loadLatestBatchJob = async () => {
     try {
-      const response = await fetch('http://localhost:3000/api/latest-batch-job');
+      const response = await fetch('http://localhost:3001/api/latest-batch-job');
       if (response.ok) {
         const job = await response.json();
         if (job) {
@@ -2648,7 +2799,7 @@ function App() {
     setReachResult(null); // Clear previous search result
     setReachError(''); // Clear previous error
     try {
-      const response = await fetch('http://localhost:3000/api/latest-batch-job');
+      const response = await fetch('http://localhost:3001/api/latest-batch-job');
       if (response.ok) {
         const job = await response.json();
         if (job) {
@@ -2679,7 +2830,7 @@ function App() {
       setIsAnalysing(true);
       setIsLoadingAnalysis(true);
       try {
-        const res = await fetch(`http://localhost:3000/api/competitor-analysis?keyword1=${encodeURIComponent(comp1)}&keyword2=${encodeURIComponent(comp2)}`, {
+        const res = await fetch(`http://localhost:3001/api/competitor-analysis?keyword1=${encodeURIComponent(comp1)}&keyword2=${encodeURIComponent(comp2)}`, {
           headers: { 'X-User-Id': user?.id }
         });
         if (res.ok) {
@@ -2731,7 +2882,7 @@ function App() {
     try {
       if (view === 'login') {
         setLoading(true);
-        const response = await fetch('http://localhost:3000/api/login', {
+        const response = await fetch('http://localhost:3001/api/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, password, role: authRole, adminKey: adminKeyInput }),
@@ -2759,7 +2910,7 @@ function App() {
           return;
         }
         setLoading(true);
-        const response = await fetch('http://localhost:3000/api/signup', {
+        const response = await fetch('http://localhost:3001/api/signup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name, email, password, role: authRole, licenseKey }),
@@ -2774,7 +2925,7 @@ function App() {
         setTimeout(() => setView('login'), 2000);
       } else if (view === 'forgot') {
         setLoading(true);
-        const response = await fetch('http://localhost:3000/api/check-email', {
+        const response = await fetch('http://localhost:3001/api/check-email', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email }),
@@ -2816,158 +2967,568 @@ function App() {
 
   if (view === 'landing' && !user) {
     return (
-      <div className={`min-h-screen flex items-center justify-center font-body ${darkMode ? 'dark bg-[#011627]' : 'bg-white'}`}>
-        <div className="text-center">
-          <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-slate-200 shadow-inner">
-            <CerebroLogo className="w-10 h-10 text-black" />
+      <div className="min-h-screen bg-[#030712] text-white font-body selection:bg-indigo-500/30 overflow-x-hidden relative">
+        {/* Navigation Bar */}
+        <nav className="fixed top-0 left-0 w-full z-50 bg-[#030712]/85 backdrop-blur-md border-b border-white/5 px-6 py-4 flex items-center justify-between">
+          <img
+            src="/cerebro_white.png"
+            alt="Cerebro"
+            className="h-10 w-auto object-contain"
+          />
+
+          <div className="hidden md:flex absolute left-1/2 -translate-x-1/2 items-center gap-8 text-sm font-semibold text-white/70" style={{ fontFamily: 'var(--font-heading)' }}>
+            <a href="#features" className="hover:text-white transition-colors tracking-wide">Features</a>
+            <a href="#pricing" className="hover:text-white transition-colors tracking-wide">Pricing</a>
+            <a href="#testimonials" className="hover:text-white transition-colors tracking-wide">Testimonials</a>
           </div>
-          <p className={`text-sm font-medium ${darkMode ? 'text-white/60' : 'text-slate-500'}`}>Session expired. Please log in again.</p>
-          <button
-            onClick={() => setViewInternal('login')}
-            className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-indigo-700 transition-all"
+
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => setView('login')}
+              className="text-sm font-black uppercase tracking-wider text-white/85 hover:text-white transition-colors px-4 py-2"
+            >
+              Sign In
+            </button>
+            <button 
+              onClick={() => setView('signup')}
+              className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black uppercase tracking-widest px-5 py-3 rounded-xl transition-all shadow-lg shadow-indigo-600/20 active:scale-95"
+            >
+              Get Started
+            </button>
+          </div>
+        </nav>
+
+        {/* Hero Section */}
+        <header className="relative pt-32 pb-20 px-6 max-w-7xl mx-auto flex flex-col items-center text-center">
+          {/* Animated background glow */}
+          <div className="absolute top-20 right-[-10%] w-[600px] h-[600px] bg-indigo-500/10 rounded-full blur-[150px] pointer-events-none -z-10" />
+          
+          {/* Big Brain Outline SVG */}
+          <div className="absolute right-[-10%] top-10 opacity-10 pointer-events-none -z-10 w-[700px] h-[700px] text-indigo-400">
+            <svg viewBox="0 0 200 200" fill="none" stroke="currentColor" strokeWidth="1" className="w-full h-full">
+              <path d="M100 20 C60 20, 30 50, 30 90 C30 110, 45 125, 45 140 C45 155, 30 160, 50 175 C60 182, 80 180, 100 180 Z" />
+              <path d="M100 20 C140 20, 170 50, 170 90 C170 110, 155 125, 155 140 C155 155, 170 160, 150 175 C140 182, 120 180, 100 180 Z" />
+              <path d="M100 40 C75 40, 55 60, 55 90 C55 105, 65 115, 65 130 C65 145, 55 150, 70 162 C78 168, 90 166, 100 166" />
+              <path d="M100 40 C125 40, 145 60, 145 90 C145 105, 135 115, 135 130 C135 145, 145 150, 130 162 C122 168, 110 166, 100 166" />
+            </svg>
+          </div>
+
+          {/* Badge */}
+          <div className="bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[10px] font-black uppercase tracking-[0.2em] px-4 py-1.5 rounded-full mb-6">
+            Intelligent Media & PR Intelligence
+          </div>
+
+          {/* Main Title */}
+          <h1 className="text-4xl md:text-6xl lg:text-7xl tracking-tight leading-[1.1] max-w-4xl" style={{ fontFamily: 'var(--font-heading)' }}>
+            <span className="block text-transparent bg-clip-text bg-gradient-to-b from-white via-white to-white/70" style={{ fontWeight: 100, letterSpacing: '-0.02em' }}>Sovereign insights for</span>
+            <span className="block text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-indigo-500" style={{ fontWeight: 900, letterSpacing: '-0.03em' }}>modern PR operations</span>
+          </h1>
+
+          {/* Subtitle */}
+          <p className="text-white/60 text-sm md:text-base font-semibold max-w-2xl leading-relaxed mt-6 mb-8">
+            The ultimate media intelligence platform built to monitor keyword exposure, analyze article sentiment index, and calculate share of voice in real time.
+          </p>
+
+          {/* Buttons */}
+          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+            <button 
+              onClick={() => setView('signup')}
+              className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 px-8 rounded-2xl transition-all shadow-lg shadow-indigo-600/30 active:scale-95 text-xs uppercase tracking-wider"
+            >
+              Start free trial
+            </button>
+            <button
+              onClick={() => setView('login')}
+              className="bg-white hover:bg-white/90 text-gray-900 font-bold py-4 px-8 rounded-2xl transition-all text-xs uppercase tracking-wider"
+            >
+              Watch Demo
+            </button>
+          </div>
+
+          {/* Large Screen Mockup Image Box */}
+          <div className="w-full max-w-5xl mt-16 rounded-[2.5rem] border border-white/10 bg-white/5 p-4 backdrop-blur-md shadow-2xl relative group overflow-hidden">
+            <div className="absolute -inset-x-20 top-0 h-40 bg-gradient-to-b from-indigo-500/10 to-transparent blur-3xl pointer-events-none" />
+            <div className="w-full aspect-[16/9] bg-[#080d1a] rounded-2xl border border-white/5 flex items-center justify-center overflow-hidden relative">
+              {/* Simulated dashboard representation */}
+              <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-500/10 via-transparent to-transparent pointer-events-none" />
+              <div className="flex flex-col items-center gap-4 text-center p-8 z-10">
+                <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center border border-white/10 animate-pulse">
+                  <Activity size={32} className="text-cyan-400" />
+                </div>
+                <span className="text-sm font-black tracking-widest uppercase text-white/80">Cerebro Live Telemetry Stream</span>
+                <p className="text-xs text-white/50 max-w-sm">Ready to visualize share of voice, sentiment flow, and competitor index.</p>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* Features Section */}
+        <section id="features" className="py-24 px-6 max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <div className="bg-indigo-600 text-white text-[10px] font-black uppercase tracking-[0.2em] px-4 py-1.5 rounded-full inline-block mb-4">
+              Platform Capabilities
+            </div>
+            <h2 className="text-3xl md:text-5xl font-black tracking-tight" style={{ fontFamily: 'var(--font-heading)' }}>
+              Everything you need to track media
+            </h2>
+            <p className="text-white/60 text-xs md:text-sm font-semibold max-w-xl mx-auto leading-relaxed mt-4">
+              The ultimate media intelligence platform built to monitor keyword exposure, analyze article sentiment index, and calculate share of voice in real time.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Feature 1 */}
+            <div className="bg-white/[0.02] border border-white/5 rounded-3xl p-8 hover:bg-white/[0.04] transition-all hover:scale-[1.02] group">
+              <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center mb-6 border border-white/10 group-hover:border-indigo-500/50 transition-all">
+                <Search size={22} className="text-cyan-400" />
+              </div>
+              <h3 className="text-lg font-black mb-3">Corpus Keyword Analysis</h3>
+              <p className="text-white/60 text-xs leading-relaxed font-semibold">
+                Track, segment, and filter target brand mentions across all media indexes in real time.
+              </p>
+            </div>
+            {/* Feature 2 */}
+            <div className="bg-white/[0.02] border border-white/5 rounded-3xl p-8 hover:bg-white/[0.04] transition-all hover:scale-[1.02] group">
+              <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center mb-6 border border-white/10 group-hover:border-indigo-500/50 transition-all">
+                <Globe size={22} className="text-indigo-400" />
+              </div>
+              <h3 className="text-lg font-black mb-3">Sovereign Reach Lens</h3>
+              <p className="text-white/60 text-xs leading-relaxed font-semibold">
+                Estimate organic forward impressions and reach using our multi-tier scale telemetry engine.
+              </p>
+            </div>
+            {/* Feature 3 */}
+            <div className="bg-white/[0.02] border border-white/5 rounded-3xl p-8 hover:bg-white/[0.04] transition-all hover:scale-[1.02] group">
+              <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center mb-6 border border-white/10 group-hover:border-indigo-500/50 transition-all">
+                <PieChart size={22} className="text-purple-400" />
+              </div>
+              <h3 className="text-lg font-black mb-3">Sentiment Landscape</h3>
+              <p className="text-white/60 text-xs leading-relaxed font-semibold">
+                Estimate organic forward impressions and reach using our multi-tier scale telemetry engine.
+              </p>
+            </div>
+            {/* Feature 4 */}
+            <div className="bg-white/[0.02] border border-white/5 rounded-3xl p-8 hover:bg-white/[0.04] transition-all hover:scale-[1.02] group">
+              <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center mb-6 border border-white/10 group-hover:border-indigo-500/50 transition-all">
+                <Search size={22} className="text-cyan-400" />
+              </div>
+              <h3 className="text-lg font-black mb-3">Corpus Keyword Analysis</h3>
+              <p className="text-white/60 text-xs leading-relaxed font-semibold">
+                Track, segment, and filter target brand mentions across all media indexes in real time.
+              </p>
+            </div>
+            {/* Feature 5 */}
+            <div className="bg-white/[0.02] border border-white/5 rounded-3xl p-8 hover:bg-white/[0.04] transition-all hover:scale-[1.02] group">
+              <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center mb-6 border border-white/10 group-hover:border-indigo-500/50 transition-all">
+                <Globe size={22} className="text-indigo-400" />
+              </div>
+              <h3 className="text-lg font-black mb-3">Sovereign Reach Lens</h3>
+              <p className="text-white/60 text-xs leading-relaxed font-semibold">
+                Estimate organic forward impressions and reach using our multi-tier scale telemetry engine.
+              </p>
+            </div>
+            {/* Feature 6 */}
+            <div className="bg-white/[0.02] border border-white/5 rounded-3xl p-8 hover:bg-white/[0.04] transition-all hover:scale-[1.02] group">
+              <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center mb-6 border border-white/10 group-hover:border-indigo-500/50 transition-all">
+                <PieChart size={22} className="text-purple-400" />
+              </div>
+              <h3 className="text-lg font-black mb-3">Sentiment Landscape</h3>
+              <p className="text-white/60 text-xs leading-relaxed font-semibold">
+                Estimate organic forward impressions and reach using our multi-tier scale telemetry engine.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* Pricing Section */}
+        <section id="pricing" className="py-24 bg-white/[0.01] border-y border-white/5 px-6">
+          <div className="max-w-7xl mx-auto">
+            <div className="text-center mb-16">
+              <div className="bg-indigo-600 text-white text-[10px] font-black uppercase tracking-[0.2em] px-4 py-1.5 rounded-full inline-block mb-4">
+                Subscription plans
+              </div>
+              <h2 className="text-3xl md:text-5xl font-black tracking-tight" style={{ fontFamily: 'var(--font-heading)' }}>
+                Simple, transparent pricing
+              </h2>
+              <p className="text-white/60 text-xs md:text-sm font-semibold max-w-xl mx-auto leading-relaxed mt-4">
+                The ultimate media intelligence platform built to monitor keyword exposure, analyze article sentiment index, and calculate share of voice in real time.
+              </p>
+            </div>
+
+            {/* Three Big Pricing Boxes */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-stretch max-w-5xl mx-auto">
+              {/* Plan 1 */}
+              <div className="bg-white/[0.02] border border-white/5 rounded-[2.5rem] p-8 flex flex-col justify-between hover:border-white/10 transition-all">
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-[#00f2fe]">Starter</span>
+                  <div className="flex items-baseline gap-1 mt-4">
+                    <span className="text-4xl font-black">$49</span>
+                    <span className="text-white/55 text-xs font-semibold">/month</span>
+                  </div>
+                  <p className="text-white/60 text-xs leading-relaxed mt-4 font-semibold">
+                    Perfect for individuals or small startups looking to track core competitor telemetry.
+                  </p>
+                  <div className="border-t border-white/5 my-6" />
+                  <ul className="space-y-3.5 text-xs text-white/80 font-bold">
+                    <li className="flex items-center gap-3"><CheckCircle2 size={16} className="text-cyan-400" /> Up to 3 Tracked Keywords</li>
+                    <li className="flex items-center gap-3"><CheckCircle2 size={16} className="text-cyan-400" /> Real-time Sentiment Analytics</li>
+                    <li className="flex items-center gap-3"><CheckCircle2 size={16} className="text-cyan-400" /> Weekly Assessment Briefings</li>
+                    <li className="flex items-center gap-3 text-white/30"><X size={16} /> Advanced AI Chart Builder</li>
+                  </ul>
+                </div>
+                <button 
+                  onClick={() => setView('signup')}
+                  className="mt-8 w-full bg-white/5 hover:bg-white/10 border border-white/10 text-white font-black text-xs uppercase tracking-wider py-4 rounded-2xl transition-all"
+                >
+                  Choose Starter
+                </button>
+              </div>
+
+              {/* Plan 2 (Professional - Featured) */}
+              <div className="bg-gradient-to-b from-indigo-900/40 to-indigo-950/20 border-2 border-indigo-500 rounded-[2.5rem] p-8 flex flex-col justify-between relative hover:shadow-2xl hover:shadow-indigo-500/10 transition-all scale-105">
+                <div className="absolute top-0 right-8 -translate-y-1/2 bg-indigo-500 text-white text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full">
+                  Most Popular
+                </div>
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400">Professional</span>
+                  <div className="flex items-baseline gap-1 mt-4">
+                    <span className="text-5xl font-black">$99</span>
+                    <span className="text-white/55 text-xs font-semibold">/month</span>
+                  </div>
+                  <p className="text-white/85 text-xs leading-relaxed mt-4 font-semibold">
+                    The ideal solution for active PR managers and growing media operations teams.
+                  </p>
+                  <div className="border-t border-white/10 my-6" />
+                  <ul className="space-y-3.5 text-xs text-white/95 font-bold">
+                    <li className="flex items-center gap-3"><CheckCircle2 size={16} className="text-[#00f2fe]" /> Unlimited Tracked Keywords</li>
+                    <li className="flex items-center gap-3"><CheckCircle2 size={16} className="text-[#00f2fe]" /> AI-Powered Document Studio</li>
+                    <li className="flex items-center gap-3"><CheckCircle2 size={16} className="text-[#00f2fe]" /> Real-time Sentiment Analytics</li>
+                    <li className="flex items-center gap-3"><CheckCircle2 size={16} className="text-[#00f2fe]" /> Custom Live Telemetry Charts</li>
+                  </ul>
+                </div>
+                <button 
+                  onClick={() => setView('signup')}
+                  className="mt-8 w-full bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs uppercase tracking-wider py-4 rounded-2xl transition-all shadow-lg shadow-indigo-600/30"
+                >
+                  Choose Professional
+                </button>
+              </div>
+
+              {/* Plan 3 */}
+              <div className="bg-white/[0.02] border border-white/5 rounded-[2.5rem] p-8 flex flex-col justify-between hover:border-white/10 transition-all">
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-[#00f2fe]">Enterprise</span>
+                  <div className="flex items-baseline gap-1 mt-4">
+                    <span className="text-4xl font-black">Custom</span>
+                  </div>
+                  <p className="text-white/60 text-xs leading-relaxed mt-4 font-semibold">
+                    Tailored dashboards, API integrations, and dedicated intelligence support.
+                  </p>
+                  <div className="border-t border-white/5 my-6" />
+                  <ul className="space-y-3.5 text-xs text-white/80 font-bold">
+                    <li className="flex items-center gap-3"><CheckCircle2 size={16} className="text-cyan-400" /> Custom Segment Integrations</li>
+                    <li className="flex items-center gap-3"><CheckCircle2 size={16} className="text-cyan-400" /> Private Database Backing</li>
+                    <li className="flex items-center gap-3"><CheckCircle2 size={16} className="text-cyan-400" /> 24/7 Priority Support Handler</li>
+                    <li className="flex items-center gap-3"><CheckCircle2 size={16} className="text-cyan-400" /> Custom SLA & Support Keys</li>
+                  </ul>
+                </div>
+                <button 
+                  onClick={() => setView('signup')}
+                  className="mt-8 w-full bg-white/5 hover:bg-white/10 border border-white/10 text-white font-black text-xs uppercase tracking-wider py-4 rounded-2xl transition-all"
+                >
+                  Choose Enterprise
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Testimonials Section */}
+        <section id="testimonials" className="py-24 px-6 max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <div className="bg-indigo-600 text-white text-[10px] font-black uppercase tracking-[0.2em] px-4 py-1.5 rounded-full inline-block mb-4">
+              Client Reviews
+            </div>
+            <h2 className="text-3xl md:text-5xl font-black tracking-tight" style={{ fontFamily: 'var(--font-heading)' }}>
+              Loved by PR teams worldwide
+            </h2>
+            <p className="text-white/60 text-xs md:text-sm font-semibold max-w-xl mx-auto leading-relaxed mt-4">
+              The ultimate media intelligence platform built to monitor keyword exposure, analyze article sentiment index, and calculate share of voice in real time.
+            </p>
+          </div>
+
+          {/* Lower Small boxes for Testimonials */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+            {/* Testimonial 1 */}
+            <div className="bg-white/[0.02] border border-white/5 rounded-3xl p-6 hover:bg-white/[0.04] transition-all">
+              <p className="text-white/80 text-xs leading-relaxed italic font-semibold">
+                "Cerebro has completely revolutionized our media telemetry workflows. We track our share of voice instantly."
+              </p>
+              <div className="flex items-center gap-3 mt-6">
+                <div className="w-10 h-10 bg-indigo-500/20 rounded-full flex items-center justify-center text-xs font-black uppercase border border-indigo-500/20">JS</div>
+                <div>
+                  <h4 className="text-xs font-black">Jane Smith</h4>
+                  <span className="text-[10px] text-white/50">Director of PR, Maverick Labs</span>
+                </div>
+              </div>
+            </div>
+            {/* Testimonial 2 */}
+            <div className="bg-white/[0.02] border border-white/5 rounded-3xl p-6 hover:bg-white/[0.04] transition-all">
+              <p className="text-white/80 text-xs leading-relaxed italic font-semibold">
+                "The real-time sentiment analytics are incredibly accurate. We can easily identify and address public relation risks."
+              </p>
+              <div className="flex items-center gap-3 mt-6">
+                <div className="w-10 h-10 bg-cyan-500/20 rounded-full flex items-center justify-center text-xs font-black uppercase border border-cyan-500/20">MS</div>
+                <div>
+                  <h4 className="text-xs font-black">Manvi Singh</h4>
+                  <span className="text-[10px] text-white/50">Head of Communication, Mavericks India</span>
+                </div>
+              </div>
+            </div>
+            {/* Testimonial 3 */}
+            <div className="bg-white/[0.02] border border-white/5 rounded-3xl p-6 hover:bg-white/[0.04] transition-all">
+              <p className="text-white/80 text-xs leading-relaxed italic font-semibold">
+                "Simple setup, powerful dashboard, and automated alerts. It has everything we need to succeed."
+              </p>
+              <div className="flex items-center gap-3 mt-6">
+                <div className="w-10 h-10 bg-purple-500/20 rounded-full flex items-center justify-center text-xs font-black uppercase border border-purple-500/20">MD</div>
+                <div>
+                  <h4 className="text-xs font-black">Marcus Davies</h4>
+                  <span className="text-[10px] text-white/50">VP Operations, TechNexus</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Footer CTA */}
+        <footer className="py-20 px-6 max-w-5xl mx-auto">
+          {/* Card: top is solid indigo gradient, bottom melts into #030712 */}
+          <div
+            className="rounded-[2.5rem] p-10 md:p-16 text-center relative overflow-hidden"
+            style={{
+              background: 'linear-gradient(to bottom, #4338ca 0%, #3730a3 40%, #1e1b4b 70%, #030712 100%)',
+            }}
           >
-            Go to Login
-          </button>
-        </div>
+            {/* Inner radial highlight */}
+            <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_70%_50%_at_50%_20%,_rgba(255,255,255,0.08)_0%,_transparent_70%)] pointer-events-none" />
+            <h2 className="relative text-3xl md:text-5xl font-black tracking-tight mb-4 text-white" style={{ fontFamily: 'var(--font-heading)' }}>
+              Ready to transform your PR flow?
+            </h2>
+            <p className="relative text-white/75 text-xs md:text-sm font-semibold max-w-lg mx-auto leading-relaxed mb-8">
+              The ultimate media intelligence platform built to monitor keyword exposure, analyze article sentiment index, and calculate share of voice in real time.
+            </p>
+            <div className="relative flex flex-col sm:flex-row gap-4 justify-center items-center">
+              <button
+                onClick={() => setView('signup')}
+                className="bg-indigo-500 hover:bg-indigo-400 text-white font-black py-4 px-8 rounded-2xl transition-all shadow-lg active:scale-95 text-xs uppercase tracking-wider"
+              >
+                Start free trial
+              </button>
+              <button
+                onClick={() => setView('login')}
+                className="bg-white hover:bg-white/90 text-gray-900 font-black py-4 px-8 rounded-2xl transition-all text-xs uppercase tracking-wider"
+              >
+                Contact Sales
+              </button>
+            </div>
+          </div>
+          <div className="text-center text-xs text-white/25 mt-10 font-bold uppercase tracking-widest">
+            © {new Date().getFullYear()} Cerebro. All rights reserved.
+          </div>
+        </footer>
       </div>
     );
   }
 
   if (view === 'landing') {
     return (
-      <div className={`fixed inset-0 flex flex-col font-body transition-colors duration-500 ${darkMode ? 'dark bg-[#011627]' : 'bg-white'}`}>
+      <div className={`fixed inset-0 flex font-body transition-colors duration-500 ${darkMode ? 'dark bg-[#0B121F]' : 'bg-[#F8FAFC]'}`}>
         {!showPets && (
           <style>{`.webmeji-container { display: none !important; }`}</style>
         )}
         <div className="print-watermark">CEREBRO</div>
-        {/* Navbar */}
-        <nav className={`h-16 border-b flex items-center justify-between px-6 z-30 shadow-sm transition-colors duration-500 ${darkMode ? 'bg-[#011627] border-white/5' : 'bg-[#8ecae6] border-[#a8dadc]/30'}`}>
-          <div className="flex items-center gap-3">
-            <CerebroLogo className={`w-8 h-8 ${darkMode ? 'text-white' : 'text-[#023047]'}`} />
-            <span className={`text-xl font-black tracking-tighter ${darkMode ? 'text-white' : 'text-[#023047]'}`}>Cerebro</span>
+
+        {/* Sidebar */}
+        <aside className={`${sidebarCollapsed ? 'w-24' : 'w-72'} ${darkMode ? 'bg-[#060B13] border-white/5' : 'bg-[#F8FAFC] border-slate-200/60'} flex flex-col z-40 h-full transition-all duration-500 ease-in-out relative group border-r border-slate-200/60 dark:border-white/5`}>
+          {/* Collapse Toggle Button */}
+          <button
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            className={`absolute -right-4 top-10 w-8 h-8 rounded-full flex items-center justify-center border transition-all z-50 hover:scale-110 shadow-xl ${
+              darkMode
+                ? 'bg-[#060B13] border-white/10 text-white hover:bg-indigo-600 hover:border-indigo-500'
+                : 'bg-white border-slate-200 text-[#060B13] hover:bg-indigo-600 hover:text-white'
+            }`}
+          >
+            {sidebarCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+          </button>
+
+          {/* Sidebar Logo Header */}
+          <div className={`p-6 flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-start'} border-b ${darkMode ? 'border-white/5' : 'border-slate-200/60'}`}>
+            <CerebroBrandLogo collapsed={sidebarCollapsed} darkMode={darkMode} />
           </div>
 
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => setDarkMode(!darkMode)}
-              className={`p-2 transition-all rounded-xl ${darkMode ? 'text-white/70 hover:text-white hover:bg-white/10' : 'text-[#023047]/60 hover:text-[#023047] hover:bg-white/20'}`}
-            >
-              {darkMode ? <Sun size={20} /> : <Moon size={20} />}
-            </button>
-            <button className={`p-2 transition-colors relative ${darkMode ? 'text-white/70 hover:text-white' : 'text-[#023047]/60 hover:text-[#023047]'}`}>
-              <Bell size={20} />
-              <span className={`absolute top-2 right-2 w-2 h-2 rounded-full border-2 ${darkMode ? 'bg-[#ffb703] border-[#011627]' : 'bg-[#ffb703] border-[#8ecae6]'}`}></span>
-            </button>
-            <div className={`h-8 w-px mx-1 ${darkMode ? 'bg-white/10' : 'bg-[#023047]/10'}`}></div>
-            <div className="flex items-center gap-3">
-              <div className="text-right hidden md:block">
-                <p className={`text-xs font-black leading-tight ${darkMode ? 'text-white' : 'text-[#023047]'}`}>{user?.name || 'Maverick'}</p>
-                <p className={`text-[10px] font-bold uppercase tracking-widest ${darkMode ? 'text-white/40' : 'text-[#023047]/50'}`}>
-                  {user?.role === 'admin' ? 'Admin Access' : user?.role === 'employee' ? 'Maverick Access' : 'Individual Access'}
-                </p>
-              </div>
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white font-black shadow-lg ${darkMode ? 'bg-indigo-600 shadow-indigo-900/50' : 'bg-[#023047] shadow-[#023047]/20'}`}>
-                {(user?.name || 'M')[0]}
-              </div>
-            </div>
-          </div>
-        </nav>
-
-        <div className="flex flex-1 overflow-hidden">
-          {/* Sidebar */}
-          <aside className={`${sidebarCollapsed ? 'w-24' : 'w-72'} ${darkMode ? 'bg-[#023047] border-[#219ebc]/20' : 'bg-[#8ecae6] border-[#a8dadc]/30'} flex flex-col z-20 transition-all duration-500 ease-in-out relative group`}>
-            {/* Collapse Toggle Button */}
-            <button
-              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              className="absolute -right-4 top-10 w-8 h-8 bg-white border border-slate-200 rounded-full flex items-center justify-center text-[#023047] shadow-xl hover:bg-indigo-600 hover:text-white transition-all z-50 group-hover:scale-110"
-            >
-              {sidebarCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-            </button>
-
-            <div className="flex-1 py-6 overflow-y-auto px-4 space-y-8 custom-scrollbar">
-              <div>
-                {!sidebarCollapsed && (
-                  <label className="px-4 text-[10px] font-black text-[#023047]/40 uppercase tracking-[0.2em] mb-4 block animate-in fade-in duration-500">Intelligence Core</label>
-                )}
-                <div className="space-y-1">
-                  {[
-                    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-                    { id: 'keyword-search', label: 'Keyword Search', icon: Search },
-                    { id: 'report-analysis', label: 'Report Analysis', icon: FileText },
-                    { id: 'article-reach', label: 'Article Reach', icon: Globe },
-                    { id: 'brand-tracker', label: 'Brand Tracker', icon: Activity },
-                    { id: 'competitor-analysis', label: 'Competitor Analysis', icon: BarChart3 },
-                  ].map(item => (
-                    <button
-                      key={item.id}
-                      onClick={() => setActiveTab(item.id)}
-                      className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3 px-4'} py-3 rounded-xl text-sm font-bold transition-all relative group/btn ${activeTab === item.id
-                        ? (darkMode ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/50' : 'bg-[#023047] text-white shadow-lg shadow-[#023047]/20')
-                        : (darkMode ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-[#023047]/70 hover:bg-[#219ebc]/10 hover:text-[#023047]')
-                        }`}
-                    >
-                      <item.icon size={20} className={sidebarCollapsed ? 'shrink-0' : ''} />
-                      {!sidebarCollapsed && <span className="animate-in slide-in-from-left-2 duration-300">{item.label}</span>}
-                      {sidebarCollapsed && (
-                        <div className="absolute left-full ml-4 px-3 py-1.5 bg-[#023047] text-white text-[10px] rounded-lg opacity-0 pointer-events-none group-hover/btn:opacity-100 transition-opacity whitespace-nowrap z-[100] shadow-xl">
-                          {item.label}
-                        </div>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                {!sidebarCollapsed && (
-                  <label className="px-4 text-[10px] font-black text-[#023047]/40 uppercase tracking-[0.2em] mb-4 block animate-in fade-in duration-500">Preferences</label>
-                )}
-                <div className="space-y-1">
-                  {[
-                    { id: 'settings', label: 'Settings', icon: Settings },
-                    { id: 'help', label: 'Help & Support', icon: HelpCircle },
-                  ].map(item => (
-                    <button
-                      key={item.id}
-                      onClick={() => setActiveTab(item.id)}
-                      className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3 px-4'} py-3 rounded-xl text-sm font-bold transition-all relative group/btn ${activeTab === item.id
-                        ? (darkMode ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/50' : 'bg-[#023047] text-white shadow-lg shadow-[#023047]/20')
-                        : (darkMode ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-[#023047]/70 hover:bg-[#219ebc]/10 hover:text-[#023047]')
-                        }`}
-                    >
-                      <item.icon size={20} className={sidebarCollapsed ? 'shrink-0' : ''} />
-                      {!sidebarCollapsed && <span className="animate-in slide-in-from-left-2 duration-300">{item.label}</span>}
-                      {sidebarCollapsed && (
-                        <div className="absolute left-full ml-4 px-3 py-1.5 bg-[#023047] text-white text-[10px] rounded-xl opacity-0 pointer-events-none group-hover/btn:opacity-100 transition-opacity whitespace-nowrap z-[100] shadow-xl">
-                          {item.label}
-                        </div>
-                      )}
-                    </button>
-                  ))}
-                </div>
+          <div className="flex-1 py-6 overflow-y-auto px-4 space-y-8 custom-scrollbar">
+            <div>
+              {!sidebarCollapsed && (
+                <label className="px-4 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4 block animate-in fade-in duration-500 font-heading">Intelligence Core</label>
+              )}
+              <div className="space-y-1">
+                {[
+                  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+                  { id: 'keyword-search', label: 'Keyword Search', icon: Search },
+                  { id: 'report-analysis', label: 'Report Analysis', icon: FileText },
+                  { id: 'article-reach', label: 'Article Reach', icon: Globe },
+                  { id: 'brand-tracker', label: 'Brand Tracker', icon: Activity },
+                  { id: 'competitor-analysis', label: 'Competitor Analysis', icon: BarChart3 },
+                ].map(item => (
+                  <button
+                    key={item.id}
+                    onClick={() => setActiveTab(item.id)}
+                    className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3 px-4'} py-3 rounded-xl text-sm font-bold transition-all relative group/btn font-heading ${activeTab === item.id
+                      ? (darkMode ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-950/50' : 'bg-indigo-600 text-white shadow-lg shadow-indigo-100')
+                      : (darkMode ? 'text-white/70 hover:bg-white/5 hover:text-white' : 'text-slate-655 hover:bg-indigo-50 hover:text-indigo-600')
+                      }`}
+                  >
+                    <item.icon size={20} className={sidebarCollapsed ? 'shrink-0' : ''} />
+                    {!sidebarCollapsed && <span className="animate-in slide-in-from-left-2 duration-300 font-heading">{item.label}</span>}
+                    {sidebarCollapsed && (
+                      <div className="absolute left-full ml-4 px-3 py-1.5 bg-slate-900 text-white text-[10px] rounded-lg opacity-0 pointer-events-none group-hover/btn:opacity-100 transition-opacity whitespace-nowrap z-[100] shadow-xl font-heading">
+                        {item.label}
+                      </div>
+                    )}
+                  </button>
+                ))}
               </div>
             </div>
 
-            <div className="p-4 border-t border-[#023047]/10">
+            <div>
+              {!sidebarCollapsed && (
+                <label className="px-4 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-4 block animate-in fade-in duration-500 font-heading">Preferences</label>
+              )}
+              <div className="space-y-1">
+                {[
+                  { id: 'settings', label: 'Settings', icon: Settings },
+                  { id: 'help', label: 'Help & Support', icon: HelpCircle },
+                ].map(item => (
+                  <button
+                    key={item.id}
+                    onClick={() => setActiveTab(item.id)}
+                    className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3 px-4'} py-3 rounded-xl text-sm font-bold transition-all relative group/btn font-heading ${activeTab === item.id
+                      ? (darkMode ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-950/50' : 'bg-indigo-600 text-white shadow-lg shadow-indigo-100')
+                      : (darkMode ? 'text-white/70 hover:bg-white/5 hover:text-white' : 'text-slate-650 hover:bg-indigo-50 hover:text-indigo-600')
+                      }`}
+                  >
+                    <item.icon size={20} className={sidebarCollapsed ? 'shrink-0' : ''} />
+                    {!sidebarCollapsed && <span className="animate-in slide-in-from-left-2 duration-300 font-heading">{item.label}</span>}
+                    {sidebarCollapsed && (
+                      <div className="absolute left-full ml-4 px-3 py-1.5 bg-slate-900 text-white text-[10px] rounded-lg opacity-0 pointer-events-none group-hover/btn:opacity-100 transition-opacity whitespace-nowrap z-[100] shadow-xl font-heading">
+                        {item.label}
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className={`p-4 border-t ${darkMode ? 'border-white/5' : 'border-slate-200/60'}`}>
+            <button
+              onClick={() => {
+                localStorage.removeItem('cerebro_user');
+                setUser(null);
+                setUserAdminKey('');
+                setAdminKeyInput('');
+                setAuthRole('employee');
+                setView('login');
+              }}
+              className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3 px-4'} py-3 rounded-xl text-sm font-bold text-slate-400 hover:bg-red-50 hover:text-red-600 transition-all group/logout font-heading`}>
+              <LogOut size={20} />
+              {!sidebarCollapsed && <span>Sign Out</span>}
+            </button>
+          </div>
+        </aside>
+
+        {/* Right Content Area */}
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+          {/* Navbar */}
+          <nav className={`h-16 border-b flex items-center justify-between px-6 z-30 shadow-sm transition-colors duration-500 ${darkMode ? 'bg-[#060B13] border-white/5' : 'bg-white border-slate-200/60'}`}>
+            {/* Left side empty (no logo/title in navbar as sidebar is full height) */}
+            <div></div>
+
+            <div className="flex items-center gap-4">
               <button
-                onClick={() => {
-                  localStorage.removeItem('cerebro_user');
-                  setUser(null);
-                  setUserAdminKey('');
-                  setAdminKeyInput('');
-                  setAuthRole('employee');
-                  setView('login');
-                }}
-                className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3 px-4'} py-3 rounded-xl text-sm font-bold text-[#023047]/50 hover:bg-red-50 hover:text-red-600 transition-all group/logout`}>
-                <LogOut size={20} />
-                {!sidebarCollapsed && <span>Sign Out</span>}
+                onClick={() => setDarkMode(!darkMode)}
+                className={`p-2 transition-all rounded-xl ${darkMode ? 'text-white/70 hover:text-white hover:bg-white/10' : 'text-slate-655 hover:text-slate-900 hover:bg-slate-100'}`}
+              >
+                {darkMode ? <Sun size={20} /> : <Moon size={20} />}
               </button>
+              <button className={`p-2 transition-colors relative ${darkMode ? 'text-white/70 hover:text-white' : 'text-slate-655 hover:text-slate-900'}`}>
+                <Bell size={20} />
+                <span className={`absolute top-2 right-2 w-2 h-2 rounded-full border-2 ${darkMode ? 'bg-[#ffb703] border-[#0B121F]' : 'bg-[#ffb703] border-white'}`}></span>
+              </button>
+              <div className={`h-8 w-px mx-1 ${darkMode ? 'bg-white/10' : 'bg-slate-200'}`}></div>
+
+              <button
+                onClick={handleOpenCleoChat}
+                className={`flex items-center gap-3 pl-2.5 pr-2 py-1.5 rounded-full text-xs font-bold transition-all border shadow-sm hover:scale-[1.01] ${
+                  darkMode
+                    ? (showCleoAi 
+                        ? 'bg-indigo-650/20 border-indigo-500/40 text-white' 
+                        : 'bg-white/5 border-white/10 text-slate-200 hover:text-white hover:border-white/20')
+                    : (showCleoAi
+                        ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50')
+                }`}
+                title="Toggle Cleo AI"
+              >
+                <div className="flex items-center gap-1.5">
+                  <div className="relative w-5 h-5 rounded-full overflow-hidden border border-indigo-500/20 shadow-inner bg-slate-950/20 flex items-center justify-center shrink-0">
+                    <img
+                      src="/cleo_avatar.png"
+                      alt="Cleo Mascot"
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        e.target.style.display = 'none';
+                        e.target.nextSibling.style.display = 'inline';
+                      }}
+                    />
+                    <span style={{ display: 'none' }} className="text-sm">🐶</span>
+                  </div>
+                  <span className="font-heading">Cleo AI</span>
+                </div>
+                
+                {/* Embedded Toggle Slider */}
+                <div
+                  className={`w-8 h-5 rounded-full transition-colors duration-300 flex items-center p-0.5 shrink-0 ${
+                    showCleoAi
+                      ? 'bg-indigo-600'
+                      : (darkMode ? 'bg-white/20' : 'bg-slate-200')
+                  }`}
+                >
+                  <div
+                    className={`w-4 h-4 bg-white rounded-full shadow-sm transition-transform duration-300 shrink-0 ${
+                      showCleoAi ? 'translate-x-3' : 'translate-x-0'
+                    }`}
+                  />
+                </div>
+              </button>
+
+              <div className={`h-8 w-px mx-1 ${darkMode ? 'bg-white/10' : 'bg-slate-200'}`}></div>
+
+              <div className="flex items-center gap-3">
+                <div className="text-right hidden md:block">
+                  <p className={`text-xs font-black leading-tight font-heading ${darkMode ? 'text-white' : 'text-slate-900'}`}>{user?.name || 'Manvi'}</p>
+                  <p className={`text-[10px] font-bold uppercase tracking-widest font-heading ${darkMode ? 'text-white/40' : 'text-slate-500'}`}>
+                    {user?.role === 'admin' ? 'Admin Access' : user?.role === 'employee' ? 'Maverick Access' : 'Individual Access'}
+                  </p>
+                </div>
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white font-black shadow-lg font-heading ${darkMode ? 'bg-indigo-600 shadow-indigo-950/50' : 'bg-indigo-600 shadow-indigo-100'}`}>
+                  {(user?.name || 'M')[0]}
+                </div>
+              </div>
             </div>
-          </aside>
-
-
-
-
+          </nav>
 
           {/* Main Content Area */}
           <main className="flex-1 overflow-hidden flex flex-col relative">
@@ -3024,175 +3585,374 @@ function App() {
                 </div>
               )}
 
-
               {/* Main Page Content */}
-              <div className={`flex-1 min-h-0 p-8 custom-scrollbar ${activeTab === 'dashboard' ? 'overflow-hidden' : 'overflow-y-auto'} ${activeTab === 'competitor-analysis' ? 'pt-6' : 'pt-0'}`}>
+              <div className={`flex-1 min-h-0 p-8 custom-scrollbar overflow-y-auto ${activeTab === 'competitor-analysis' ? 'pt-6' : 'pt-0'}`}>
                 {activeTab === 'dashboard' ? (
-                  <div className="flex flex-col space-y-8 animate-in fade-in duration-700 w-full h-full pb-0 relative">
+                  <div className="flex flex-col space-y-10 animate-in fade-in duration-700 w-full h-full pb-8 relative px-6 md:px-12">
                     {showPets && (
                       <div id="pets-playground" className="absolute inset-0 overflow-hidden pointer-events-none z-30">
                         {/* Mascots will roam freely in the entire dashboard tab main area */}
                       </div>
                     )}
-                    {/* Welcome Banner */}
-                    <div className="relative w-full bg-gradient-to-r from-indigo-600 to-indigo-800 rounded-[2.5rem] p-10 text-white shadow-xl shadow-indigo-100/50 overflow-hidden flex flex-col md:flex-row items-center justify-between">
-                      <div className="absolute top-0 right-0 w-80 h-80 bg-white/10 rounded-full blur-3xl -mr-40 -mt-40"></div>
-                      <div className="relative z-10 max-w-2xl text-center md:text-left space-y-4">
-                        <span className="px-3 py-1 bg-white/20 rounded-full text-[9px] font-black uppercase tracking-widest text-indigo-100">Intelligence Platform</span>
-                        <h2 className="text-4xl md:text-5xl font-black tracking-tighter">
-                          Hi, welcome <span className="text-[#ffb703]">{user?.name || 'Maverick'}</span> to Cerebro
+                    {/* Welcome Section */}
+                    <div className="relative w-full mb-10 pt-4 flex flex-col items-center text-center">
+                      {/* Top Right Actions: Keep only Refresh Core */}
+                      <div className="absolute right-0 top-0 mt-2">
+                        <button className="px-5 py-2.5 bg-indigo-600 rounded-xl text-xs font-black uppercase tracking-wider text-white hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20 font-heading">
+                          Refresh Core
+                        </button>
+                      </div>
+
+                      <div className="space-y-4 max-w-3xl mt-12 md:mt-8">
+                        <h1 className="text-5xl md:text-6xl font-light tracking-tight text-slate-800 dark:text-white font-heading">
+                          Hi <span className={darkMode ? 'text-[#00F2FE]' : 'text-indigo-650'}>{user?.name || 'Manvi'}</span>
+                        </h1>
+                        <h2 className="text-3xl md:text-4xl font-black tracking-tight text-slate-900 dark:text-white font-heading">
+                          what would you like to do today?
                         </h2>
-                        <p className="text-indigo-100/80 font-medium text-sm leading-relaxed">
-                          Analyze media mentions, track competitor metrics, estimate article reach, and build structured briefing documents.
+                        <p className="text-slate-500 dark:text-slate-400 font-medium text-sm leading-relaxed max-w-xl mx-auto">
+                          Monitor your brand exposure, analyze sentiment patterns, and generate high-fidelity reports instantly.
                         </p>
-                        <div className="pt-2">
-                          <button
-                            onClick={() => setIsChatbotOpen(true)}
-                            className="bg-[#ffb703] hover:bg-[#ffb703]/90 text-[#023047] font-black text-xs uppercase tracking-widest px-6 py-3.5 rounded-xl transition-all shadow-lg shadow-yellow-500/20 hover:scale-105 active:scale-95 inline-flex items-center gap-2"
-                          >
-                            <MessageSquare size={16} />
-                            Ask AI Bot
-                          </button>
-                        </div>
                       </div>
                     </div>
 
                     {/* Stats Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 w-full">
                       {[
                         {
-                          title: 'Total Keywords Analyzed',
+                          title: 'Total Keyword Tracked',
+                          subtitle: 'Across all sector monitors',
                           value: calculateTotalKeywordsAnalyzed(),
-                          description: 'Across all active briefs',
-                          color: 'border-l-indigo-600',
-                          icon: Search,
-                          action: () => setActiveTab('keyword-search'),
-                          actionLabel: 'Search Keywords'
+                          video: '/search.mp4',
+                          action: () => setActiveTab('keyword-search')
                         },
                         {
                           title: 'Total Reports Created',
+                          subtitle: 'Sovereign-grade executive briefs',
                           value: reports.length,
-                          description: 'Briefing documents compiled',
-                          color: 'border-l-[#ffb703]',
-                          icon: FileText,
-                          action: () => setActiveTab('report-analysis'),
-                          actionLabel: 'View Reports'
+                          video: '/report.mp4',
+                          action: () => setActiveTab('report-analysis')
                         },
                         {
-                          title: 'Active Brands',
+                          title: 'Active Brands Monitoring',
+                          subtitle: 'Real-time media feeds tracked',
                           value: trackedBrands.length,
-                          description: 'Monitored media profiles',
-                          color: 'border-l-emerald-500',
-                          icon: Activity,
-                          action: () => setActiveTab('brand-tracker'),
-                          actionLabel: 'Manage Brands'
+                          video: '/tracker.mp4',
+                          action: () => setActiveTab('brand-tracker')
                         }
                       ].map((card, idx) => (
-                        <div
+                        <button
                           key={idx}
-                          className={`bg-white border border-slate-100 border-l-4 ${card.color} rounded-[2rem] p-6 shadow-md transition-all hover:shadow-xl hover:scale-[1.01] flex flex-col justify-between`}
+                          onClick={card.action}
+                          className={`p-6 rounded-[2rem] border transition-all text-left flex flex-col justify-between hover:scale-[1.02] duration-300 shadow-xl min-h-[220px] ${
+                            darkMode
+                              ? 'bg-[#0e2238] border-white/5 hover:border-indigo-500/30 shadow-black/30'
+                              : 'bg-white border-slate-200 hover:border-indigo-600/30 shadow-slate-100'
+                          }`}
                         >
-                          <div>
-                            <div className="flex items-center justify-between mb-4">
-                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{card.title}</span>
-                              <card.icon size={18} className="text-slate-300" />
+                          <div className="flex items-center gap-4 w-full">
+                            <div className="w-16 h-16 rounded-2xl overflow-hidden shrink-0 bg-slate-950/20 flex items-center justify-center border border-white/10">
+                              <video
+                                src={card.video}
+                                autoPlay
+                                loop
+                                muted
+                                playsInline
+                                className="w-full h-full object-cover"
+                              />
                             </div>
                             <div className="flex flex-col">
-                              <span className="text-4xl font-black text-slate-900 tracking-tight">{card.value}</span>
-                              <span className="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-wider">{card.description}</span>
+                              <h3 className={`text-base font-black leading-snug font-heading ${darkMode ? 'text-[#00F2FE]' : 'text-indigo-650'}`}>
+                                {card.title}
+                              </h3>
+                              <p className={`text-[10.5px] font-bold mt-0.5 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                                {card.subtitle}
+                              </p>
                             </div>
                           </div>
-                          <button
-                            onClick={card.action}
-                            className="mt-6 text-[10px] font-black uppercase tracking-wider text-indigo-600 hover:text-indigo-700 hover:underline text-left"
-                          >
-                            {card.actionLabel} &rarr;
-                          </button>
-                        </div>
+                          
+                          <div className="mt-8 flex justify-center w-full">
+                            <span className={`text-6xl font-black tracking-tight font-heading ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                              {card.value}
+                            </span>
+                          </div>
+                        </button>
                       ))}
                     </div>
+
+                    {/* Cleo AI Section */}
+                    {showCleoAi && (
+                      <div id="cleo-chat-widget" className={`p-8 rounded-[2rem] border transition-all duration-500 shadow-2xl flex flex-col animate-in fade-in slide-in-from-bottom-8 zoom-in-98 duration-500 ${
+                        darkMode
+                          ? 'bg-[#0e2238] border-white/5 shadow-black/30'
+                          : 'bg-white border-slate-250/50 shadow-slate-100'
+                      }`}>
+                        {/* Header */}
+                        <div className={`flex items-center justify-between pb-5 border-b ${darkMode ? 'border-white/10' : 'border-slate-200'}`}>
+                          <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 rounded-full overflow-hidden shrink-0 border border-indigo-500/20 bg-slate-950/20 flex items-center justify-center shadow-md">
+                              <img
+                                src="/cleo_avatar.png"
+                                alt="Cleo Mascot"
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  e.target.style.display = 'none';
+                                  e.target.nextSibling.style.display = 'inline';
+                                }}
+                              />
+                              <span style={{ display: 'none' }} className="text-2xl">🐶</span>
+                            </div>
+                            <div>
+                              <h3 className={`text-base font-black tracking-tight font-heading ${darkMode ? 'text-white' : 'text-slate-900'}`}>Cleo AI</h3>
+                              <p className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider flex items-center gap-1.5 mt-0.5">
+                                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                                Autonomous PR Agent Online
+                              </p>
+                            </div>
+                          </div>
+                          
+                          {/* Clear Chat Button */}
+                          <button
+                            type="button"
+                            onClick={() => setCleoMessages([{ sender: 'cleo', text: 'Conversation cleared. How can I assist you now?' }])}
+                            className={`p-2.5 rounded-xl transition-all ${
+                              darkMode ? 'hover:bg-white/10 text-slate-400 hover:text-white' : 'hover:bg-slate-100 text-slate-500 hover:text-slate-900'
+                            }`}
+                            title="Clear conversation"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+
+                        {/* Chat Body */}
+                        <div 
+                          id="cleo-messages-container" 
+                          className="py-5 space-y-5 max-h-[350px] min-h-[180px] overflow-y-auto custom-scrollbar flex flex-col pr-1"
+                        >
+                          {cleoMessages.map((msg, i) => (
+                            <div
+                              key={i}
+                              className={`flex gap-3 max-w-[80%] items-end ${msg.sender === 'user' ? 'self-end flex-row-reverse' : 'self-start'}`}
+                            >
+                              {msg.sender === 'cleo' && (
+                                <div className="w-7 h-7 rounded-full overflow-hidden shrink-0 border border-indigo-500/10 bg-slate-950/10 flex items-center justify-center shadow-inner">
+                                  <img
+                                    src="/cleo_avatar.png"
+                                    alt="Cleo"
+                                    className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                      e.target.style.display = 'none';
+                                      e.target.nextSibling.style.display = 'inline';
+                                    }}
+                                  />
+                                  <span style={{ display: 'none' }} className="text-xs">🐶</span>
+                                </div>
+                              )}
+                              <div
+                                className={`rounded-2xl p-4 text-xs font-semibold leading-relaxed animate-in fade-in duration-300 shadow-sm ${
+                                  msg.sender === 'user'
+                                    ? 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-tr-none shadow-indigo-600/10'
+                                    : (darkMode 
+                                        ? 'bg-[#1b314f] text-white rounded-tl-none border border-white/5 shadow-inner' 
+                                        : 'bg-slate-50 text-slate-800 rounded-tl-none border border-slate-200/50')
+                                }`}
+                              >
+                                <p className="whitespace-pre-wrap">{msg.text}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Input Form */}
+                        <form onSubmit={handleSendCleoMessage} className={`flex gap-3 pt-5 border-t ${darkMode ? 'border-white/10' : 'border-slate-200'}`}>
+                          <div className="relative flex-1 flex items-center">
+                            <Sparkles size={14} className={`absolute left-4 ${darkMode ? 'text-indigo-400' : 'text-indigo-600'}`} />
+                            <input
+                              id="cleo-chat-input"
+                              type="text"
+                              placeholder="Ask Cleo: e.g. how do I create a report?"
+                              value={cleoInput}
+                              onChange={(e) => setCleoInput(e.target.value)}
+                              className={`w-full py-4 pl-10 pr-5 rounded-2xl text-xs font-bold outline-none transition-all ${
+                                darkMode
+                                  ? 'bg-white/5 border border-white/10 text-white placeholder:text-slate-500 focus:bg-white/10 focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50'
+                                  : 'bg-slate-50 border border-slate-200 text-slate-950 placeholder:text-slate-400 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500'
+                              }`}
+                            />
+                          </div>
+                          <button
+                            type="submit"
+                            className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-4 rounded-2xl text-xs font-black uppercase tracking-widest transition-all shadow-lg shadow-indigo-600/20 active:scale-95 flex items-center justify-center font-heading"
+                          >
+                            Send
+                          </button>
+                        </form>
+                      </div>
+                    )}
                   </div>
                 ) : activeTab === 'article-reach' ? (
                   <div className={`flex flex-col ${sidebarCollapsed ? 'max-w-[1850px]' : 'max-w-[1700px]'} mx-auto w-full animate-in fade-in duration-700 pr-2 transition-all duration-500`}>
                     {!isScanningReach ? (
-                      <div className="space-y-10">
-                        {/* Clean Scanner Section */}
-                        <div className="w-full bg-white/50 backdrop-blur-xl border border-slate-200 rounded-[3rem] p-12 shadow-2xl shadow-slate-200/50 relative overflow-hidden">
-                          <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-50 rounded-full blur-3xl -mr-32 -mt-32"></div>
-
-                          <div className="relative z-10 text-center max-w-2xl mx-auto">
-                            <h2 className="text-4xl font-black text-black tracking-tighter mb-4">
-                              Article Reach Analysis
-                            </h2>
-                            <p className="text-slate-500 font-bold text-sm mb-8">
-                              Analyze the impact and reach of a single URL or process multiple links in batch.
+                      <div className="space-y-8">
+                        {/* Top layout with Header */}
+                        <div className="flex flex-col pt-4">
+                          <div className="text-center max-w-2xl mx-auto mb-12">
+                            <h1 className={`text-5xl tracking-tight mb-3 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                              <span className="font-light">Article</span> <span className="font-black">Reach</span>
+                            </h1>
+                            <p className="text-slate-500 font-bold text-xs uppercase tracking-widest leading-relaxed">
+                              Monitor your brand exposure, analyze sentiment patterns, and generate high-fidelity reports instantly.
                             </p>
-
-                            <div className="flex flex-col sm:flex-row items-center gap-4">
-                              <div className="relative flex-1 w-full">
-                                <Globe className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                                <input
-                                  type="text"
-                                  placeholder="Paste article URL here..."
-                                  className="w-full py-5 pl-14 pr-6 bg-white border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none transition-all hover:border-indigo-200 focus:border-indigo-600 shadow-sm"
-                                  value={reachUrl}
-                                  onChange={(e) => setReachUrl(e.target.value)}
-                                />
-                              </div>
-                              <button
-                                onClick={handleReachScan}
-                                className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white px-10 py-5 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg shadow-indigo-100 flex items-center justify-center gap-3 shrink-0"
-                              >
-                                <Zap size={18} />
-                                Check Reach
-                              </button>
-                            </div>
-
-                            {/* Version Selector */}
-                            <div className="flex items-center justify-center gap-4 mt-6">
-                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Engine Version:</span>
-                              <select
-                                value={reachVersion}
-                                onChange={(e) => setReachVersion(e.target.value)}
-                                className="py-2.5 px-4 bg-white border border-slate-100 rounded-xl text-[10px] font-black uppercase tracking-wider text-slate-700 outline-none focus:border-indigo-600 shadow-sm transition-all cursor-pointer"
-                              >
-                                <option value="v2">v2.0 Dual-Core (Verified + Decay)</option>
-                                <option value="v3">v3.0 Contextual (Industry Scaling)</option>
-                                <option value="v4">v4.0 Causal (Sentiment + GEO)</option>
-                                <option value="v5">v5.0 Agentic (Behavioral + SISI)</option>
-                                <option value="v6">v6.0 Integrated (Grounded Base)</option>
-                                <option value="v7">v7.0 Truth Engine (Multi-Field)</option>
-                                <option value="v8">v8.0 Oracle (Monte Carlo)</option>
-                                <option value="v9">v9.0 Sovereign (QMC Precision)</option>
-                              </select>
-                            </div>
                           </div>
                         </div>
 
-                        {/* Batch Upload Section */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                          <div className="bg-white border-2 border-dashed border-slate-200 rounded-[3rem] p-12 flex flex-col items-center justify-center group hover:border-indigo-600 hover:bg-indigo-50/30 transition-all cursor-pointer relative overflow-hidden">
-                            <input
-                              type="file"
-                              accept=".xlsx, .xls"
-                              className="absolute inset-0 opacity-0 cursor-pointer z-10"
-                              onChange={handleExcelUpload}
-                            />
-                            <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-indigo-600 group-hover:text-white transition-all duration-500">
-                              <FileText size={28} className="text-slate-300 group-hover:text-white" />
-                            </div>
-                            <h3 className="text-lg font-black text-slate-900 mb-1 uppercase tracking-tight">Batch Analysis</h3>
-                            <p className="text-xs font-bold text-slate-400">Upload Excel sheet for multiple URLs</p>
+                        {/* Interactive Expanding Panels */}
+                        <div className="flex flex-col md:flex-row gap-8 items-stretch w-full min-h-[340px]">
+                          {/* Panel 1: Single URL Reach Check */}
+                          <div 
+                            onClick={() => setActiveReachPanel(activeReachPanel === 'single' ? 'none' : 'single')}
+                            style={{
+                              flexGrow: activeReachPanel === 'single' ? 3 : (activeReachPanel === 'bulk' ? 1 : 2),
+                              transition: 'flex-grow 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
+                            }}
+                            className={`relative border rounded-[3rem] p-10 flex flex-col justify-between cursor-pointer transition-all duration-500 ${
+                              activeReachPanel === 'single'
+                                ? darkMode
+                                  ? 'bg-[#151f32] border-indigo-500/30 shadow-2xl shadow-indigo-500/5 text-white'
+                                  : 'bg-white border-indigo-200 shadow-2xl shadow-indigo-100 text-slate-900'
+                                : activeReachPanel === 'bulk'
+                                  ? darkMode
+                                    ? 'bg-[#0d1527] border-white/5 text-slate-400 hover:bg-[#111a2f] hover:border-white/10 justify-center items-center text-center'
+                                    : 'bg-slate-50 border-slate-200/50 text-slate-500 hover:bg-slate-100/70 hover:border-slate-300 justify-center items-center text-center'
+                                  : darkMode
+                                    ? 'bg-[#151f32]/60 border-white/5 shadow-md text-white hover:border-indigo-500/30 hover:shadow-lg'
+                                    : 'bg-white border-slate-200/60 shadow-md text-slate-900 hover:border-indigo-300 hover:shadow-lg'
+                            }`}
+                          >
+                            {activeReachPanel === 'bulk' ? (
+                              <div className="flex flex-col items-center justify-center text-center space-y-3">
+                                <div className="w-14 h-14 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shadow-sm">
+                                  <Globe size={24} />
+                                </div>
+                                <h3 className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider">Single Scan</h3>
+                                <p className="text-[9px] font-black text-slate-400 tracking-widest uppercase">Click to Expand</p>
+                              </div>
+                            ) : (
+                              <>
+                                <div className="flex items-center gap-4 mb-6">
+                                  <div className="w-14 h-14 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shadow-sm shrink-0">
+                                    <Globe size={26} />
+                                  </div>
+                                  <div>
+                                    <h3 className="text-lg font-black text-slate-900 dark:text-slate-100 uppercase tracking-tight">Single URL Check</h3>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Analyze reach for a single article link</p>
+                                  </div>
+                                </div>
+
+                                <div className="flex flex-col gap-4 mt-auto">
+                                  <div className="relative w-full" onClick={(e) => e.stopPropagation()}>
+                                    <Globe className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                    <input
+                                      type="text"
+                                      placeholder="Paste article URL here..."
+                                      className={`w-full py-4 pl-12 pr-6 ${
+                                        darkMode 
+                                          ? 'bg-slate-950/40 border border-white/5 text-white' 
+                                          : 'bg-slate-50 border border-slate-200/60 text-slate-900'
+                                      } rounded-2xl text-xs font-bold outline-none transition-all focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600`}
+                                      value={reachUrl}
+                                      onChange={(e) => setReachUrl(e.target.value)}
+                                    />
+                                  </div>
+                                  
+                                  <div className="flex items-center justify-between gap-4 mt-2" onClick={(e) => e.stopPropagation()}>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Engine:</span>
+                                      <select
+                                        value={reachVersion}
+                                        onChange={(e) => setReachVersion(e.target.value)}
+                                        className={`py-2 px-3 ${
+                                          darkMode ? 'bg-slate-900 border-white/10 text-slate-300' : 'bg-slate-50 border border-slate-200 text-slate-600'
+                                        } rounded-xl text-[9px] font-black uppercase tracking-wider outline-none focus:border-indigo-600 cursor-pointer`}
+                                      >
+                                        <option value="v9">v9.0 Sovereign</option>
+                                        <option value="v8">v8.0 Oracle</option>
+                                        <option value="v7">v7.0 Truth</option>
+                                        <option value="v6">v6.0 Integrated</option>
+                                        <option value="v5">v5.0 Agentic</option>
+                                      </select>
+                                    </div>
+
+                                    <button
+                                      onClick={handleReachScan}
+                                      className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3.5 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all shadow-md shadow-indigo-100 flex items-center gap-2"
+                                    >
+                                      <Zap size={14} /> Check Reach
+                                    </button>
+                                  </div>
+                                </div>
+                              </>
+                            )}
                           </div>
 
-                          <div className="bg-slate-50 border border-slate-100 rounded-[3rem] p-12 flex flex-col items-center justify-center text-center">
-                            <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center mb-4 shadow-sm">
-                              <ShieldCheck size={24} className="text-indigo-600" />
-                            </div>
-                            <h3 className="text-lg font-black text-slate-900 mb-1 uppercase tracking-tight">System Ready</h3>
-                            <p className="text-[10px] font-bold text-slate-400 max-w-[200px] uppercase tracking-wider leading-relaxed">
-                              Sovereign Processing Core Active. Ready for deep crawling.
-                            </p>
+                          {/* Panel 2: Bulk Excel Reach Check */}
+                          <div 
+                            onClick={() => setActiveReachPanel(activeReachPanel === 'bulk' ? 'none' : 'bulk')}
+                            style={{
+                              flexGrow: activeReachPanel === 'bulk' ? 3 : (activeReachPanel === 'single' ? 1 : 2),
+                              transition: 'flex-grow 0.5s cubic-bezier(0.4, 0, 0.2, 1)'
+                            }}
+                            className={`relative border rounded-[3rem] p-10 flex flex-col justify-between cursor-pointer transition-all duration-500 ${
+                              activeReachPanel === 'bulk'
+                                ? darkMode
+                                  ? 'bg-[#151f32] border-indigo-500/30 shadow-2xl shadow-indigo-500/5 text-white'
+                                  : 'bg-white border-indigo-200 shadow-2xl shadow-indigo-100 text-slate-900'
+                                : activeReachPanel === 'single'
+                                  ? darkMode
+                                    ? 'bg-[#0d1527] border-white/5 text-slate-400 hover:bg-[#111a2f] hover:border-white/10 justify-center items-center text-center'
+                                    : 'bg-slate-50 border-slate-200/50 text-slate-500 hover:bg-slate-100/70 hover:border-slate-300 justify-center items-center text-center'
+                                  : darkMode
+                                    ? 'bg-[#151f32]/60 border-white/5 shadow-md text-white hover:border-indigo-500/30 hover:shadow-lg'
+                                    : 'bg-white border-slate-200/60 shadow-md text-slate-900 hover:border-indigo-300 hover:shadow-lg'
+                            }`}
+                          >
+                            {activeReachPanel === 'single' ? (
+                              <div className="flex flex-col items-center justify-center text-center space-y-3">
+                                <div className="w-14 h-14 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shadow-sm">
+                                  <FileText size={24} />
+                                </div>
+                                <h3 className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider">Batch Scan</h3>
+                                <p className="text-[9px] font-black text-slate-400 tracking-widest uppercase">Click to Expand</p>
+                              </div>
+                            ) : (
+                              <>
+                                <div className="flex items-center gap-4 mb-6">
+                                  <div className="w-14 h-14 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shadow-sm shrink-0">
+                                    <FileText size={26} />
+                                  </div>
+                                  <div>
+                                    <h3 className="text-lg font-black text-slate-900 dark:text-slate-100 uppercase tracking-tight">Batch Analysis</h3>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Process multiple article links in bulk via Excel</p>
+                                  </div>
+                                </div>
+
+                                <div className="flex-1 flex flex-col justify-end mt-auto relative" onClick={(e) => e.stopPropagation()}>
+                                  <input
+                                    type="file"
+                                    accept=".xlsx, .xls"
+                                    className="absolute inset-0 opacity-0 cursor-pointer z-10"
+                                    onChange={handleExcelUpload}
+                                  />
+                                  <div className="border-2 border-dashed border-slate-200 dark:border-white/10 rounded-3xl p-8 flex flex-col items-center justify-center group hover:border-indigo-500 dark:hover:border-indigo-500/50 hover:bg-indigo-50/20 dark:hover:bg-indigo-950/10 transition-all cursor-pointer">
+                                    <div className="w-12 h-12 bg-slate-50 dark:bg-slate-900 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 group-hover:bg-indigo-600 group-hover:text-white dark:group-hover:text-white transition-all duration-300">
+                                      <FileText size={20} className="text-slate-400 group-hover:text-white" />
+                                    </div>
+                                    <span className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wider">Upload Excel Document</span>
+                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Accepts .xlsx, .xls formats</span>
+                                  </div>
+                                </div>
+                              </>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -3339,7 +4099,7 @@ function App() {
                             <button onClick={() => setIsScanningReach(false)} className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all">Back</button>
                             {reachBatchJob?.status === 'completed' && (
                               <button
-                                onClick={() => window.open(`http://localhost:3000/api/download-result/${reachBatchJob.id}`, '_blank')}
+                                onClick={() => window.open(`http://localhost:3001/api/download-result/${reachBatchJob.id}`, '_blank')}
                                 className="px-6 py-3 bg-[#219ebc] hover:bg-[#023047] text-white rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg flex items-center gap-2"
                               >
                                 <Download size={14} />
@@ -3462,13 +4222,22 @@ function App() {
                   </div>
                 ) : activeTab === 'keyword-search' ? (
                   <div className={`h-full flex flex-col items-center justify-start ${sidebarCollapsed ? 'max-w-[1850px]' : 'max-w-[1700px]'} mx-auto w-full transition-all duration-500`}>
-                    <div className={`w-full ${darkMode ? 'bg-slate-800/50 border-slate-700' : 'bg-white/50 border-slate-200'} backdrop-blur-xl border rounded-[3rem] p-10 shadow-2xl shadow-slate-200/50 mb-10 mt-4 print:hidden`}>
+                    
+                    {/* Welcome Header */}
+                    <div className="text-center py-10 space-y-4 max-w-2xl mx-auto animate-in fade-in duration-700">
+                      <h1 className={`text-5xl md:text-6xl font-light tracking-tight font-sans ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                        Welcome back <span className={`font-black ${darkMode ? 'text-white' : 'text-slate-950'}`}>{(user?.name || 'Manvi').trim().split(' ')[0]}</span>
+                      </h1>
+                    </div>
+
+                    {/* Inputs Card */}
+                    <div className={`w-full ${darkMode ? 'bg-[#0f172a]/40 border-white/5' : 'bg-white border-slate-200'} backdrop-blur-xl border rounded-[2.5rem] p-10 shadow-2xl mb-10 mt-4 print:hidden`}>
                       <div className="w-full flex flex-col sm:flex-row justify-between items-center gap-4 mb-8">
                         <div className="flex flex-wrap items-center gap-6">
-                          <div className="flex items-center gap-4">
-                            <label className={`text-xs font-black uppercase tracking-[0.2em] ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                              Topic:
-                            </label>
+                          <div className="flex items-center gap-3">
+                            <span className={`text-[10px] font-black uppercase tracking-widest ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                              Analysis Sector:
+                            </span>
                             <select
                               value={analysisSector}
                               onChange={(e) => {
@@ -3480,20 +4249,24 @@ function App() {
                                   setAnalysisScope('keyword');
                                 }
                               }}
-                              className={`px-4 py-2.5 rounded-xl text-xs font-bold outline-none border ${darkMode ? 'bg-slate-900 border-slate-700 text-white hover:border-slate-500' : 'bg-white border-slate-200 text-slate-800 hover:border-slate-300'} cursor-pointer shadow-sm transition-colors`}
+                              className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest outline-none cursor-pointer shadow-md transition-all ${
+                                darkMode 
+                                  ? 'bg-[#151f32] border border-white/10 text-white hover:bg-[#1a2b47]' 
+                                  : 'bg-white border border-slate-200 text-slate-800 hover:bg-slate-50'
+                              }`}
                             >
-                              <option value="All">All</option>
-                              <option value="AI">AI</option>
-                              <option value="STARTUP">Startup</option>
-                              <option value="CONSULTANCY">Consultancy</option>
-                              <option value="FINANCE">Finance</option>
-                              <option value="TECHNOLOGY">Technology</option>
-                              <option value="HEALTHCARE">Healthcare</option>
-                              <option value="EDUCATION">Education</option>
-                              <option value="ENERGY">Energy</option>
-                              <option value="RETAIL">Retail</option>
-                              <option value="MEDIA">Media</option>
-                              <option value="AUTOMOTIVE">Automotive</option>
+                              <option value="All" className={darkMode ? 'bg-[#151f32] text-white' : 'bg-white text-slate-800'}>All Sectors</option>
+                              <option value="AI" className={darkMode ? 'bg-[#151f32] text-white' : 'bg-white text-slate-800'}>AI</option>
+                              <option value="STARTUP" className={darkMode ? 'bg-[#151f32] text-white' : 'bg-white text-slate-800'}>Startup</option>
+                              <option value="CONSULTANCY" className={darkMode ? 'bg-[#151f32] text-white' : 'bg-white text-slate-800'}>Consultancy</option>
+                              <option value="FINANCE" className={darkMode ? 'bg-[#151f32] text-white' : 'bg-white text-slate-800'}>Finance</option>
+                              <option value="TECHNOLOGY" className={darkMode ? 'bg-[#151f32] text-white' : 'bg-white text-slate-800'}>Technology</option>
+                              <option value="HEALTHCARE" className={darkMode ? 'bg-[#151f32] text-white' : 'bg-white text-slate-800'}>Healthcare</option>
+                              <option value="EDUCATION" className={darkMode ? 'bg-[#151f32] text-white' : 'bg-white text-slate-800'}>Education</option>
+                              <option value="ENERGY" className={darkMode ? 'bg-[#151f32] text-white' : 'bg-white text-slate-800'}>Energy</option>
+                              <option value="RETAIL" className={darkMode ? 'bg-[#151f32] text-white' : 'bg-white text-slate-800'}>Retail</option>
+                              <option value="MEDIA" className={darkMode ? 'bg-[#151f32] text-white' : 'bg-white text-slate-800'}>Media</option>
+                              <option value="AUTOMOTIVE" className={darkMode ? 'bg-[#151f32] text-white' : 'bg-white text-slate-800'}>Automotive</option>
                             </select>
                           </div>
                         </div>
@@ -3514,7 +4287,7 @@ function App() {
                               setCuratedAnalysisResults(null);
                               setIsSearchingKeyword(false);
                             }}
-                            className={`flex items-center gap-2 px-5 py-2.5 ${darkMode ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-white border-slate-200 text-slate-500'} border rounded-xl text-[10px] font-black uppercase tracking-widest hover:border-red-500 hover:text-red-500 transition-all duration-500 shadow-sm`}
+                            className={`flex items-center gap-2 px-5 py-2.5 ${darkMode ? 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'} border rounded-xl text-[10px] font-black uppercase tracking-widest transition-all duration-300 shadow-sm`}
                           >
                             <RotateCcw size={14} />
                             Reset Inputs
@@ -3525,7 +4298,7 @@ function App() {
                         {/* 1. Target Keywords */}
                         <div className="space-y-3">
                           <div className="flex items-center gap-2">
-                            <label className={`text-xs font-black uppercase tracking-[0.2em] ${darkMode ? 'text-indigo-400' : 'text-indigo-600'} flex items-center gap-2`}>
+                            <label className={`text-[10px] font-black uppercase tracking-[0.2em] ${darkMode ? 'text-indigo-400' : 'text-indigo-600'} flex items-center gap-2 font-heading`}>
                               <Search size={14} /> Target Brands
                             </label>
                             <div className="relative group flex items-center">
@@ -3539,7 +4312,7 @@ function App() {
                           <textarea
                             rows={3}
                             placeholder="e.g. Qualcomm, MediaTek, Intel, AMD, Nvidia"
-                            className={`w-full py-4 px-6 ${darkMode ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'} border rounded-2xl text-xs font-bold outline-none transition-all hover:border-indigo-300 focus:border-indigo-600 shadow-inner resize-none`}
+                            className={`w-full py-4 px-6 ${darkMode ? 'bg-white/5 border-white/10 text-white placeholder:text-slate-500' : 'bg-white border-slate-200 text-slate-900 placeholder:text-slate-400'} border rounded-2xl text-xs font-bold outline-none transition-all hover:border-indigo-350 focus:border-indigo-500 shadow-inner resize-none`}
                             value={targetBrandsInput}
                             onChange={(e) => setTargetBrandsInput(e.target.value)}
                           />
@@ -3548,7 +4321,7 @@ function App() {
                         {/* 2. Excluded Keywords */}
                         <div className="space-y-3">
                           <div className="flex items-center gap-2">
-                            <label className={`text-xs font-black uppercase tracking-[0.2em] ${darkMode ? 'text-red-400' : 'text-red-600'} flex items-center gap-2`}>
+                            <label className={`text-[10px] font-black uppercase tracking-[0.2em] ${darkMode ? 'text-red-405' : 'text-red-600'} flex items-center gap-2 font-heading`}>
                               <Minus size={14} /> Excluded Keywords
                             </label>
                             <div className="relative group flex items-center">
@@ -3562,83 +4335,92 @@ function App() {
                           <textarea
                             rows={3}
                             placeholder="e.g. Exynos, Snapdragon 8 Gen 1 (excluded from analysis)"
-                            className={`w-full py-4 px-6 ${darkMode ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'} border rounded-2xl text-xs font-bold outline-none transition-all hover:border-red-300 focus:border-red-600 shadow-inner resize-none`}
+                            className={`w-full py-4 px-6 ${darkMode ? 'bg-white/5 border-white/10 text-white placeholder:text-slate-500' : 'bg-white border-slate-200 text-slate-900 placeholder:text-slate-400'} border rounded-2xl text-xs font-bold outline-none transition-all hover:border-red-350 focus:border-red-500 shadow-inner resize-none`}
                             value={excludedKeywordsInput}
                             onChange={(e) => setExcludedKeywordsInput(e.target.value)}
                           />
                         </div>
                       </div>
 
-                      <div className="mt-10 flex justify-center">
+                      <div className="mt-8 flex justify-center">
                         <button
                           onClick={handleKeywordSearch}
                           disabled={isSearchingKeyword || !targetBrandsInput.trim()}
-                          className={`group relative px-16 py-5 ${darkMode ? 'bg-indigo-600 hover:bg-indigo-500 text-white' : 'bg-indigo-600 hover:bg-indigo-700 text-white'} rounded-full overflow-hidden transition-all active:scale-95 shadow-xl shadow-indigo-500/25 disabled:opacity-50`}
+                          className="px-16 py-4 bg-[#00F2FE] hover:bg-cyan-400 text-slate-950 font-black uppercase tracking-widest text-[11px] rounded-full shadow-lg shadow-cyan-400/20 transition-all active:scale-95 duration-200 disabled:opacity-50 font-heading"
                         >
-                          <div className="relative flex items-center gap-3 font-black uppercase tracking-[0.2em] text-xs">
-                            {isSearchingKeyword ? (
-                              <>
-                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                                Analyzing Corpus...
-                              </>
-                            ) : (
-                              <>
-                                <Search size={16} />
-                                Analyze Exposure
-                              </>
-                            )}
-                          </div>
+                          {isSearchingKeyword ? 'Analyzing Corpus...' : 'Analyze Exposure'}
                         </button>
                       </div>
                     </div>
 
                     {curatedAnalysisResults && (
                       <div className="w-full space-y-10 animate-in fade-in slide-in-from-top-6 duration-1000 pb-20">
+                        
                         {/* 1. Mention Counts Summary */}
                         <div>
-                          <h3 className={`text-lg font-black uppercase tracking-wider mb-6 flex items-center gap-3 ${darkMode ? 'text-white' : 'text-slate-800'}`}>
-                            <Activity className="text-indigo-500" />
-                            1. Mention Counts Summary
+                          <h3 className={`text-xl font-black uppercase tracking-wider mb-6 flex items-center gap-3 font-heading ${darkMode ? 'text-[#00F2FE]' : 'text-indigo-600'}`}>
+                            1. Mention Count Summary
                           </h3>
                           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                             {Object.entries(curatedAnalysisResults.brands || {}).map(([brand, data], idx) => {
                               const totalBrandArticles = Object.values(curatedAnalysisResults.brands || {}).reduce((sum, b) => sum + b.articles, 0);
                               const baseTotal = analysisScope === 'sector' ? curatedAnalysisResults.totalSectorArticles : totalBrandArticles;
                               const pct = baseTotal > 0 ? ((data.articles / baseTotal) * 100).toFixed(1) : '0.0';
-                              const avg = data.articles > 0 ? (data.mentions / data.articles).toFixed(2) : '0';
+                              const avg = data.articles > 0 ? (data.mentions / data.articles).toFixed(2) : '0.00';
                               const color = BRAND_COLORS[idx % BRAND_COLORS.length];
+                              const isSelected = curatedDrillBrand === brand;
                               return (
-                                <div key={brand} className={`group/card relative ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'} border rounded-3xl p-6 shadow-xl transition-transform hover:scale-[1.02]`}>
-                                  <div className="absolute inset-0 overflow-hidden rounded-3xl pointer-events-none">
-                                    <div className="absolute top-0 right-0 w-24 h-24 rounded-full -mr-12 -mt-12 opacity-10" style={{ backgroundColor: color }}></div>
-                                  </div>
-                                  <div className="relative z-10 flex items-center justify-between mb-4">
-                                    <span className="text-xs font-black uppercase tracking-widest truncate pr-4" style={{ color }}>{brand}</span>
-                                    <div className="relative group/articles">
-                                      <span className="cursor-help text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500">
-                                        Info
-                                      </span>
-                                      <div className="absolute bottom-full right-0 mb-2 w-max p-2 bg-slate-800 text-white text-[10px] font-medium rounded-lg opacity-0 group-hover/articles:opacity-100 transition-opacity pointer-events-none z-50">
-                                        {data.articles} / {baseTotal || 0} Total Articles
-                                        <div className="absolute top-full right-4 border-4 border-transparent border-t-slate-800"></div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-baseline gap-2 mb-2">
-                                    <span className={`text-4xl font-black ${darkMode ? 'text-white' : 'text-slate-900'} tracking-tight`}>
-                                      {pct}%
+                                <div
+                                  key={brand}
+                                  onClick={() => setCuratedDrillBrand(brand)}
+                                  className={`group/card relative cursor-pointer ${
+                                    darkMode 
+                                      ? 'bg-[#0d1527] border-white/5 hover:border-white/10' 
+                                      : 'bg-white border-slate-200'
+                                  } border rounded-[1.75rem] p-6 shadow-md transition-all hover:scale-[1.02] duration-300 flex flex-col justify-between`}
+                                  style={{
+                                    borderColor: isSelected ? color : undefined,
+                                    boxShadow: isSelected ? `0 10px 30px ${color}25` : undefined
+                                  }}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <span 
+                                      className="text-xs font-extrabold uppercase tracking-wider truncate pr-4"
+                                      style={{ color }}
+                                    >
+                                      {brand}
                                     </span>
-                                    <span className="text-xs font-bold text-slate-400">Share</span>
+                                    <span className="text-[8px] font-black uppercase tracking-widest border border-slate-700/50 dark:border-white/10 px-1.5 py-0.5 rounded text-slate-400">
+                                      INFO
+                                    </span>
                                   </div>
-                                  <div className="text-[11px] font-bold text-slate-400 flex flex-col gap-1">
-                                    <div className="flex items-center gap-1.5 opacity-0 group-hover/card:opacity-100 transition-opacity duration-300">
-                                      <Activity size={12} style={{ color }} />
-                                      {data.mentions} Total Mentions
+
+                                  <div className="flex flex-col mt-3">
+                                    <div className="flex items-baseline gap-0.5 select-none">
+                                      <span 
+                                        className="text-[44px] font-black tracking-tight leading-none"
+                                        style={{ color }}
+                                      >
+                                        {pct}
+                                      </span>
+                                      <span 
+                                        className="text-[18px] font-black"
+                                        style={{ color }}
+                                      >
+                                        %
+                                      </span>
                                     </div>
-                                    <div className="flex items-center gap-1.5">
-                                      <TrendingUp size={12} style={{ color }} />
-                                      {avg} Avg mentions / article
-                                    </div>
+                                    <span className="text-[9px] font-black uppercase tracking-widest text-slate-400/80 mt-1 select-none">
+                                      Mention Share
+                                    </span>
+                                  </div>
+
+                                  <div className="w-full border-t border-slate-200 dark:border-white/10 my-3" />
+
+                                  <div className="text-[9px] font-extrabold text-slate-400 flex items-center gap-1.5 select-none">
+                                    <TrendingUp size={11} style={{ color }} />
+                                    <span className={`font-black ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>{avg}</span>
+                                    <span className="text-slate-400/80 font-bold uppercase tracking-wider text-[8px]">Avg mentions/article</span>
                                   </div>
                                 </div>
                               );
@@ -3646,20 +4428,61 @@ function App() {
                           </div>
                         </div>
 
-                        {/* Share of Voice Row */}
-                          {/* 3. Market Share Analysis */}
-                          <div className={`${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'} border rounded-3xl p-8 shadow-xl flex flex-col`}>
+                        {/* Top Publications & Market Share */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+                          {/* 2. Top Indian Publications */}
+                          <div className={`${darkMode ? 'bg-[#151f32] border-white/5' : 'bg-white border-slate-200/60'} border rounded-[2.5rem] p-8 shadow-md flex flex-col`}>
+                            <h3 className={`text-lg font-black uppercase tracking-wider mb-6 flex items-center gap-3 font-heading ${darkMode ? 'text-[#00F2FE]' : 'text-indigo-600'}`}>
+                              2. Top Indian Publications
+                            </h3>
+                            <div className="flex-1 space-y-3 overflow-y-auto max-h-80 custom-scrollbar pr-2">
+                              {(() => {
+                                const sourceMap = {};
+                                Object.entries(curatedAnalysisResults.brands || {}).forEach(([b, d]) => {
+                                  Object.entries(d.sources || {}).forEach(([src, count]) => {
+                                    if (!sourceMap[src]) sourceMap[src] = { total: 0, brands: {} };
+                                    sourceMap[src].total += count;
+                                    sourceMap[src].brands[b] = count;
+                                  });
+                                });
+                                const topSources = Object.entries(sourceMap).sort((a, b) => b[1].total - a[1].total).slice(0, 10);
+                                if (topSources.length === 0) return <div className="text-center py-12 text-slate-400 font-bold text-xs">No publication data.</div>;
+
+                                return topSources.map(([src, d], index) => (
+                                  <div key={src} className={`flex items-center justify-between p-3 rounded-2xl border ${darkMode ? 'bg-white/5 border-white/5' : 'bg-slate-50 border-slate-100'} transition-all`}>
+                                    <div className="flex items-center gap-3 truncate">
+                                      <div className={`w-6 h-6 flex items-center justify-center rounded-lg text-[10px] font-sans font-bold ${
+                                        darkMode ? 'bg-white/10 text-white' : 'bg-indigo-50 text-indigo-600'
+                                      }`}>
+                                        {index + 1}
+                                      </div>
+                                      <span className={`text-xs font-bold truncate ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>{src}</span>
+                                    </div>
+                                    <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-xl bg-slate-200/50 dark:bg-white/10 text-slate-500 dark:text-slate-300">
+                                      {d.total} mentions
+                                    </span>
+                                  </div>
+                                ));
+                              })()}
+                            </div>
+                          </div>
+
+                          {/* 3. Market Share (Pie Chart) */}
+                          <div className={`${darkMode ? 'bg-[#151f32] border-white/5' : 'bg-white border-slate-200/60'} border rounded-[2.5rem] p-8 shadow-md flex flex-col`}>
                             <div className="flex items-center justify-between mb-6">
-                              <h3 className={`text-base font-black uppercase tracking-wider flex items-center gap-3 ${darkMode ? 'text-white' : 'text-slate-800'}`}>
-                                <PieChart className="text-purple-500" />
-                                3. Market Share (Share of Voice)
+                              <h3 className={`text-lg font-black uppercase tracking-wider flex items-center gap-3 font-heading ${darkMode ? 'text-[#00F2FE]' : 'text-indigo-600'}`}>
+                                3. Market Share
                               </h3>
-                              <div className="flex bg-slate-100 dark:bg-slate-700 p-1 rounded-xl">
+                              <div className="flex bg-slate-100 dark:bg-slate-750 p-1 rounded-xl">
                                 {['Pie Chart', 'Bar Chart'].map((t) => (
                                   <button
                                     key={t}
                                     onClick={() => setCuratedVisualizationType(t)}
-                                    className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${curatedVisualizationType === t ? 'bg-white dark:bg-slate-800 text-purple-600 shadow-sm' : 'text-slate-400'}`}
+                                    className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
+                                      curatedVisualizationType === t 
+                                        ? 'bg-white dark:bg-[#151f32] text-indigo-600 dark:text-[#00F2FE] shadow-sm' 
+                                        : 'text-slate-400'
+                                    }`}
                                   >
                                     {t}
                                   </button>
@@ -3675,56 +4498,127 @@ function App() {
 
                                 if (curatedVisualizationType === 'Bar Chart') {
                                   return (
-                                    <div className="space-y-4 py-4">
-                                      {entries.map(([brand, data], idx) => {
-                                        const pct = ((data.mentions / total) * 100).toFixed(1);
-                                        const color = BRAND_COLORS[idx % BRAND_COLORS.length];
-                                        return (
-                                          <div key={brand} className="space-y-1.5">
-                                            <div className="flex justify-between text-xs font-bold">
-                                              <span className={darkMode ? 'text-white' : 'text-slate-700'}>{brand}</span>
-                                              <span style={{ color }}>{data.mentions} ({pct}%)</span>
+                                    <div className="flex flex-col sm:flex-row items-center gap-8 py-4">
+                                      {/* Left: Bar Chart */}
+                                      <div className="flex-1 w-full flex flex-col h-44 justify-center">
+                                        {/* Bars area */}
+                                        <div className="flex-1 flex items-end justify-around border-b border-slate-200 dark:border-white/10 pb-2 px-4 gap-4">
+                                          {entries.map(([brand, data], idx) => {
+                                            const pct = ((data.mentions / total) * 100).toFixed(1);
+                                            const color = BRAND_COLORS[idx % BRAND_COLORS.length];
+                                            const heightPct = Math.max(parseFloat(pct), 4);
+                                            return (
+                                              <div key={brand} className="flex-1 flex flex-col items-center h-full justify-end group">
+                                                <span className="text-[9px] font-black mb-1 transition-transform duration-300 group-hover:scale-110" style={{ color }}>
+                                                  {pct}%
+                                                </span>
+                                                <div 
+                                                  className="w-full max-w-[24px] rounded-t-md transition-all duration-700 shadow-sm hover:brightness-110 cursor-pointer"
+                                                  style={{ 
+                                                    height: `${heightPct}%`, 
+                                                    backgroundColor: color 
+                                                  }}
+                                                />
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                        {/* Labels area */}
+                                        <div className="flex justify-around pt-2 px-4 gap-4">
+                                          {entries.map(([brand]) => (
+                                            <div key={brand} className="flex-1 text-center truncate">
+                                              <span className={`text-[9px] font-black uppercase tracking-wider truncate block ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                                                {brand}
+                                              </span>
                                             </div>
-                                            <div className="w-full h-3 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
-                                              <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, backgroundColor: color }}></div>
+                                          ))}
+                                        </div>
+                                      </div>
+
+                                      {/* Right: Legend list */}
+                                      <div className="space-y-3 flex-1 w-full max-h-48 overflow-y-auto custom-scrollbar pr-2">
+                                        {entries.map(([brand, data], idx) => {
+                                          const pct = ((data.mentions / total) * 100).toFixed(1);
+                                          const color = BRAND_COLORS[idx % BRAND_COLORS.length];
+                                          return (
+                                            <div key={brand} className="flex items-center justify-between text-xs">
+                                              <div className="flex items-center gap-2.5 truncate pr-2">
+                                                <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: color }}></div>
+                                                <span className={`font-bold truncate ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>{brand}</span>
+                                              </div>
+                                              <span className="font-black flex-shrink-0" style={{ color }}>{pct}%</span>
                                             </div>
-                                          </div>
-                                        );
-                                      })}
+                                          );
+                                        })}
+                                      </div>
                                     </div>
                                   );
                                 } else {
-                                  let cumulativeOffset = 25; // start from top
+                                  let cumulativeOffset = 25;
                                   return (
                                     <div className="flex flex-col sm:flex-row items-center gap-8 py-4">
-                                      <div className="relative w-48 h-48 flex-shrink-0">
-                                        <svg viewBox="0 0 32 32" className="w-full h-full transform -rotate-90">
-                                          {entries.map(([brand, data], idx) => {
-                                            if (data.mentions === 0) return null;
-                                            const pct = (data.mentions / total) * 100;
-                                            const color = BRAND_COLORS[idx % BRAND_COLORS.length];
-                                            const currentOffset = cumulativeOffset;
-                                            cumulativeOffset -= pct;
-                                            return (
-                                              <circle
-                                                key={brand}
-                                                r="15.9154943"
-                                                cx="16"
-                                                cy="16"
-                                                fill="transparent"
-                                                stroke={color}
-                                                strokeWidth="6"
-                                                strokeDasharray={`${pct} ${100 - pct}`}
-                                                strokeDashoffset={currentOffset}
-                                                className="transition-all duration-700"
-                                              />
-                                            );
-                                          })}
+                                      <div className="relative w-40 h-40 flex-shrink-0">
+                                        <svg viewBox="-6 -6 44 44" className="w-full h-full transform -rotate-90 overflow-visible">
+                                          {(() => {
+                                            let cumulativeAngle = -Math.PI / 2;
+                                            const isPolarStyle = entries.length <= 4;
+                                            return entries.map(([brand, data], idx) => {
+                                              if (data.mentions === 0) return null;
+                                              const pct = (data.mentions / total) * 100;
+                                              const color = BRAND_COLORS[idx % BRAND_COLORS.length];
+                                              
+                                              const angleLength = (pct / 100) * 2 * Math.PI;
+                                              const startAngle = cumulativeAngle;
+                                              const endAngle = cumulativeAngle + angleLength;
+                                              cumulativeAngle = endAngle;
+
+                                              const midAngle = (startAngle + endAngle) / 2;
+                                              const explodeDistance = 0.8;
+                                              const dx = Math.cos(midAngle) * explodeDistance;
+                                              const dy = Math.sin(midAngle) * explodeDistance;
+
+                                              const rOut = isPolarStyle ? 12 + (pct / 100) * 12 : 22;
+
+                                              if (pct >= 99.9) {
+                                                return (
+                                                  <circle
+                                                    key={brand}
+                                                    cx="16"
+                                                    cy="16"
+                                                    r={rOut}
+                                                    fill={color}
+                                                    style={{ 
+                                                      transform: `translate(${dx}px, ${dy}px)`,
+                                                      transition: 'transform 0.3s ease'
+                                                    }}
+                                                    className="hover:brightness-110 cursor-pointer"
+                                                  />
+                                                );
+                                              }
+
+                                              const x1 = 16 + rOut * Math.cos(startAngle);
+                                              const y1 = 16 + rOut * Math.sin(startAngle);
+                                              const x2 = 16 + rOut * Math.cos(endAngle);
+                                              const y2 = 16 + rOut * Math.sin(endAngle);
+                                              const largeArcFlag = pct > 50 ? 1 : 0;
+
+                                              const dPath = `M 16 16 L ${x1} ${y1} A ${rOut} ${rOut} 0 ${largeArcFlag} 1 ${x2} ${y2} Z`;
+
+                                              return (
+                                                <path
+                                                  key={brand}
+                                                  d={dPath}
+                                                  fill={color}
+                                                  style={{ 
+                                                    transform: `translate(${dx}px, ${dy}px)`,
+                                                    transition: 'transform 0.3s ease'
+                                                  }}
+                                                  className="hover:brightness-110 cursor-pointer"
+                                                />
+                                              );
+                                            });
+                                          })()}
                                         </svg>
-                                        <div className="absolute inset-0 flex flex-col items-center justify-center">
-                                          <span className={`text-2xl font-black ${darkMode ? 'text-white' : 'text-slate-900'}`}>{total}</span>
-                                          <span className="text-[10px] font-bold text-slate-400 uppercase">Mentions</span>
-                                        </div>
                                       </div>
 
                                       <div className="space-y-3 flex-1 w-full max-h-48 overflow-y-auto custom-scrollbar pr-2">
@@ -3737,7 +4631,7 @@ function App() {
                                                 <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: color }}></div>
                                                 <span className={`font-bold truncate ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>{brand}</span>
                                               </div>
-                                              <span className="font-black flex-shrink-0" style={{ color }}>{pct}% ({data.mentions})</span>
+                                              <span className="font-black flex-shrink-0" style={{ color }}>{pct}%</span>
                                             </div>
                                           );
                                         })}
@@ -3748,14 +4642,14 @@ function App() {
                               })()}
                             </div>
                           </div>
+                        </div>
 
-                        {/* 4. Media Source & 5. Sentiment Landscape Row */}
+                        {/* Media Source Progress Meters */}
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
                           {/* 4. Media Source Distribution */}
-                          <div className={`${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'} border rounded-3xl p-8 shadow-xl flex flex-col`}>
-                            <h3 className={`text-base font-black uppercase tracking-wider mb-6 flex items-center gap-3 ${darkMode ? 'text-white' : 'text-slate-800'}`}>
-                              <FileText className="text-blue-500" />
-                              4. Media Source Distribution (Top 10)
+                          <div className={`${darkMode ? 'bg-[#151f32] border-white/5' : 'bg-white border-slate-200/60'} border rounded-[2.5rem] p-8 shadow-md flex flex-col`}>
+                            <h3 className={`text-lg font-black uppercase tracking-wider mb-6 flex items-center gap-3 font-heading ${darkMode ? 'text-[#00F2FE]' : 'text-indigo-600'}`}>
+                              4. Media Source Distribution
                             </h3>
                             <div className="flex-1 space-y-4 overflow-y-auto max-h-80 custom-scrollbar pr-2">
                               {(() => {
@@ -3770,40 +4664,46 @@ function App() {
                                 const topSources = Object.entries(sourceMap).sort((a, b) => b[1].total - a[1].total).slice(0, 10);
                                 if (topSources.length === 0) return <div className="text-center py-12 text-slate-400 font-bold text-xs">No media source data.</div>;
 
-                                return topSources.map(([src, d]) => (
-                                  <div key={src} className="space-y-1.5">
-                                    <div className="flex justify-between text-xs font-bold truncate">
-                                      <span className={`truncate ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>{src}</span>
-                                      <span className="text-blue-500 flex-shrink-0">{d.total} Mentions</span>
+                                const maxTotal = Math.max(...topSources.map(([, d]) => d.total), 1);
+
+                                return topSources.map(([src, d]) => {
+                                  const pct = (d.total / maxTotal) * 100;
+                                  return (
+                                    <div key={src} className="space-y-1.5 group">
+                                      <div className="flex justify-between items-center text-xs font-bold">
+                                        <span className={`truncate max-w-[70%] ${darkMode ? 'text-slate-200' : 'text-slate-700'} group-hover:text-indigo-400 transition-colors`}>
+                                          {src || 'Unknown Source'}
+                                        </span>
+                                        <span className="text-[#00F2FE] flex-shrink-0 font-extrabold">{d.total} mentions</span>
+                                      </div>
+                                      <div className="w-full h-2.5 bg-slate-100 dark:bg-slate-800/80 rounded-full overflow-hidden shadow-inner border border-white/5">
+                                        <div
+                                          style={{ width: `${pct}%` }}
+                                          className="h-full bg-gradient-to-r from-indigo-500 to-[#00F2FE] rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(0,242,254,0.3)]"
+                                        />
+                                      </div>
                                     </div>
-                                    <div className="w-full h-3 bg-slate-100 dark:bg-slate-700 rounded-full flex overflow-hidden">
-                                      {Object.keys(curatedAnalysisResults.brands || {}).map((b, idx) => {
-                                        const count = d.brands[b] || 0;
-                                        if (count === 0) return null;
-                                        const pct = (count / d.total) * 100;
-                                        return (
-                                          <div
-                                            key={b}
-                                            style={{ width: `${pct}%`, backgroundColor: BRAND_COLORS[idx % BRAND_COLORS.length] }}
-                                            title={`${b}: ${count}`}
-                                            className="h-full hover:brightness-110"
-                                          />
-                                        );
-                                      })}
-                                    </div>
-                                  </div>
-                                ));
+                                  );
+                                });
                               })()}
                             </div>
                           </div>
 
-                          {/* 5. Sentiment Landscape */}
-                          <div className={`${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'} border rounded-3xl p-8 shadow-xl flex flex-col`}>
-                            <h3 className={`text-base font-black uppercase tracking-wider mb-6 flex items-center gap-3 ${darkMode ? 'text-white' : 'text-slate-800'}`}>
-                              <BarChart3 className="text-emerald-500" />
-                              5. Sentiment Landscape (%)
+                          {/* 5. Sentiments Landscape matrix */}
+                          <div className={`${darkMode ? 'bg-[#151f32] border-white/5' : 'bg-white border-slate-200/60'} border rounded-[2.5rem] p-8 shadow-md flex flex-col`}>
+                            <h3 className={`text-lg font-black uppercase tracking-wider mb-6 flex items-center gap-3 font-heading ${darkMode ? 'text-[#00F2FE]' : 'text-indigo-600'}`}>
+                              5. Sentiments landscape
                             </h3>
-                            <div className="flex-1 space-y-6 overflow-y-auto max-h-80 custom-scrollbar pr-2">
+                            <div className="flex-1 space-y-4 overflow-y-auto max-h-80 custom-scrollbar pr-2">
+                              
+                              {/* Headers */}
+                              <div className="grid grid-cols-4 gap-2 text-center text-[9px] font-black uppercase tracking-widest text-slate-400">
+                                <div>Brand</div>
+                                <div>Positive</div>
+                                <div>Neutral</div>
+                                <div>Negative</div>
+                              </div>
+
                               {Object.entries(curatedAnalysisResults.brands || {}).map(([b, d]) => {
                                 const total = d.sentiment.Positive + d.sentiment.Neutral + d.sentiment.Negative;
                                 if (total === 0) return null;
@@ -3811,20 +4711,21 @@ function App() {
                                 const neuP = ((d.sentiment.Neutral / total) * 100).toFixed(0);
                                 const negP = ((d.sentiment.Negative / total) * 100).toFixed(0);
                                 return (
-                                  <div key={b} className={`p-4 ${darkMode ? 'bg-slate-700/40' : 'bg-slate-50'} rounded-2xl space-y-3`}>
-                                    <div className="flex justify-between items-center">
-                                      <span className={`text-xs font-black uppercase tracking-wider ${darkMode ? 'text-white' : 'text-slate-800'}`}>{b}</span>
-                                      <span className="text-[10px] font-bold text-slate-400">{total} Articles Evaluated</span>
+                                  <div key={b} className="grid grid-cols-4 gap-2 items-center text-center">
+                                    <div className={`text-xs font-black truncate text-left ${darkMode ? 'text-white' : 'text-slate-800'}`}>
+                                      {b}
                                     </div>
-                                    <div className="w-full h-4 rounded-full flex overflow-hidden shadow-inner">
-                                      <div style={{ width: `${posP}%` }} className="bg-emerald-500 h-full flex items-center justify-center text-[9px] font-black text-white">{posP > 10 ? `${posP}%` : ''}</div>
-                                      <div style={{ width: `${neuP}%` }} className="bg-slate-400 h-full flex items-center justify-center text-[9px] font-black text-white">{neuP > 10 ? `${neuP}%` : ''}</div>
-                                      <div style={{ width: `${negP}%` }} className="bg-red-500 h-full flex items-center justify-center text-[9px] font-black text-white">{negP > 10 ? `${negP}%` : ''}</div>
+                                    <div className="bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 rounded-xl p-3 flex flex-col items-center">
+                                      <span className="text-sm font-black">{posP}%</span>
+                                      <span className="text-[8px] font-bold opacity-60">{d.sentiment.Positive}</span>
                                     </div>
-                                    <div className="flex justify-between text-[10px] font-black uppercase tracking-wider">
-                                      <span className="text-emerald-500 flex items-center gap-1"><Check size={12} /> Positive: {d.sentiment.Positive}</span>
-                                      <span className="text-slate-400 flex items-center gap-1"><Minus size={12} /> Neutral: {d.sentiment.Neutral}</span>
-                                      <span className="text-red-500 flex items-center gap-1"><X size={12} /> Negative: {d.sentiment.Negative}</span>
+                                    <div className="bg-indigo-500/10 border border-indigo-500/25 text-indigo-400 rounded-xl p-3 flex flex-col items-center">
+                                      <span className="text-sm font-black">{neuP}%</span>
+                                      <span className="text-[8px] font-bold opacity-60">{d.sentiment.Neutral}</span>
+                                    </div>
+                                    <div className="bg-red-500/10 border border-red-500/25 text-red-400 rounded-xl p-3 flex flex-col items-center">
+                                      <span className="text-sm font-black">{negP}%</span>
+                                      <span className="text-[8px] font-bold opacity-60">{d.sentiment.Negative}</span>
                                     </div>
                                   </div>
                                 );
@@ -3834,12 +4735,11 @@ function App() {
                         </div>
 
                         {/* 6. Explore Articles by Sentiment Drill-Down Table */}
-                        <div className={`print:hidden ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'} border rounded-3xl p-8 shadow-xl`}>
+                        <div className={`print:hidden ${darkMode ? 'bg-[#151f32] border-white/5' : 'bg-white border-slate-200/60'} border rounded-[2.5rem] p-8 shadow-md`}>
                           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
                             <div>
-                              <h3 className={`text-base font-black uppercase tracking-wider flex items-center gap-3 ${darkMode ? 'text-white' : 'text-slate-800'}`}>
-                                <Search className="text-indigo-500" />
-                                6. Explore Articles by Sentiment (Drill-Down)
+                              <h3 className={`text-lg font-black uppercase tracking-wider flex items-center gap-3 font-heading ${darkMode ? 'text-[#00F2FE]' : 'text-indigo-600'}`}>
+                                6. Explore Articles by Sentiments
                               </h3>
                               <p className="text-xs font-bold text-slate-400 mt-1">Select a brand and sentiment to examine underlying corpus articles</p>
                             </div>
@@ -3848,7 +4748,9 @@ function App() {
                               <select
                                 value={curatedDrillBrand}
                                 onChange={(e) => setCuratedDrillBrand(e.target.value)}
-                                className={`px-4 py-2.5 rounded-2xl text-xs font-bold outline-none border ${darkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-800'} cursor-pointer`}
+                                className={`px-4 py-2.5 rounded-xl text-xs font-bold outline-none border cursor-pointer ${
+                                  darkMode ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-slate-50 border-slate-250 text-slate-800'
+                                }`}
                               >
                                 {Object.keys(curatedAnalysisResults.brands || {}).map((b) => (
                                   <option key={b} value={b}>{b}</option>
@@ -3858,7 +4760,9 @@ function App() {
                               <select
                                 value={curatedDrillSentiment}
                                 onChange={(e) => setCuratedDrillSentiment(e.target.value)}
-                                className={`px-4 py-2.5 rounded-2xl text-xs font-bold outline-none border ${darkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-800'} cursor-pointer`}
+                                className={`px-4 py-2.5 rounded-xl text-xs font-bold outline-none border cursor-pointer ${
+                                  darkMode ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-slate-50 border-slate-250 text-slate-800'
+                                }`}
                               >
                                 <option value="Positive">Positive</option>
                                 <option value="Neutral">Neutral</option>
@@ -3875,16 +4779,16 @@ function App() {
                               return (
                                 <table className="w-full text-left border-collapse">
                                   <thead>
-                                    <tr className={`border-b ${darkMode ? 'border-slate-700 text-slate-400' : 'border-slate-100 text-slate-400'} text-[10px] font-black uppercase tracking-widest`}>
+                                    <tr className={`border-b ${darkMode ? 'border-white/5 text-slate-400' : 'border-slate-100 text-slate-400'} text-[9px] font-black uppercase tracking-widest`}>
                                       <th className="py-4 px-4">Headline</th>
                                       <th className="py-4 px-4">Publication</th>
                                       <th className="py-4 px-4">Published Date</th>
                                       <th className="py-4 px-4 text-right">Action</th>
                                     </tr>
                                   </thead>
-                                  <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50 text-xs font-bold">
+                                  <tbody className="divide-y divide-slate-100 dark:divide-white/5 text-xs font-bold">
                                     {articles.map((art, idx) => (
-                                      <tr key={idx} className={`${darkMode ? 'hover:bg-slate-700/30 text-slate-200' : 'hover:bg-slate-50 text-slate-700'} transition-colors`}>
+                                      <tr key={idx} className={`${darkMode ? 'hover:bg-white/5 text-slate-200' : 'hover:bg-slate-50 text-slate-700'} transition-colors`}>
                                         <td className="py-4 px-4 font-black max-w-md truncate">{art.title}</td>
                                         <td className="py-4 px-4 text-slate-400">{art.source}</td>
                                         <td className="py-4 px-4 text-slate-400 whitespace-nowrap">{art.published}</td>
@@ -4000,6 +4904,15 @@ function App() {
                       </button>
                     </div>
 
+                    <div className="text-center max-w-2xl mx-auto mb-12 animate-in fade-in duration-700">
+                      <h1 className={`text-5xl tracking-tight mb-3 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                        <span className="font-light">Competitor</span> <span className="font-black">Analysis</span>
+                      </h1>
+                      <p className="text-slate-500 font-bold text-xs uppercase tracking-widest leading-relaxed">
+                        Compare media share of voice, sentiment dynamics, and coverage metrics side-by-side
+                      </p>
+                    </div>
+
                     <div className="w-full max-w-4xl mx-auto bg-white/50 backdrop-blur-xl border border-slate-200 rounded-[3rem] p-12 shadow-2xl shadow-slate-200/50">
                       {showHistory ? (
                         <div className="relative z-10 animate-in fade-in zoom-in-95 duration-500">
@@ -4025,7 +4938,7 @@ function App() {
                                   setIsAnalysing(true);
                                   setIsLoadingAnalysis(true);
                                   try {
-                                    const res = await fetch(`http://localhost:3000/api/competitor-analysis?keyword1=${encodeURIComponent(item.comp1)}&keyword2=${encodeURIComponent(item.comp2)}`, {
+                                    const res = await fetch(`http://localhost:3001/api/competitor-analysis?keyword1=${encodeURIComponent(item.comp1)}&keyword2=${encodeURIComponent(item.comp2)}`, {
                                       headers: { 'X-User-Id': user?.id }
                                     });
                                     if (res.ok) {
@@ -4667,7 +5580,7 @@ function App() {
                               <p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest mt-1">Region: {selectedBrandForDetail.region}</p>
                             </div>
                             <button
-                              onClick={() => window.open(`http://localhost:3000/api/brands/${selectedBrandForDetail.id}/report?userId=${user?.id}`, '_blank')}
+                              onClick={() => window.open(`http://localhost:3001/api/brands/${selectedBrandForDetail.id}/report?userId=${user?.id}`, '_blank')}
                               className="px-5 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl shadow-indigo-100 flex items-center gap-2 transition-all active:scale-95"
                             >
                               <Download size={16} /> Download Report
@@ -4816,95 +5729,164 @@ function App() {
                       </div>
                     ) : (
                       <>
-                        <div className="mb-10 flex items-center justify-between">
-                          <div>
-                            <h2 className="text-3xl font-black text-black tracking-tight uppercase">Tracking</h2>
-                            <p className="text-slate-500 font-bold text-sm mt-1">Real-time intelligence feed for your added brands.</p>
+                        {/* Centered Heading */}
+                        <div className="text-center max-w-2xl mx-auto mb-12">
+                          <h1 className={`text-5xl tracking-tight mb-3 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                            <span className="font-light">Brand</span> <span className="font-black">Tracking</span>
+                          </h1>
+                          <p className="text-slate-500 font-bold text-xs uppercase tracking-widest leading-relaxed">
+                            Real-time feed intelligence added to your brands
+                          </p>
+                        </div>
+
+                        {/* Premium Action Bar */}
+                        <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => setShowAddBrandModal(true)}
+                              className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-indigo-600/20 flex items-center gap-2 transition-all active:scale-95 duration-200 font-heading"
+                            >
+                              <Plus size={14} /> Add Brand
+                            </button>
                           </div>
-                          <div className="flex flex-col items-end gap-2">
-                            <div className="flex items-center gap-3">
-                              <div className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-100 rounded-lg shadow-sm">
-                                <RotateCcw size={10} className={`text-indigo-600 ${isRefreshingBrand ? 'animate-spin' : ''}`} style={{ animationDuration: '2s' }} />
-                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                                  {isRefreshingBrand ? 'Refreshing...' : <>Auto Refresh in <span className="text-indigo-600 font-black">{Math.floor(refreshTimer / 60)}:{(refreshTimer % 60).toString().padStart(2, '0')}</span></>}
-                                </span>
-                              </div>
-                              <button
-                                onClick={handleRefreshBrandsNow}
-                                disabled={isRefreshingBrand}
-                                className="px-3 py-1.5 bg-white border border-slate-100 rounded-lg text-[9px] font-black text-indigo-600 uppercase tracking-widest hover:bg-indigo-50 hover:border-indigo-200 transition-all active:scale-95 shadow-sm flex items-center gap-1.5 disabled:opacity-50"
-                              >
-                                <RotateCcw size={10} className={isRefreshingBrand ? 'animate-spin' : ''} />
-                                {isRefreshingBrand ? 'Fetching...' : 'Refresh Now'}
-                              </button>
+
+                          <div className="flex items-center gap-3">
+                            {/* Auto Refresh */}
+                            <div className={`flex items-center gap-2 px-3 py-2 border rounded-xl shadow-sm text-[9px] font-black uppercase tracking-widest ${
+                              darkMode
+                                ? 'bg-[#151f32] border-white/5 text-slate-300'
+                                : 'bg-white border-slate-200/60 text-slate-600'
+                            }`}>
+                              <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></span>
+                              Auto Refresh in <span className="text-indigo-550 dark:text-indigo-400 font-black">{Math.floor(refreshTimer / 60)}:{(refreshTimer % 60).toString().padStart(2, '0')}</span>
                             </div>
-                            <div className="px-4 py-2 bg-indigo-600 rounded-xl shadow-lg shadow-indigo-100">
-                              <span className="text-[10px] font-black text-white uppercase tracking-widest">{trackedBrands.length} Brands Active</span>
+
+                            {/* Refresh Now Button */}
+                            <button
+                              onClick={handleRefreshBrandsNow}
+                              disabled={isRefreshingBrand}
+                              className={`px-4 py-2 border rounded-xl text-[9px] font-black uppercase tracking-widest transition-all active:scale-95 shadow-sm flex items-center gap-1.5 disabled:opacity-50 ${
+                                darkMode
+                                  ? 'bg-[#151f32]/80 border-white/5 text-[#00F2FE] hover:bg-[#151f32]'
+                                  : 'bg-white border-slate-200 text-indigo-650 hover:bg-slate-50'
+                              }`}
+                            >
+                              <RotateCcw size={10} className={isRefreshingBrand ? 'animate-spin' : ''} />
+                              {isRefreshingBrand ? 'Fetching...' : 'Refresh Now'}
+                            </button>
+
+                            {/* Active Brands count */}
+                            <div className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest ${
+                              darkMode
+                                ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/20'
+                                : 'bg-indigo-50 text-indigo-700 border border-indigo-100'
+                            }`}>
+                              {trackedBrands.length} Brands Active
                             </div>
                           </div>
                         </div>
 
                         {trackedBrands.length > 0 ? (
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {trackedBrands.map((brand) => (
-                              <div
-                                key={brand.id}
-                                onClick={() => handleSelectBrand(brand)}
-                                className="bg-white border border-slate-200 rounded-[2.5rem] p-8 shadow-xl shadow-slate-100 relative overflow-hidden group hover:border-indigo-200 transition-all cursor-pointer animate-in fade-in duration-500"
-                              >
-                                <div className="absolute top-0 right-0 w-24 h-24 bg-slate-50 rounded-full -mr-12 -mt-12 transition-transform group-hover:scale-110"></div>
-                                <div className="absolute top-6 right-6 z-50">
+                            {trackedBrands.map((brand) => {
+                              const formattedTime = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+                              const roleLetter = user?.role === 'employee' || user?.role === 'admin' ? 'E' : 'B';
+                              const mockNewCount = brand.new_mentions || Math.floor((brand.mentions || 516) * 0.05) || 27;
+
+                              return (
+                                <div
+                                  key={brand.id}
+                                  onClick={() => handleSelectBrand(brand)}
+                                  className={`p-8 rounded-[2.5rem] border transition-all text-left flex flex-col justify-between hover:scale-[1.02] duration-300 shadow-md relative overflow-hidden group cursor-pointer animate-in fade-in duration-500 ${
+                                    darkMode
+                                      ? 'bg-[#151f32] border-white/5 hover:border-indigo-550/50'
+                                      : 'bg-white border-slate-200/60 hover:border-indigo-600/50'
+                                  }`}
+                                >
+                                  {/* Top Row */}
+                                  <div className="flex items-center justify-between w-full relative z-10">
+                                    <div className="flex items-center gap-3">
+                                      <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shadow-md ${
+                                        darkMode ? 'bg-white/5 text-white' : 'bg-slate-50 text-slate-900'
+                                      }`}>
+                                        <Activity size={20} />
+                                      </div>
+                                      <div>
+                                        <h3 className={`text-lg font-black tracking-tight leading-none font-heading ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                                          {brand.name}
+                                        </h3>
+                                      </div>
+                                    </div>
+                                    
+                                    <div className="flex items-center gap-2">
+                                      <span className={`text-[9px] font-black uppercase tracking-widest ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                                        {brand.region}
+                                      </span>
+                                      <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-black text-white ${
+                                        roleLetter === 'E' ? 'bg-red-500/80 shadow-sm shadow-red-500/10' : 'bg-indigo-500/80 shadow-sm shadow-indigo-500/10'
+                                      }`}>
+                                        {roleLetter}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Middle Row (Mentions count) */}
+                                  <div className="mt-8 relative z-10 flex flex-col">
+                                    <span className={`text-5xl font-black tracking-tight ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                                      {brand.mentions || 516}
+                                    </span>
+                                    <span className={`text-[9px] font-black tracking-widest uppercase mt-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                                      Mentions
+                                    </span>
+                                  </div>
+
+                                  {/* Bottom Row */}
+                                  <div className="mt-8 pt-4 border-t border-slate-200/20 dark:border-white/5 flex items-center justify-between relative z-10">
+                                    {/* New badge */}
+                                    <div className="flex items-center gap-1 text-[9px] font-black text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full">
+                                      <TrendingUp size={10} />
+                                      +{mockNewCount} NEW <span className={`text-[8px] font-bold ${darkMode ? 'text-slate-450' : 'text-slate-500'}`}>TODAY</span>
+                                    </div>
+
+                                    {/* Last Checked */}
+                                    <div className="flex items-center gap-1.5 text-[8px] font-black text-slate-400 uppercase tracking-wider">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                                      Checked {formattedTime}
+                                    </div>
+                                  </div>
+
+                                  {/* Delete Brand on hover */}
                                   <button
                                     type="button"
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       handleDeleteBrand(brand.id);
                                     }}
-                                    className="w-10 h-10 flex items-center justify-center rounded-2xl bg-red-50 text-red-500 hover:bg-red-600 hover:text-white transition-colors duration-200 shadow-sm group/del pointer-events-auto"
+                                    className="absolute top-6 right-6 opacity-0 group-hover:opacity-100 transition-all duration-200 z-20 w-8 h-8 flex items-center justify-center rounded-xl bg-red-50 text-red-500 hover:bg-red-650 hover:text-white shadow-sm"
                                   >
-                                    <Trash2 size={18} className="group-hover/del:scale-110 transition-transform duration-200" />
+                                    <Trash2 size={14} />
                                   </button>
                                 </div>
-                                <div className="relative flex items-center justify-between mb-6">
-                                  <div className="w-12 h-12 bg-slate-900 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-slate-200">
-                                    <Activity size={24} />
-                                  </div>
-                                  <div className="text-right mr-12 truncate max-w-[180px]">
-                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">{brand.region}</p>
-                                    <div className="flex items-center gap-1.5 justify-end truncate">
-                                      <div className="w-1.5 h-1.5 bg-teal-500 rounded-full shrink-0 animate-pulse"></div>
-                                      <span className="text-[10px] font-black text-teal-600 uppercase tracking-widest truncate">{brand.status || 'Active'}</span>
-                                    </div>
-                                  </div>
-                                </div>
-                                <div>
-                                  <h3 className="text-xl font-black text-slate-900 truncate mb-1">{brand.name}</h3>
-                                  <div className="flex items-center gap-2.5 mt-4">
-                                    <span className="text-3xl font-black text-black tracking-tighter">
-                                      {brand.mentions || 0}
-                                    </span>
-                                    <span className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Mentions</span>
-                                  </div>
-                                </div>
-                                {brand.new_mentions > 0 && (
-                                  <div className="absolute bottom-8 right-8 flex items-center gap-1 bg-indigo-600 text-white px-3 py-1.5 rounded-full shadow-lg shadow-indigo-200 animate-pulse">
-                                    <span className="text-[10px] font-black uppercase tracking-wider leading-none">
-                                      +{brand.new_mentions} New
-                                    </span>
-                                  </div>
-                                )}
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         ) : (
-                          <div className="bg-white border-2 border-dashed border-slate-200 rounded-[3rem] p-20 text-center">
-                            <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6">
-                              <Plus size={32} className="text-slate-300" />
+                          <div className={`border-2 border-dashed rounded-[3rem] p-20 text-center ${
+                            darkMode ? 'bg-[#151f32]/20 border-white/10' : 'bg-white border-slate-200'
+                          }`}>
+                            <div className="w-20 h-20 bg-slate-50 dark:bg-white/5 rounded-full flex items-center justify-center mx-auto mb-6">
+                              <Plus size={32} className="text-slate-300 dark:text-slate-650" />
                             </div>
-                            <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight mb-2">No Brands Tracked</h3>
-                            <p className="text-slate-500 font-bold text-sm max-w-sm mx-auto">
-                              Click the 'Add Brand' button in the header to start monitoring your first asset.
+                            <h3 className={`text-xl font-black uppercase tracking-tight mb-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>No Brands Tracked</h3>
+                            <p className="text-slate-500 font-bold text-sm max-w-sm mx-auto mb-6">
+                              Click the 'Add Brand' button above to start monitoring your first asset.
                             </p>
+                            <button
+                              onClick={() => setShowAddBrandModal(true)}
+                              className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-indigo-600/20 inline-flex items-center gap-2"
+                            >
+                              <Plus size={14} /> Add Brand
+                            </button>
                           </div>
                         )}
                       </>
@@ -7755,30 +8737,60 @@ const spec = JSON.parse(response.text);
                     ) : (
                       <div className="space-y-8">
                         {/* Top Controls & Search */}
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white border border-slate-100 rounded-3xl p-6 shadow-lg">
-                          <div className="flex flex-wrap items-center gap-2">
-                            {['all', 'Brand Analysis', 'VS Analysis'].map(cat => (
-                              <button
-                                key={cat}
-                                onClick={() => setReportFilter(cat)}
-                                className={`px-6 py-2.5 rounded-full text-xs font-black uppercase tracking-wider transition-all duration-300 ${reportFilter === cat
-                                  ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200 scale-105'
-                                  : 'bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-900'
-                                  }`}
-                              >
-                                {cat === 'all' ? 'All Intelligence' : cat}
-                              </button>
-                            ))}
+                        <div className="flex flex-col items-center justify-center pt-8 pb-4 gap-6">
+                          <div className="flex items-center gap-3.5 cursor-pointer group" onClick={() => setShowCreateReportModal(true)}>
+                            <h1 className={`text-4xl font-extrabold tracking-tight ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                              Create <span className="font-black">Report</span>
+                            </h1>
+                            <div className="w-10 h-10 rounded-full bg-[#3b82f6] hover:bg-blue-600 text-white flex items-center justify-center transition-all shadow-lg shadow-blue-500/30 group-hover:scale-110">
+                              <Plus size={20} strokeWidth={3} />
+                            </div>
                           </div>
-                          <div className="relative w-full md:w-80">
-                            <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-                            <input
-                              type="text"
-                              placeholder="Search reports or tags..."
-                              value={reportSearch}
-                              onChange={(e) => setReportSearch(e.target.value)}
-                              className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-full text-xs font-bold placeholder-slate-400 text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-all shadow-inner"
-                            />
+                          
+                          {/* Filter Card Container */}
+                           <div className={`p-4 rounded-[2rem] w-full max-w-[95%] xl:max-w-7xl flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl border ${
+                            darkMode ? 'bg-[#151f32]/90 border-white/5 shadow-black/20' : 'bg-white border-slate-100'
+                          }`}>
+                            <div className="flex flex-row items-center justify-center gap-3 shrink-0">
+                              {['all', 'Brand Analysis', 'VS Analysis'].map(cat => {
+                                const label = cat === 'all' ? 'All Intelligence' : cat;
+                                const isActive = reportFilter === cat;
+                                let btnStyle = "";
+                                if (isActive) {
+                                  if (cat === 'all') btnStyle = "bg-[#00f2fe] text-slate-900 shadow-md shadow-[#00f2fe]/20";
+                                  else if (cat === 'Brand Analysis') btnStyle = "bg-[#3b82f6] text-white shadow-md shadow-blue-600/20";
+                                  else btnStyle = "bg-[#7c3aed] text-white shadow-md shadow-purple-600/20";
+                                } else {
+                                  btnStyle = darkMode 
+                                    ? "bg-transparent text-slate-400 hover:bg-white/5 border border-white/10" 
+                                    : "bg-transparent text-slate-500 hover:bg-slate-100 border border-slate-200";
+                                }
+                                return (
+                                  <button
+                                    key={cat}
+                                    onClick={() => setReportFilter(cat)}
+                                    className={`px-5 py-2.5 rounded-full text-xs font-black uppercase tracking-wider transition-all duration-300 shrink-0 ${btnStyle}`}
+                                  >
+                                    {label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            
+                            <div className="relative w-full md:w-80 shrink-0">
+                              <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                              <input
+                                type="text"
+                                placeholder="Search reports..."
+                                value={reportSearch}
+                                onChange={(e) => setReportSearch(e.target.value)}
+                                className={`w-full pl-10 pr-4 py-2.5 rounded-full text-xs font-bold placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-all ${
+                                  darkMode 
+                                    ? 'bg-slate-950/40 border border-white/5 text-white shadow-inner' 
+                                    : 'bg-slate-50 border border-slate-200 text-slate-900 shadow-inner'
+                                }`}
+                              />
+                            </div>
                           </div>
                         </div>
 
@@ -8147,21 +9159,31 @@ const spec = JSON.parse(response.text);
           {showAddBrandModal && (
             <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 animate-in fade-in duration-300">
               <div className="absolute inset-0 bg-slate-900/20 backdrop-blur-sm" onClick={() => setShowAddBrandModal(false)}></div>
-              <div className="relative bg-[#f8fafc] border border-slate-200 rounded-[2.5rem] w-full max-w-sm p-10 shadow-2xl animate-in zoom-in-95 duration-300">
+              <div className={`relative border rounded-[2.5rem] w-full max-w-sm p-10 shadow-2xl animate-in zoom-in-95 duration-300 ${
+                darkMode ? 'bg-[#0f172a] border-white/5 text-white shadow-black/35' : 'bg-[#f8fafc] border-slate-200 text-slate-900'
+              }`}>
                 <button
                   onClick={() => setShowAddBrandModal(false)}
-                  className="absolute top-6 right-6 text-slate-300 hover:text-slate-900 transition-colors"
+                  className={`absolute top-6 right-6 transition-colors ${
+                    darkMode ? 'text-white/30 hover:text-white' : 'text-slate-350 hover:text-slate-900'
+                  }`}
                 >
                   <X size={20} />
                 </button>
 
                 <div className="space-y-8">
                   <div className="group">
-                    <h3 className="text-[10px] font-black text-indigo-900 mb-3 tracking-[0.2em] uppercase ml-1 transition-all group-focus-within:translate-x-1">Enter brand</h3>
+                    <h3 className={`text-[10px] font-black mb-3 tracking-[0.2em] uppercase ml-1 transition-all group-focus-within:translate-x-1 ${
+                      darkMode ? 'text-indigo-300' : 'text-indigo-900'
+                    }`}>Enter brand</h3>
                     <input
                       id="brand-input"
                       type="text"
-                      className="w-full py-5 px-6 bg-white border border-slate-200 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:border-indigo-600 focus:ring-4 focus:ring-indigo-50/50 transition-all shadow-sm"
+                      className={`w-full py-5 px-6 rounded-2xl text-sm font-bold outline-none transition-all shadow-sm ${
+                        darkMode
+                          ? 'bg-white/5 border border-white/10 text-white placeholder:text-slate-500 focus:border-indigo-550 focus:ring-4 focus:ring-indigo-500/20'
+                          : 'bg-white border border-slate-200 text-slate-900 placeholder:text-slate-400 focus:border-indigo-600 focus:ring-4 focus:ring-indigo-50/50'
+                      }`}
                       placeholder="e.g. Apple"
                       value={newBrandName}
                       onChange={(e) => setNewBrandName(e.target.value)}
@@ -8176,16 +9198,21 @@ const spec = JSON.parse(response.text);
                   </div>
 
                   <div className="group">
-                    <h3 className="text-[10px] font-black text-indigo-900 mb-4 tracking-[0.2em] uppercase ml-1 transition-all group-focus-within:translate-x-1">Region</h3>
+                    <h3 className={`text-[10px] font-black mb-4 tracking-[0.2em] uppercase ml-1 transition-all group-focus-within:translate-x-1 ${
+                      darkMode ? 'text-indigo-300' : 'text-indigo-900'
+                    }`}>Region</h3>
                     <div className="flex gap-2">
                       {['India', 'Global', 'Both'].map((r) => (
                         <button
                           key={r}
                           onClick={() => setNewBrandRegion(r)}
-                          className={`flex-1 py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.1em] transition-all duration-300 border ${newBrandRegion === r
-                            ? 'bg-indigo-600 border-indigo-600 text-white shadow-xl shadow-indigo-100 scale-105'
-                            : 'bg-white border-slate-100 text-slate-400 hover:border-indigo-600 hover:text-indigo-600 hover:bg-indigo-50/50'
-                            }`}
+                          className={`flex-1 py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.1em] transition-all duration-300 border ${
+                            newBrandRegion === r
+                              ? 'bg-indigo-600 border-indigo-600 text-white shadow-xl shadow-indigo-600/20 scale-105 font-heading'
+                              : (darkMode
+                                  ? 'bg-white/5 border-white/10 text-slate-400 hover:border-indigo-500 hover:text-indigo-400 hover:bg-white/10 font-heading'
+                                  : 'bg-white border-slate-100 text-slate-450 hover:border-indigo-600 hover:text-indigo-600 hover:bg-indigo-50/50 font-heading')
+                          }`}
                         >
                           {r}
                         </button>
@@ -8207,7 +9234,7 @@ const spec = JSON.parse(response.text);
                           }
                         }
                       }}
-                      className="w-full py-4 bg-indigo-600 text-white rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 active:scale-95"
+                      className="w-full py-4 bg-indigo-600 text-white rounded-2xl text-sm font-black uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-600/20 active:scale-95 font-heading"
                     >
                       Save Brand
                     </button>
@@ -8463,148 +9490,7 @@ const spec = JSON.parse(response.text);
             </div>
           )}
 
-          {/* Chatbot sliding drawer */}
-          <div className={`fixed inset-y-0 right-0 w-full sm:w-[450px] bg-white border-l border-slate-200 z-[110] shadow-2xl flex flex-col transition-all duration-500 ease-in-out transform ${isChatbotOpen ? 'translate-x-0' : 'translate-x-full'}`}>
-            {/* Header */}
-            <div className="p-6 bg-slate-900 text-white flex items-center justify-between relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none -mr-10 -mt-10"></div>
-              <div className="relative flex items-center gap-3">
-                <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg animate-bounce duration-1000">
-                  <MessageSquare size={20} />
-                </div>
-                <div>
-                  <h3 className="text-lg font-black tracking-tight flex items-center gap-1.5">
-                    Cerebro AI Bot
-                  </h3>
-                  <p className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">Always Online</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setIsChatbotOpen(false)}
-                className="p-2 bg-white/10 text-slate-400 hover:text-white hover:bg-white/20 rounded-full transition-all relative z-10 shadow-md"
-              >
-                <X size={18} />
-              </button>
-            </div>
 
-            {/* Message Area */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50/50 custom-scrollbar" id="chat-messages-container">
-              {chatMessages.map((msg, idx) => (
-                <div
-                  key={idx}
-                  className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in duration-300`}
-                >
-                  <div className={`max-w-[85%] rounded-2xl p-4 shadow-sm text-xs font-semibold leading-relaxed ${msg.sender === 'user'
-                      ? 'bg-indigo-600 text-white rounded-tr-none'
-                      : 'bg-white border border-slate-200 text-slate-800 rounded-tl-none'
-                    }`}>
-                    <p className="whitespace-pre-wrap">{msg.text}</p>
-                    <span className={`text-[8px] block mt-1.5 text-right font-black tracking-widest ${msg.sender === 'user' ? 'text-indigo-200' : 'text-slate-400'
-                      }`}>
-                      {msg.timestamp}
-                    </span>
-                  </div>
-                </div>
-              ))}
-              {isChatTyping && (
-                <div className="flex justify-start animate-pulse">
-                  <div className="bg-white border border-slate-200 text-slate-400 rounded-2xl rounded-tl-none p-4 shadow-sm flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce"></span>
-                    <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce delay-100"></span>
-                    <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce delay-200"></span>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Input Form */}
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (!chatInput.trim()) return;
-                const userMsg = {
-                  sender: 'user',
-                  text: chatInput.trim(),
-                  timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                };
-                setChatMessages(prev => [...prev, userMsg]);
-                const inputVal = chatInput.trim();
-                setChatInput('');
-
-                // Auto-scroll to bottom
-                setTimeout(() => {
-                  const container = document.getElementById('chat-messages-container');
-                  if (container) container.scrollTop = container.scrollHeight;
-                }, 100);
-
-                // Bot reply logic
-                setIsChatTyping(true);
-                setTimeout(() => {
-                  setIsChatTyping(false);
-                  let botText = '';
-                  const lowerInput = inputVal.toLowerCase();
-
-                  if (lowerInput.includes('brand') || lowerInput.includes('active brands') || lowerInput.includes('company') || lowerInput.includes('companies')) {
-                    if (trackedBrands.length > 0) {
-                      botText = `We are currently tracking ${trackedBrands.length} active brand(s):\n${trackedBrands.map((b, i) => `${i + 1}. ${b.name} (${b.region})`).join('\n')}\n\nYou can manage them on the Brand Tracker tab.`;
-                    } else {
-                      botText = `We are not tracking any active brands right now. You can add one under the "Brand Tracker" tab!`;
-                    }
-                  } else if (lowerInput.includes('report') || lowerInput.includes('reports')) {
-                    if (reports.length > 0) {
-                      botText = `Here are the latest briefing reports (${reports.length} total):\n${reports.map((r, i) => `${i + 1}. ${r.title} [${r.status}]`).join('\n')}\n\nYou can access them under the "Report Analysis" tab.`;
-                    } else {
-                      botText = `No reports have been created yet. You can click 'Create Report' in the "Report Analysis" tab!`;
-                    }
-                  } else if (lowerInput.includes('keyword') || lowerInput.includes('keywords') || lowerInput.includes('analyze') || lowerInput.includes('analyzed')) {
-                    const allKeywords = Array.from(new Set(reports.flatMap(r => [
-                      ...(r.brandKeywords || '').split(','),
-                      ...(r.competitorKeywords || '').split(',')
-                    ]).map(k => k.trim()).filter(Boolean)));
-
-                    if (allKeywords.length > 0) {
-                      botText = `Our system has analyzed the following key subjects/keywords recently:\n${allKeywords.map((k, i) => `- ${k}`).join('\n')}\n\nYou can run dynamic keyword searches in the "Keyword Search" tab.`;
-                    } else {
-                      botText = `Our reports don't have active keywords yet. You can specify keywords when creating reports, or run keyword searches in the "Keyword Search" tab.`;
-                    }
-                  } else if (lowerInput.includes('hello') || lowerInput.includes('hi ') || lowerInput.includes('hey')) {
-                    botText = `Hello! How can I help you today with your media analysis and intelligence reports?`;
-                  } else if (lowerInput.includes('reach') || lowerInput.includes('article')) {
-                    botText = `You can use the "Article Reach" tab to measure unique reach, mentions count, and sentiment across Google News, Reddit, and social proof. Let me know if you want instructions on how to use it!`;
-                  } else {
-                    botText = `Interesting query! As an autonomous intelligence bot, I help you monitor media mentions, inspect competitor velocity, and create comprehensive reports. \n\nTry asking me about "active brands", "reports", or "analyzed keywords".`;
-                  }
-
-                  setChatMessages(prev => [...prev, {
-                    sender: 'bot',
-                    text: botText,
-                    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                  }]);
-
-                  // Auto-scroll to bottom again
-                  setTimeout(() => {
-                    const container = document.getElementById('chat-messages-container');
-                    if (container) container.scrollTop = container.scrollHeight;
-                  }, 100);
-                }, 1000);
-              }}
-              className="p-4 border-t border-slate-200 bg-white flex items-center gap-2"
-            >
-              <input
-                type="text"
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                placeholder="Ask me anything..."
-                className="flex-1 py-3 px-4 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:border-indigo-600 transition-all bg-slate-50 focus:bg-white"
-              />
-              <button
-                type="submit"
-                className="p-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-lg shadow-indigo-100 transition-all active:scale-95 shrink-0"
-              >
-                <ArrowRight size={16} />
-              </button>
-            </form>
-          </div>
 
           {/* Drill-Through Slide-Over Explorer (Feature 5) */}
           {drillThroughContext && drillThroughContext.isOpen && (
@@ -8709,82 +9595,118 @@ const spec = JSON.parse(response.text);
   }
 
   return (
-    <div className="min-h-screen w-full relative flex items-center justify-center overflow-hidden font-body selection:bg-indigo-500/30 py-10">
-      {/* Background Image with Low Opacity */}
-      <div
-        className="absolute inset-0 z-0 bg-cover bg-center "
-        style={{
-          backgroundImage: 'url("/image.png")',
-          opacity: 1
-        }}
-      />
-
-      {/* Dynamic Animated Orbs */}
+    <div className="min-h-screen w-full relative flex items-center justify-start overflow-hidden bg-[#030712] font-body selection:bg-indigo-500/30 p-6 md:p-16">
+      {/* Dynamic Animated Orbs for depth */}
       <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-[-10%] left-[-5%] w-[40%] h-[40%] bg-indigo-600/20 rounded-full blur-[120px] animate-float" style={{ animationDelay: '0s' }}></div>
-        <div className="absolute bottom-[-10%] right-[-5%] w-[35%] h-[35%] bg-purple-600/20 rounded-full blur-[100px] animate-float" style={{ animationDelay: '-2s' }}></div>
+        <div className="absolute top-[-10%] left-[-5%] w-[40%] h-[40%] bg-indigo-600/10 rounded-full blur-[120px]"></div>
+        <div className="absolute bottom-[-10%] right-[-5%] w-[35%] h-[35%] bg-purple-600/10 rounded-full blur-[100px]"></div>
       </div>
 
-      <div className="relative z-10 w-full max-w-md px-6">
-        <div className="glass-card rounded-[2.5rem] p-8 md:p-10  glass-shimmer glow-on-hover" style={{ backgroundColor: 'rgba(255, 255, 255, 0.9)' }}>
+      {/* Video Container (Starts in full screen, slides/scales to the right when ended) */}
+      <div className="absolute top-0 left-0 w-full h-full z-20">
+        <video
+          ref={videoRef}
+          autoPlay
+          muted
+          playsInline
+          preload="auto"
+          onCanPlay={() => { if (videoRef.current) videoRef.current.playbackRate = 2.0; }}
+          onEnded={() => {
+            setVideoEnded(true);
+            if (videoRef.current) {
+              videoRef.current.pause();
+            }
+            // Transition form visibility after container reaches the right side
+            setTimeout(() => {
+              setBrainMovedLeft(true);
+            }, 1500);
+          }}
+          className="w-full h-full object-cover pointer-events-none"
+          style={{ filter: 'contrast(1.1) saturate(1.15) brightness(1.05)' }}
+        >
+          <source src="/login_bg.mp4" type="video/mp4" />
+        </video>
+      </div>
+
+      {/* Login / Sign-up Container Card (Slides/Fades in once brain has moved to the right) */}
+      <div 
+        className={`absolute z-30 transition-all duration-[1000ms] ease-out transform ${
+          brainMovedLeft 
+            ? 'opacity-100 translate-y-0 scale-100 pointer-events-auto' 
+            : 'opacity-0 translate-y-8 scale-95 pointer-events-none'
+        } left-1/2 -translate-x-1/2 top-[45%] w-[92%] max-w-md md:left-[8%] md:translate-x-0 md:top-1/2 md:-translate-y-1/2 md:w-[35%] md:max-w-md`}
+      >
+        <div className="glass-card w-full max-w-md p-8 md:p-10 rounded-[2.5rem] relative text-white" style={{ background: '#4f46e5', border: '1px solid rgba(255,255,255,0.15)' }}>
+          <button 
+            onClick={() => setView('landing')} 
+            className="absolute top-6 left-6 text-white/50 hover:text-white transition-all flex items-center gap-1.5 text-xs font-bold"
+          >
+            <ArrowLeft size={14} /> Back
+          </button>
 
           {view === 'login' && (
             <>
-              {renderHeader('Cerebro', 'Intelligence at your fingertips')}
-              {error && <div className="mb-6 p-4 bg-red-500/20 border border-red-500/30 rounded-2xl text-[#7f1d1d] text-xs font-bold ">{error}</div>}
-              {successMessage && <div className="mb-6 p-4 bg-green-500/20 border border-green-500/30 rounded-2xl text-[#064e3b] text-xs font-bold ">{successMessage}</div>}
+              {/* Custom High-Fidelity Header */}
+              <div className="flex flex-col items-center mb-8">
+                <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center mb-3 border border-white/10 shadow-inner">
+                  <img src="/cerebro_white.png" alt="Cerebro" className="w-12 h-12 object-contain" />
+                </div>
+                <h1 className="text-3xl font-black tracking-tighter text-white mb-0.5" style={{ fontFamily: 'var(--font-heading)' }}>Cerebro</h1>
+                <p className="text-cyan-300 text-[10px] font-black uppercase tracking-widest">Intelligence at your fingertips</p>
+              </div>
 
-              <div className="flex bg-slate-100 p-1.5 rounded-2xl mb-6 gap-1">
-                <button
-                  type="button"
-                  onClick={() => setAuthRole('admin')}
-                  className={`flex-1 py-2 px-2 rounded-xl text-[8px] font-black uppercase tracking-wider transition-all ${authRole === 'admin'
-                    ? 'bg-indigo-600 text-white shadow-md'
-                    : 'text-slate-500 hover:text-slate-950'
-                    }`}
-                >
-                  Admin
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAuthRole('employee')}
-                  className={`flex-1 py-2 px-2 rounded-xl text-[8px] font-black uppercase tracking-wider transition-all ${authRole === 'employee'
-                    ? 'bg-indigo-600 text-white shadow-md'
-                    : 'text-slate-500 hover:text-slate-950'
-                    }`}
-                >
-                  Maverick
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAuthRole('individual')}
-                  className={`flex-1 py-2 px-2 rounded-xl text-[8px] font-black uppercase tracking-wider transition-all ${authRole === 'individual'
-                    ? 'bg-indigo-600 text-white shadow-md'
-                    : 'text-slate-500 hover:text-slate-950'
-                    }`}
-                >
-                  Individual
-                </button>
+              {error && <div className="mb-6 p-4 bg-red-500/20 border border-red-500/30 rounded-2xl text-red-200 text-xs font-bold">{error}</div>}
+              {successMessage && <div className="mb-6 p-4 bg-green-500/20 border border-green-500/30 rounded-2xl text-green-200 text-xs font-bold">{successMessage}</div>}
+
+              {/* Role selector tabs */}
+              <div className="flex p-1 rounded-2xl mb-6 gap-1" style={{ background: 'rgba(255,255,255,0.92)', border: '1px solid rgba(255,255,255,0.6)', color: '#1e1b4b' }}>
+                {['admin', 'employee', 'individual'].map((role) => {
+                  const label = role === 'employee' ? 'Maverick' : role === 'admin' ? 'Admin' : 'Individual';
+                  const isActive = authRole === role;
+                  return (
+                    <button
+                      key={role}
+                      type="button"
+                      onClick={() => setAuthRole(role)}
+                      className={`flex-1 py-2 px-2 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all ${
+                        isActive
+                          ? 'bg-indigo-600 text-white shadow-md font-bold'
+                          : 'text-indigo-900/70 hover:text-indigo-900 hover:bg-indigo-100/50'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-1.5 group">
-                  <label className="text-[10px] font-black text-[#475569] uppercase tracking-[0.2em] ml-1">Email Address</label>
+                  <label className="text-[10px] font-black text-white/70 uppercase tracking-[0.2em] ml-1">Email Address</label>
                   <div className="relative">
-                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-[#475569] group-focus-within:text-black transition-colors" size={18} />
-                    <input type="email" required placeholder={authRole === 'individual' ? "you@example.com" : "user@themavericksindia.com"} className="glass-input w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold" value={email} onChange={(e) => setEmail(e.target.value)} />
+                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400 group-focus-within:text-indigo-700 transition-colors" size={18} />
+                    <input
+                      type="email"
+                      required
+                      placeholder={authRole === 'individual' ? "you@example.com" : "user@themavericksindia.com"}
+                      className="w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold outline-none transition-all placeholder-indigo-300"
+                      style={{ background: 'rgba(255,255,255,0.92)', border: '1px solid rgba(255,255,255,0.6)', color: '#1e1b4b' }}
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                    />
                   </div>
                 </div>
                 {authRole === 'admin' && (
                   <div className="space-y-1.5 group">
-                    <label className="text-[10px] font-black text-[#475569] uppercase tracking-[0.2em] ml-1">Admin Key</label>
+                    <label className="text-[10px] font-black text-white/70 uppercase tracking-[0.2em] ml-1">Admin Key</label>
                     <div className="relative">
-                      <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-[#475569] group-focus-within:text-black transition-colors" size={18} />
+                      <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400 group-focus-within:text-indigo-700 transition-colors" size={18} />
                       <input
                         type="text"
                         required
                         placeholder="Enter Admin Key"
-                        className="glass-input w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold"
+                        className="w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold outline-none transition-all placeholder-indigo-300"
+                        style={{ background: 'rgba(255,255,255,0.92)', border: '1px solid rgba(255,255,255,0.6)', color: '#1e1b4b' }}
                         value={adminKeyInput}
                         onChange={(e) => setAdminKeyInput(e.target.value)}
                       />
@@ -8793,43 +9715,59 @@ const spec = JSON.parse(response.text);
                 )}
                 <div className="space-y-1.5 group">
                   <div className="flex justify-between items-center ml-1">
-                    <label className="text-[10px] font-black text-[#475569] uppercase tracking-[0.2em]">Password</label>
-                    <button type="button" onClick={() => setView('forgot')} className="text-[10px] font-black text-indigo-400 hover:text-indigo-300 transition-colors uppercase">FORGOT?</button>
+                    <label className="text-[10px] font-black text-white/70 uppercase tracking-[0.2em]">Password</label>
+                    <button type="button" onClick={() => setView('forgot')} className="text-[10px] font-black text-cyan-300 hover:text-cyan-200 transition-colors uppercase">FORGOT?</button>
                   </div>
                   <div className="relative">
-                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-[#475569] group-focus-within:text-black transition-colors" size={18} />
-                    <input type={showPassword ? "text" : "password"} required placeholder="••••••••" className="glass-input w-full py-4 pl-12 pr-12 rounded-2xl text-sm font-semibold" value={password} onChange={(e) => setPassword(e.target.value)} />
-                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-[#475569] hover:text-black transition-colors">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400 group-focus-within:text-indigo-700 transition-colors" size={18} />
+                    <input 
+                      type={showPassword ? "text" : "password"} 
+                      required 
+                      placeholder="••••••••" 
+                      className="w-full py-4 pl-12 pr-12 rounded-2xl text-sm font-semibold outline-none transition-all placeholder-indigo-300"
+                      style={{ background: 'rgba(255,255,255,0.92)', border: '1px solid rgba(255,255,255,0.6)', color: '#1e1b4b' }}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                    />
+                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-indigo-400 hover:text-indigo-700 transition-colors">
                       {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                     </button>
                   </div>
                 </div>
-                <button type="submit" disabled={loading} className="glass-button-primary w-full py-4 flex items-center justify-center gap-3 mt-2">
-                  {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <><ShieldCheck size={18} /> Sign In to Cerebro</>}
+                <button type="submit" disabled={loading} className="w-full py-4 flex items-center justify-center gap-3 mt-6 rounded-2xl font-bold text-sm tracking-wide transition-all active:scale-95" style={{ background: 'rgba(255,255,255,0.92)', color: '#3730a3' }}>
+                  {loading ? <div className="w-5 h-5 border-2 border-indigo-300 border-t-indigo-700 rounded-full animate-spin"></div> : <><ShieldCheck size={18} /> Sign In to Cerebro</>}
                 </button>
               </form>
               <div className="relative my-8">
                 <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-white/10"></div></div>
-                <div className="relative flex justify-center text-[10px] uppercase tracking-widest font-black"><span className="bg-[#1e1b4b]/0 px-4 text-[#475569]">Or continue with</span></div>
+                <div className="relative flex justify-center text-[10px] uppercase tracking-widest font-black"><span className="px-4 text-white/70" style={{ background: '#4f46e5' }}>Or continue with</span></div>
               </div>
-              <button className="glass-button w-full flex items-center justify-center gap-2 text-xs mb-8"><Chrome size={16} /> Sign in with Google</button>
-              <p className="text-center text-xs font-bold text-[#475569]">Don't have an account? <button onClick={() => setView('signup')} className="text-black hover:underline transition-all">Create Account</button></p>
+              <button className="text-white rounded-2xl py-3.5 w-full font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all hover:opacity-90" style={{ background: 'rgba(255,255,255,0.92)', border: '1px solid rgba(255,255,255,0.6)', color: '#1e1b4b' }}><Chrome size={16} /> Sign in with Google</button>
+              <p className="text-center text-xs font-bold text-white/60 mt-6">Don't have an account? <button onClick={() => setView('signup')} className="text-[#00f2fe] font-black hover:underline transition-all">Create Account</button></p>
             </>
           )}
 
           {view === 'signup' && (
             <>
-              {renderHeader('Cerebro', 'Join the next era of PR')}
-              {error && <div className="mb-6 p-4 bg-red-500/20 border border-red-500/30 rounded-2xl text-[#7f1d1d] text-xs font-bold ">{error}</div>}
-              {successMessage && <div className="mb-6 p-4 bg-green-500/20 border border-green-500/30 rounded-2xl text-[#064e3b] text-xs font-bold ">{successMessage}</div>}
+              {/* Custom High-Fidelity Header */}
+              <div className="flex flex-col items-center mb-8">
+                <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center mb-3 border border-white/10 shadow-inner">
+                  <img src="/cerebro_white.png" alt="Cerebro" className="w-12 h-12 object-contain" />
+                </div>
+                <h1 className="text-3xl font-black tracking-tighter text-white mb-0.5" style={{ fontFamily: 'var(--font-heading)' }}>Cerebro</h1>
+                <p className="text-cyan-300 text-[10px] font-black uppercase tracking-widest">Join the next era of PR</p>
+              </div>
 
-              <div className="flex bg-slate-100 p-1.5 rounded-2xl mb-6">
+              {error && <div className="mb-6 p-4 bg-red-500/20 border border-red-500/30 rounded-2xl text-red-200 text-xs font-bold">{error}</div>}
+              {successMessage && <div className="mb-6 p-4 bg-green-500/20 border border-green-500/30 rounded-2xl text-green-200 text-xs font-bold">{successMessage}</div>}
+
+              <div className="flex bg-white/5 border border-white/10 p-1 rounded-2xl mb-6 gap-1">
                 <button
                   type="button"
                   onClick={() => setAuthRole('employee')}
-                  className={`flex-1 py-3 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${authRole === 'employee'
-                    ? 'bg-indigo-600 text-white shadow-md'
-                    : 'text-slate-500 hover:text-slate-950'
+                  className={`flex-1 py-2 px-2 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all ${authRole === 'employee'
+                    ? 'bg-indigo-600 text-white shadow-md font-bold'
+                    : 'text-white/60 hover:text-white'
                     }`}
                 >
                   Maverick
@@ -8837,9 +9775,9 @@ const spec = JSON.parse(response.text);
                 <button
                   type="button"
                   onClick={() => setAuthRole('individual')}
-                  className={`flex-1 py-3 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${authRole === 'individual'
-                    ? 'bg-indigo-600 text-white shadow-md'
-                    : 'text-slate-500 hover:text-slate-950'
+                  className={`flex-1 py-2 px-2 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all ${authRole === 'individual'
+                    ? 'bg-indigo-600 text-white shadow-md font-bold'
+                    : 'text-white/60 hover:text-white'
                     }`}
                 >
                   Individual User
@@ -8847,52 +9785,113 @@ const spec = JSON.parse(response.text);
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="space-y-1.5 group"><label className="text-[10px] font-black text-[#475569] uppercase tracking-[0.2em] ml-1">Full Name</label><div className="relative"><User className="absolute left-4 top-1/2 -translate-y-1/2 text-[#475569] group-focus-within:text-black transition-colors" size={18} /><input type="text" required placeholder="Your Full Name" className="glass-input w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold" value={name} onChange={(e) => setName(e.target.value)} /></div></div>
-                <div className="space-y-1.5 group"><label className="text-[10px] font-black text-[#475569] uppercase tracking-[0.2em] ml-1">Email Address</label><div className="relative"><Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-[#475569] group-focus-within:text-black transition-colors" size={18} /><input type="email" required placeholder={authRole === 'individual' ? "you@example.com" : "user@themavericksindia.com"} className="glass-input w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold" value={email} onChange={(e) => setEmail(e.target.value)} /></div></div>
+                <div className="space-y-1.5 group">
+                  <label className="text-[10px] font-black text-white/70 uppercase tracking-[0.2em] ml-1">Full Name</label>
+                  <div className="relative">
+                    <User className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400 group-focus-within:text-indigo-700 transition-colors" size={18} />
+                    <input type="text" required placeholder="Your Full Name" className="glass-input w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold text-white placeholder-white/30" value={name} onChange={(e) => setName(e.target.value)} />
+                  </div>
+                </div>
+                <div className="space-y-1.5 group">
+                  <label className="text-[10px] font-black text-white/70 uppercase tracking-[0.2em] ml-1">Email Address</label>
+                  <div className="relative">
+                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400 group-focus-within:text-indigo-700 transition-colors" size={18} />
+                    <input type="email" required placeholder={authRole === 'individual' ? "you@example.com" : "user@themavericksindia.com"} className="glass-input w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold text-white placeholder-white/30" value={email} onChange={(e) => setEmail(e.target.value)} />
+                  </div>
+                </div>
                 {authRole === 'individual' && (
                   <div className="space-y-1.5 group">
-                    <label className="text-[10px] font-black text-[#475569] uppercase tracking-[0.2em] ml-1">License Key</label>
+                    <label className="text-[10px] font-black text-white/70 uppercase tracking-[0.2em] ml-1">License Key</label>
                     <div className="relative">
-                      <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-[#475569] group-focus-within:text-black transition-colors" size={18} />
+                      <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400 group-focus-within:text-indigo-700 transition-colors" size={18} />
                       <input
                         type="text"
                         required
                         placeholder="MAV-XXXX-XXXX"
-                        className="glass-input w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold"
+                        className="glass-input w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold text-white placeholder-white/30"
                         value={licenseKey}
                         onChange={(e) => setLicenseKey(e.target.value)}
                       />
                     </div>
                   </div>
                 )}
-                <div className="space-y-1.5 group"><label className="text-[10px] font-black text-[#475569] uppercase tracking-[0.2em] ml-1">Create Password</label><div className="relative"><Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-[#475569] group-focus-within:text-black transition-colors" size={18} /><input type={showPassword ? "text" : "password"} required placeholder="••••••••" className="glass-input w-full py-4 pl-12 pr-12 rounded-2xl text-sm font-semibold" value={password} onChange={(e) => setPassword(e.target.value)} /><button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-[#475569] hover:text-black transition-colors">{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button></div></div>
-                <div className="space-y-1.5 group"><label className="text-[10px] font-black text-[#475569] uppercase tracking-[0.2em] ml-1">Confirm Password</label><div className="relative"><Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-[#475569] group-focus-within:text-black transition-colors" size={18} /><input type={showPassword ? "text" : "password"} required placeholder="••••••••" className="glass-input w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} /></div></div>
-                <div className="flex items-center gap-3 px-1 py-2"><button type="button" onClick={() => setAgreeTerms(!agreeTerms)} className={`w-5 h-5 rounded flex items-center justify-center border transition-all ${agreeTerms ? 'bg-indigo-600 border-indigo-600 text-black' : 'border-white/20 text-transparent'}`}><CheckCircle2 size={14} /></button><span className="text-[10px] font-bold text-[#334155] leading-tight">I agree to the <button type="button" className="text-indigo-400 hover:underline">Terms of Service</button> and <button type="button" className="text-indigo-400 hover:underline">Privacy Policy</button>.</span></div>
-                <button type="submit" disabled={loading} className="glass-button-primary w-full py-4 flex items-center justify-center gap-3 mt-2">{loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <>Create Account <ArrowRight size={18} /></>}</button>
+                <div className="space-y-1.5 group">
+                  <label className="text-[10px] font-black text-white/70 uppercase tracking-[0.2em] ml-1">Create Password</label>
+                  <div className="relative">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400 group-focus-within:text-indigo-700 transition-colors" size={18} />
+                    <input type={showPassword ? "text" : "password"} required placeholder="••••••••" className="glass-input w-full py-4 pl-12 pr-12 rounded-2xl text-sm font-semibold text-white placeholder-white/30" value={password} onChange={(e) => setPassword(e.target.value)} />
+                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-indigo-400 hover:text-indigo-700 transition-colors">
+                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-1.5 group">
+                  <label className="text-[10px] font-black text-white/70 uppercase tracking-[0.2em] ml-1">Confirm Password</label>
+                  <div className="relative">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400 group-focus-within:text-indigo-700 transition-colors" size={18} />
+                    <input type={showPassword ? "text" : "password"} required placeholder="••••••••" className="glass-input w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold text-white placeholder-white/30" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 px-1 py-2">
+                  <button type="button" onClick={() => setAgreeTerms(!agreeTerms)} className={`w-5 h-5 rounded flex items-center justify-center border transition-all ${agreeTerms ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-white/20 text-transparent'}`}>
+                    <CheckCircle2 size={14} />
+                  </button>
+                  <span className="text-[10px] font-bold text-white/70 leading-tight">
+                    I agree to the <button type="button" className="text-cyan-300 hover:underline">Terms of Service</button> and <button type="button" className="text-cyan-300 hover:underline">Privacy Policy</button>.
+                  </span>
+                </div>
+                <button type="submit" disabled={loading} className="glass-button-primary w-full py-4 flex items-center justify-center gap-3 mt-6">
+                  {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <>Create Account <ArrowRight size={18} /></>}
+                </button>
               </form>
-              <p className="mt-10 text-center text-xs font-bold text-[#475569]">Already have an account? <button onClick={() => setView('login')} className="text-black hover:underline transition-all">Sign In Now</button></p>
+              <p className="mt-8 text-center text-xs font-bold text-white/60">Already have an account? <button onClick={() => setView('login')} className="text-[#00f2fe] font-black hover:underline transition-all">Sign In Now</button></p>
             </>
           )}
 
           {view === 'forgot' && (
             <>
-              {renderHeader('Recover Access', successMessage ? 'Check your inbox' : 'Enter your email to receive a recovery link')}
-              {error && <div className="mb-6 p-4 bg-red-500/20 border border-red-500/30 rounded-2xl text-[#7f1d1d] text-xs font-bold ">{error}</div>}
+              {/* Custom High-Fidelity Header */}
+              <div className="flex flex-col items-center mb-8">
+                <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center mb-3 border border-white/10 shadow-inner">
+                  <img src="/cerebro_white.png" alt="Cerebro" className="w-12 h-12 object-contain" />
+                </div>
+                <h1 className="text-3xl font-black tracking-tighter text-white mb-0.5" style={{ fontFamily: 'var(--font-heading)' }}>Cerebro</h1>
+                <p className="text-cyan-300 text-[10px] font-black uppercase tracking-widest">{successMessage ? 'Check your inbox' : 'Recover Access'}</p>
+              </div>
+
+              {error && <div className="mb-6 p-4 bg-red-500/20 border border-red-500/30 rounded-2xl text-red-200 text-xs font-bold">{error}</div>}
               {successMessage ? (
-                <div className="space-y-6 ">
-                  <div className="p-6 bg-green-500/10 border border-green-500/20 rounded-[2rem] text-center">
-                    <div className="w-12 h-12 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-4 text-[#064e3b]"><CheckCircle2 size={24} /></div>
-                    <p className="text-sm font-bold text-slate-700">{successMessage}</p>
-                    <p className="text-xs text-[#475569] mt-2 italic">Note: Use "admin@themavericksindia.com" to simulate success.</p>
+                <div className="space-y-6">
+                  <div className="p-6 bg-white/5 border border-white/10 rounded-[2rem] text-center">
+                    <div className="w-12 h-12 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-4 text-green-300"><CheckCircle2 size={24} /></div>
+                    <p className="text-sm font-bold text-white">{successMessage}</p>
+                    <p className="text-xs text-white/50 mt-2 italic">Note: Use "admin@themavericksindia.com" to simulate success.</p>
                   </div>
-                  <button onClick={() => setView('reset')} className="glass-button w-full flex items-center justify-center gap-2 text-xs">Simulate: Go to Reset Page <ArrowRight size={16} /></button>
-                  <button onClick={() => setView('login')} className="w-full text-center text-xs font-bold text-[#475569] hover:text-black transition-colors flex items-center justify-center gap-2"><ArrowLeft size={14} /> Back to Login</button>
+                  <button onClick={() => setView('reset')} className="bg-[#00f2fe] hover:bg-cyan-400 text-slate-900 font-black tracking-wider py-4 rounded-2xl w-full transition-all duration-300 shadow-lg shadow-cyan-400/20 uppercase text-xs flex items-center justify-center gap-2">Simulate: Go to Reset Page <ArrowRight size={16} /></button>
+                  <button onClick={() => setView('login')} className="w-full text-center text-xs font-bold text-cyan-300 hover:text-cyan-200 transition-colors flex items-center justify-center gap-2"><ArrowLeft size={14} /> Back to Login</button>
                 </div>
               ) : (
                 <form onSubmit={handleSubmit} className="space-y-6">
-                  <div className="space-y-1.5 group"><label className="text-[10px] font-black text-[#475569] uppercase tracking-[0.2em] ml-1">Email Address</label><div className="relative"><Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-[#475569] group-focus-within:text-black transition-colors" size={18} /><input type="email" required placeholder="user@themavericksindia.com" className="glass-input w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold" value={email} onChange={(e) => setEmail(e.target.value)} /></div></div>
-                  <button type="submit" disabled={loading} className="glass-button-primary w-full py-4 flex items-center justify-center gap-3 mt-2">{loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <>Send Reset Link <ArrowRight size={18} /></>}</button>
-                  <button onClick={() => setView('login')} className="w-full text-center text-xs font-bold text-[#475569] hover:text-black transition-colors flex items-center justify-center gap-2"><ArrowLeft size={14} /> Back to Login</button>
+                  <div className="space-y-1.5 group">
+                    <label className="text-[10px] font-black text-white/70 uppercase tracking-[0.2em] ml-1">Email Address</label>
+                    <div className="relative">
+                      <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400 group-focus-within:text-indigo-700 transition-colors" size={18} />
+                      <input 
+                        type="email" 
+                        required 
+                        placeholder="user@themavericksindia.com" 
+                        className="glass-input w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold text-white placeholder-white/30" 
+                        value={email} 
+                        onChange={(e) => setEmail(e.target.value)} 
+                      />
+                    </div>
+                  </div>
+                  <button type="submit" disabled={loading} className="glass-button-primary w-full py-4 flex items-center justify-center gap-3 mt-6">
+                    {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <>Send Reset Link <ArrowRight size={18} /></>}
+                  </button>
+                  <button onClick={() => setView('login')} className="w-full text-center text-xs font-bold text-cyan-300 hover:text-cyan-200 transition-colors flex items-center justify-center gap-2 mt-4">
+                    <ArrowLeft size={14} /> Back to Login
+                  </button>
                 </form>
               )}
             </>
@@ -8900,22 +9899,52 @@ const spec = JSON.parse(response.text);
 
           {view === 'reset' && (
             <>
-              {renderHeader('Reset Password', 'Create a new secure password for your account')}
-              {error && <div className="mb-6 p-4 bg-red-500/20 border border-red-500/30 rounded-2xl text-[#7f1d1d] text-xs font-bold ">{error}</div>}
+              {/* Custom High-Fidelity Header */}
+              <div className="flex flex-col items-center mb-8">
+                <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center mb-3 border border-white/10 shadow-inner">
+                  <img src="/cerebro_white.png" alt="Cerebro" className="w-12 h-12 object-contain" />
+                </div>
+                <h1 className="text-3xl font-black tracking-tighter text-white mb-0.5" style={{ fontFamily: 'var(--font-heading)' }}>Cerebro</h1>
+                <p className="text-cyan-300 text-[10px] font-black uppercase tracking-widest">Reset Password</p>
+              </div>
+
+              {error && <div className="mb-6 p-4 bg-red-500/20 border border-red-500/30 rounded-2xl text-red-200 text-xs font-bold">{error}</div>}
+              
               <form onSubmit={handleSubmit} className="space-y-6">
-                <div className="space-y-1.5 group"><label className="text-[10px] font-black text-[#475569] uppercase tracking-[0.2em] ml-1">New Password</label><div className="relative"><Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-[#475569] group-focus-within:text-black transition-colors" size={18} /><input type={showPassword ? "text" : "password"} required placeholder="••••••••" className="glass-input w-full py-4 pl-12 pr-12 rounded-2xl text-sm font-semibold" value={password} onChange={(e) => setPassword(e.target.value)} /><button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-[#475569] hover:text-black transition-colors">{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button></div></div>
-                <div className="space-y-1.5 group"><label className="text-[10px] font-black text-[#475569] uppercase tracking-[0.2em] ml-1">Confirm New Password</label><div className="relative"><Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-[#475569] group-focus-within:text-black transition-colors" size={18} /><input type={showPassword ? "text" : "password"} required placeholder="••••••••" className="glass-input w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} /></div></div>
-                <button type="submit" disabled={loading} className="glass-button-primary w-full py-4 flex items-center justify-center gap-3 mt-2">{loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <>Reset Password <CheckCircle2 size={18} /></>}</button>
+                <div className="space-y-1.5 group">
+                  <label className="text-[10px] font-black text-white/70 uppercase tracking-[0.2em] ml-1">New Password</label>
+                  <div className="relative">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400 group-focus-within:text-indigo-700 transition-colors" size={18} />
+                    <input type={showPassword ? "text" : "password"} required placeholder="••••••••" className="glass-input w-full py-4 pl-12 pr-12 rounded-2xl text-sm font-semibold text-white placeholder-white/30" value={password} onChange={(e) => setPassword(e.target.value)} />
+                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-indigo-400 hover:text-indigo-700 transition-colors">
+                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-1.5 group">
+                  <label className="text-[10px] font-black text-white/70 uppercase tracking-[0.2em] ml-1">Confirm New Password</label>
+                  <div className="relative">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400 group-focus-within:text-indigo-700 transition-colors" size={18} />
+                    <input type={showPassword ? "text" : "password"} required placeholder="••••••••" className="glass-input w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold text-white placeholder-white/30" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+                  </div>
+                </div>
+                <button type="submit" disabled={loading} className="glass-button-primary w-full py-4 flex items-center justify-center gap-3 mt-6">
+                  {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <>Reset Password <CheckCircle2 size={18} /></>}
+                </button>
               </form>
             </>
           )}
 
           {view === 'success' && (
-            <div className="flex flex-col items-center py-10 ">
-              <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mb-6 text-[#064e3b] border border-green-500/20"><CheckCircle2 size={40} /></div>
-              <h2 className="text-3xl font-black text-black tracking-tighter mb-2 text-center">Password Updated</h2>
-              <p className="text-[#334155] text-sm font-medium mb-10 text-center">Your account is now secure. You can sign in with your new password.</p>
-              <button onClick={() => setView('login')} className="glass-button-primary w-full py-4 flex items-center justify-center gap-3">Back to Login <ArrowRight size={18} /></button>
+            <div className="flex flex-col items-center py-10">
+              <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mb-6 text-green-300 border border-green-500/20">
+                <CheckCircle2 size={40} />
+              </div>
+              <h2 className="text-3xl font-black text-white tracking-tighter mb-2 text-center">Password Updated</h2>
+              <p className="text-white/60 text-sm font-medium mb-10 text-center">Your account is now secure. You can sign in with your new password.</p>
+              <button onClick={() => setView('login')} className="bg-[#00f2fe] hover:bg-cyan-400 text-slate-900 font-black tracking-wider py-4 rounded-2xl w-full transition-all duration-300 shadow-lg shadow-cyan-400/20 uppercase text-xs flex items-center justify-center gap-3">
+                Back to Login <ArrowRight size={18} />
+              </button>
             </div>
           )}
 

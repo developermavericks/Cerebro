@@ -4,7 +4,7 @@ window.SPAWNING = [
   { id: 'webmeji-2', config: 'C1_CONFIG' },
   { id: 'webmeji-3', config: 'C2_CONFIG' },
   { id: 'webmeji-4', config: 'C3_CONFIG' },
-  { id: 'webmeji-6', config: 'C5_CONFIG' }
+  { id: 'webmeji-6', config: 'SHIMEJI_CONFIG' }
 ];
 
 window.SHIMEJI_CONFIG = {
