@@ -5355,9 +5355,13 @@ function App() {
                   </div>
                 ) : activeTab === 'settings' ? (
                   <div className={`flex flex-col ${sidebarCollapsed ? 'max-w-[1850px]' : 'max-w-[1700px]'} mx-auto w-full animate-in fade-in duration-700 pr-2 transition-all duration-500`}>
-                    <div className="mb-10 text-center">
-                      <h2 className="text-4xl font-black text-black tracking-tighter mb-2">Platform Settings</h2>
-                      <p className="text-slate-500 font-bold text-sm">Manage your account preferences and system configurations.</p>
+                    <div className="text-center max-w-2xl mx-auto mb-12">
+                      <h1 className={`text-5xl tracking-tight mb-3 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                        <span className="font-light">Platform</span> <span className="font-black">Settings</span>
+                      </h1>
+                      <p className="text-slate-500 font-bold text-xs uppercase tracking-widest leading-relaxed">
+                        Manage your account preferences and system configurations
+                      </p>
                     </div>
 
                     {user?.role === 'admin' ? (
@@ -8887,9 +8891,13 @@ const spec = JSON.parse(response.text);
                   </div>
                 ) : activeTab === 'help' ? (
                   <div className={`w-full ${sidebarCollapsed ? 'max-w-[1850px]' : 'max-w-[1700px]'} mx-auto h-full flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-700 pb-12 transition-all duration-500`}>
-                    <div className="mb-10 text-center">
-                      <h2 className="text-4xl font-black text-black tracking-tighter mb-2 uppercase">Help & Support</h2>
-                      <p className="text-slate-500 font-bold text-sm">Access the knowledge base or mail us an issue directly.</p>
+                    <div className="text-center max-w-2xl mx-auto mb-12">
+                      <h1 className={`text-5xl tracking-tight mb-3 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                        <span className="font-light">Help &</span> <span className="font-black">Support</span>
+                      </h1>
+                      <p className="text-slate-500 font-bold text-xs uppercase tracking-widest leading-relaxed">
+                        Access the knowledge base or mail us an issue directly
+                      </p>
                     </div>
 
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 w-full items-start">
