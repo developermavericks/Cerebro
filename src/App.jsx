@@ -1689,10 +1689,6 @@ function App() {
       if (reportFilters.brands.length > 0 && !reportFilters.brands.includes(brandName)) {
         return;
       }
-      // Cross-chart filter check for brand
-      if (activeChartFilter && activeChartFilter.field === 'brand' && activeChartFilter.value !== brandName) {
-        return;
-      }
 
       // 2. Filter by minMentions
       if ((brandData.mentions || 0) < reportFilters.minMentions) {
@@ -1711,10 +1707,6 @@ function App() {
           const end = new Date(reportFilters.dateRange[1]);
           if (dateVal > end) return;
         }
-        // Cross-chart date filter check
-        if (activeChartFilter && activeChartFilter.field === 'date' && activeChartFilter.value !== dt) {
-          return;
-        }
         filteredTimeline[dt] = val;
       });
 
@@ -1722,10 +1714,6 @@ function App() {
       const filteredSources = {};
       Object.entries(brandData.sources || {}).forEach(([pubName, val]) => {
         if (reportFilters.publications.length > 0 && !reportFilters.publications.includes(pubName)) {
-          return;
-        }
-        // Cross-chart publication filter check
-        if (activeChartFilter && activeChartFilter.field === 'publication' && activeChartFilter.value !== pubName) {
           return;
         }
         filteredSources[pubName] = val;
@@ -1737,10 +1725,6 @@ function App() {
         if (reportFilters.sentiments.length > 0 && !reportFilters.sentiments.includes(sentKey)) {
           return;
         }
-        // Cross-chart sentiment filter check
-        if (activeChartFilter && activeChartFilter.field === 'sentiment' && activeChartFilter.value !== sentKey) {
-          return;
-        }
         filteredSentiment[sentKey] = val;
       });
 
@@ -1750,20 +1734,15 @@ function App() {
         if (reportFilters.sentiments.length > 0 && !reportFilters.sentiments.includes(sentKey)) {
           return;
         }
-        if (activeChartFilter && activeChartFilter.field === 'sentiment' && activeChartFilter.value !== sentKey) {
-          return;
-        }
         const matching = (samples || []).filter(sample => {
           // Date check
           if (sample.published) {
             const dateVal = new Date(sample.published);
             if (reportFilters.dateRange[0] && dateVal < new Date(reportFilters.dateRange[0])) return false;
             if (reportFilters.dateRange[1] && dateVal > new Date(reportFilters.dateRange[1])) return false;
-            if (activeChartFilter && activeChartFilter.field === 'date' && activeChartFilter.value !== sample.published) return false;
           }
           // Publication check
           if (reportFilters.publications.length > 0 && !reportFilters.publications.includes(sample.source)) return false;
-          if (activeChartFilter && activeChartFilter.field === 'publication' && activeChartFilter.value !== sample.source) return false;
           return true;
         });
         filteredSamples[sentKey] = matching;
@@ -1784,7 +1763,7 @@ function App() {
     });
 
     return filtered;
-  }, [reportTelemetryData, reportFilters, activeChartFilter]);
+  }, [reportTelemetryData, reportFilters]);
 
   // Derived filtered publications (Feature 1)
   const filteredPublications = React.useMemo(() => {
@@ -2089,6 +2068,86 @@ function App() {
     }
   };
 
+  const fetchReports = async () => {
+    if (!user || !user.id) return;
+    try {
+      const res = await fetch('http://localhost:3001/api/reports', {
+        headers: { 'X-User-Id': user.id }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.length > 0) {
+          setReports(data);
+        }
+      }
+    } catch (err) {
+      console.error('[Cerebro] Error fetching reports:', err);
+    }
+  };
+
+  const handleSaveReport = async (reportToSave) => {
+    const report = reportToSave || selectedReport;
+    if (!report || !user || !user.id) return;
+    try {
+      const res = await fetch('http://localhost:3001/api/reports', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-User-Id': user.id
+        },
+        body: JSON.stringify(report)
+      });
+      if (res.ok) {
+        const savedReport = await res.json();
+        setReports(prev => prev.map(r => r.id === savedReport.id ? savedReport : r));
+        setSelectedReport(savedReport);
+        alert(`Successfully saved "${savedReport.title}" to PostgreSQL.`);
+      } else {
+        const errData = await res.json();
+        alert(`Error saving report: ${errData.error || res.statusText}`);
+      }
+    } catch (err) {
+      console.error('Error saving report:', err);
+      alert('Failed to connect to the backend server to save report.');
+    }
+  };
+
+  const handleDeleteReport = async (repId, repTitle) => {
+    if (!user || !user.id) return;
+    try {
+      const res = await fetch(`http://localhost:3001/api/reports/${repId}`, {
+        method: 'DELETE',
+        headers: { 'X-User-Id': user.id }
+      });
+      if (res.ok) {
+        setReports(prev => prev.filter(r => r.id !== repId));
+        if (selectedReport && selectedReport.id === repId) {
+          setSelectedReport(null);
+        }
+        alert(`Successfully deleted "${repTitle}".`);
+      } else {
+        const errData = await res.json();
+        alert(`Error deleting report: ${errData.error || res.statusText}`);
+      }
+    } catch (err) {
+      console.error('Error deleting report:', err);
+      setReports(prev => prev.filter(r => r.id !== repId));
+    }
+  };
+
+  const handleShareReport = () => {
+    if (!selectedReport || !selectedReport.id) return;
+    const shareUrl = `${window.location.origin}/?shareReportId=${selectedReport.id}`;
+    navigator.clipboard.writeText(shareUrl)
+      .then(() => {
+        alert(`Secure collaboration link copied to clipboard!\n\nLink: ${shareUrl}\n\nWhen someone opens this link, they will be prompted to sign in first, and then the report will open automatically.`);
+      })
+      .catch(err => {
+        console.error('Failed to copy to clipboard:', err);
+        alert(`Secure share link generated:\n\n${shareUrl}\n\n(Please copy it manually)`);
+      });
+  };
+
   React.useEffect(() => {
     if ((activeTab === 'brand-tracker' || activeTab === 'competitor-analysis') && user && user.id) {
       fetchTrackedBrands();
@@ -2096,7 +2155,62 @@ function App() {
     if (activeTab === 'competitor-analysis') {
       fetchGlobalCompanies();
     }
+    if (activeTab === 'report-analysis' && user && user.id) {
+      fetchReports();
+    }
   }, [activeTab, user]);
+
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const shareReportId = params.get('shareReportId');
+    if (shareReportId) {
+      localStorage.setItem('cerebro_pending_share_id', shareReportId);
+      if (!user) {
+        setViewInternal('login');
+      }
+    }
+  }, [user]);
+
+  React.useEffect(() => {
+    const checkPendingShare = async () => {
+      const pendingId = localStorage.getItem('cerebro_pending_share_id');
+      if (pendingId && user && user.id) {
+        try {
+          const res = await fetch(`http://localhost:3001/api/reports/${pendingId}`, {
+            headers: { 'X-User-Id': user.id }
+          });
+          if (res.ok) {
+            const report = await res.json();
+            
+            setReports(prev => {
+              if (!prev.some(r => r.id === report.id)) {
+                return [report, ...prev];
+              }
+              return prev.map(r => r.id === report.id ? report : r);
+            });
+            
+            setSelectedReport(report);
+            setActiveTab('report-analysis');
+            setViewInternal('landing');
+            
+            const url = new URL(window.location.href);
+            url.searchParams.delete('shareReportId');
+            window.history.replaceState({}, '', url.toString());
+            
+            localStorage.removeItem('cerebro_pending_share_id');
+          } else {
+            console.error('[Cerebro] Shared report not found on server.');
+            localStorage.removeItem('cerebro_pending_share_id');
+          }
+        } catch (err) {
+          console.error('[Cerebro] Error loading shared report:', err);
+        }
+      }
+    };
+
+    checkPendingShare();
+  }, [user]);
+
 
   const fetchBrandArticles = async (brandId) => {
     if (!user || !user.id) return;
@@ -6195,165 +6309,7 @@ function App() {
                         )}
 
 
-                        {/* Collapsible Left Filter Panel (Feature 1) */}
-                        {!isPresentView && (
-                          <div className={`bg-slate-900 text-white flex flex-col shadow-2xl h-full border-r border-slate-800 transition-all duration-300 shrink-0 ${isFilterPanelOpen ? 'w-80 opacity-100' : 'w-0 overflow-hidden border-none opacity-0'}`}>
-                            <div className="p-6 border-b border-slate-800 flex items-center justify-between shrink-0">
-                              <div className="flex items-center gap-2.5">
-                                <Filter size={18} className="text-indigo-400" />
-                                <h3 className="text-sm font-black uppercase tracking-wider text-slate-100">Global Slicers</h3>
-                              </div>
-                              <button
-                                onClick={() => setReportFilters({
-                                  brands: [],
-                                  sentiments: [],
-                                  dateRange: ['', ''],
-                                  minMentions: 0,
-                                  publications: []
-                                })}
-                                className="px-2 py-1 text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-indigo-400 border border-slate-700 hover:border-indigo-600 rounded transition-all"
-                                title="Clear all active filters"
-                              >
-                                Clear
-                              </button>
-                            </div>
 
-                            <div className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-6">
-                              {/* 1. Date Range Picker */}
-                              <div className="space-y-2.5">
-                                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 block ml-1">Date Range</label>
-                                <div className="flex flex-col gap-2">
-                                  <input
-                                    type="date"
-                                    value={reportFilters.dateRange[0] || ''}
-                                    onChange={(e) => {
-                                      const val = e.target.value;
-                                      setReportFilters(prev => ({
-                                        ...prev,
-                                        dateRange: [val, prev.dateRange[1]]
-                                      }));
-                                    }}
-                                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs outline-none focus:border-indigo-500"
-                                  />
-                                  <input
-                                    type="date"
-                                    value={reportFilters.dateRange[1] || ''}
-                                    onChange={(e) => {
-                                      const val = e.target.value;
-                                      setReportFilters(prev => ({
-                                        ...prev,
-                                        dateRange: [prev.dateRange[0], val]
-                                      }));
-                                    }}
-                                    className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs outline-none focus:border-indigo-500"
-                                  />
-                                </div>
-                              </div>
-
-                              {/* 2. Brand Checkboxes */}
-                              <div className="space-y-2.5">
-                                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 block ml-1">Brand Slicer</label>
-                                <div className="max-h-36 overflow-y-auto space-y-2 bg-slate-950/30 p-3 rounded-2xl border border-slate-800">
-                                  {Object.keys(reportTelemetryData?.brands || {}).map((b) => (
-                                    <label key={b} className="flex items-center gap-2.5 cursor-pointer text-xs font-semibold text-slate-300 hover:text-white transition-colors">
-                                      <input
-                                        type="checkbox"
-                                        checked={reportFilters.brands.includes(b)}
-                                        onChange={(e) => {
-                                          const checked = e.target.checked;
-                                          setReportFilters(prev => {
-                                            const brands = checked ? [...prev.brands, b] : prev.brands.filter(item => item !== b);
-                                            return { ...prev, brands };
-                                          });
-                                        }}
-                                        className="rounded text-indigo-650 focus:ring-indigo-550 bg-slate-850 border-slate-700"
-                                      />
-                                      <span className="truncate">{b}</span>
-                                    </label>
-                                  ))}
-                                </div>
-                              </div>
-
-                              {/* 3. Sentiment Scope */}
-                              <div className="space-y-2.5">
-                                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 block ml-1">Sentiment Category</label>
-                                <div className="flex gap-1.5">
-                                  {['Positive', 'Neutral', 'Negative'].map(sent => {
-                                    const active = reportFilters.sentiments.includes(sent);
-                                    return (
-                                      <button
-                                        key={sent}
-                                        onClick={() => {
-                                          setReportFilters(prev => {
-                                            const sentiments = active
-                                              ? prev.sentiments.filter(item => item !== sent)
-                                              : [...prev.sentiments, sent];
-                                            return { ...prev, sentiments };
-                                          });
-                                        }}
-                                        className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase border transition-all ${
-                                          active
-                                            ? sent === 'Positive' ? 'bg-emerald-650 text-white border-emerald-500 shadow-lg shadow-emerald-500/20' :
-                                              sent === 'Negative' ? 'bg-red-650 text-white border-red-500 shadow-lg shadow-red-500/20' :
-                                              'bg-slate-500 text-white border-slate-450 shadow-lg'
-                                            : 'bg-slate-855 text-slate-400 border-slate-750 hover:bg-slate-750'
-                                        }`}
-                                      >
-                                        {sent}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-
-                              {/* 4. Publication Checklist */}
-                              <div className="space-y-2.5">
-                                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 block ml-1">Media Outlets</label>
-                                <div className="max-h-36 overflow-y-auto space-y-2 bg-slate-950/30 p-3 rounded-2xl border border-slate-800">
-                                  {(reportTelemetryData?.topIndianPublications || []).map((pub) => (
-                                    <label key={pub.name} className="flex items-center gap-2.5 cursor-pointer text-xs font-semibold text-slate-300 hover:text-white transition-colors">
-                                      <input
-                                        type="checkbox"
-                                        checked={reportFilters.publications.includes(pub.name)}
-                                        onChange={(e) => {
-                                          const checked = e.target.checked;
-                                          setReportFilters(prev => {
-                                            const publications = checked ? [...prev.publications, pub.name] : prev.publications.filter(item => item !== pub.name);
-                                            return { ...prev, publications };
-                                          });
-                                        }}
-                                        className="rounded text-indigo-650 focus:ring-indigo-550 bg-slate-850 border-slate-700"
-                                      />
-                                      <span className="truncate">{pub.name}</span>
-                                    </label>
-                                  ))}
-                                </div>
-                              </div>
-
-                              {/* 5. Mentions Slider */}
-                              <div className="space-y-2.5">
-                                <div className="flex justify-between text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 ml-1">
-                                  <span>Exposure Volume</span>
-                                  <span className="text-indigo-400 font-mono font-black">{reportFilters.minMentions}</span>
-                                </div>
-                                <input
-                                  type="range"
-                                  min="0"
-                                  max="500"
-                                  value={reportFilters.minMentions}
-                                  onChange={(e) => {
-                                    const val = Number(e.target.value);
-                                    setReportFilters(prev => ({
-                                      ...prev,
-                                      minMentions: val
-                                    }));
-                                  }}
-                                  className="w-full accent-indigo-500 cursor-ew-resize bg-slate-800 rounded h-1.5"
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        )}
 
                         {/* Center Canvas: Pinned Toolbar & Continuous Full-Width Landscape Document */}
                         <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col items-center bg-white relative h-full">
@@ -6391,19 +6347,6 @@ function App() {
                                   </span>
                                   <h3 className="text-sm font-black tracking-tight text-white">{selectedReport.title}</h3>
 
-                                  <div className="w-px h-5 bg-slate-800 mx-2"></div>
-
-                                  {/* Toggle Filters Sidebar Button (Feature 1) */}
-                                  <button
-                                    onClick={() => setIsFilterPanelOpen(!isFilterPanelOpen)}
-                                    className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${isFilterPanelOpen ? 'bg-indigo-600 text-white shadow shadow-indigo-600/30' : 'bg-slate-800 text-slate-300 hover:bg-slate-755'}`}
-                                  >
-                                    <Filter size={13} />
-                                    <span>Filters</span>
-                                    {Object.values(reportFilters).some(v => Array.isArray(v) ? v.length > 0 : v > 0) && (
-                                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                                    )}
-                                  </button>
 
                                   {/* Theme & Layout Selector (Feature 8) */}
                                   <div className="relative">
@@ -7825,7 +7768,7 @@ function App() {
                           <div className="w-full h-px bg-slate-200 my-1"></div>
 
                           <button
-                            onClick={() => alert(`Successfully saved "${selectedReport.title}" to secure cloud nodes.`)}
+                            onClick={() => handleSaveReport()}
                             className="p-3 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-2xl transition-all relative group shadow-sm hover:scale-105 active:scale-95"
                             title="Save Changes"
                           >
@@ -7847,9 +7790,7 @@ function App() {
                           </button>
 
                           <button
-                            onClick={() => {
-                              alert(`Generating shareable secure node link for team collaboration...`);
-                            }}
+                            onClick={() => handleShareReport()}
                             className="p-3 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-2xl transition-all relative group shadow-sm hover:scale-105 active:scale-95"
                             title="Share Collaboration Node"
                           >
@@ -7859,30 +7800,6 @@ function App() {
                             </span>
                           </button>
 
-                          <button
-                            onClick={() => {
-                              const aiText = "\n\n[AI Amplification]: Autonomous telemetry confirms market consolidation across tracked brand keywords. Consumer engagement elasticity remains highly correlated with proactive release intervals.";
-                              const updatedSecs = [...(selectedReport.sections || [])];
-                              if (updatedSecs[activeSectionIndex]) {
-                                updatedSecs[activeSectionIndex] = {
-                                  ...updatedSecs[activeSectionIndex],
-                                  content: updatedSecs[activeSectionIndex].content + aiText
-                                };
-                              }
-                              const updated = { ...selectedReport, sections: updatedSecs };
-                              setSelectedReport(updated);
-                              setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
-                            }}
-                            className="p-3 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-2xl transition-all relative group shadow-md hover:scale-110 active:scale-95"
-                            title="AI Copilot Write"
-                          >
-                            <Sparkles size={22} className="animate-pulse" />
-                            <span className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-2xl font-sans">
-                              AI Copilot Expand
-                            </span>
-                          </button>
-
-                          <div className="w-full h-px bg-slate-200 my-2"></div>
 
                           <button
                             onClick={() => {
@@ -7902,7 +7819,7 @@ function App() {
                         </div>
 
                         {/* Fixed Bottom-Right Action Buttons */}
-                        <div className="fixed bottom-6 right-8 z-50 flex items-center gap-3 font-sans print:hidden">
+                        <div className={`fixed bottom-6 ${isRightDrawerOpen ? 'right-[26rem]' : 'right-8'} z-50 flex items-center gap-3 font-sans transition-all duration-300 print:hidden`}>
                           <button
                             onClick={() => window.print()}
                             className="px-6 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-2xl flex items-center gap-2.5 active:scale-95 transition-all border border-indigo-500/30"
@@ -7910,7 +7827,7 @@ function App() {
                             <Download size={18} /> Download Report
                           </button>
                           <button
-                            onClick={() => alert(`Generating shareable secure node link for ${selectedReport.title}...`)}
+                            onClick={() => handleShareReport()}
                             className="px-6 py-3.5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-2xl flex items-center gap-2.5 active:scale-95 transition-all border border-slate-700/80"
                           >
                             <Share2 size={18} /> Share Report
@@ -8861,7 +8778,11 @@ const spec = JSON.parse(response.text);
                                       <button
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          alert(`Downloading report: ${rep.title}`);
+                                          setSelectedReport(rep);
+                                          setTimeout(() => {
+                                            window.print();
+                                            setSelectedReport(null);
+                                          }, 300);
                                         }}
                                         className="p-2 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors"
                                         title="Download PDF"
@@ -8872,7 +8793,7 @@ const spec = JSON.parse(response.text);
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           if (confirm(`Are you sure you want to delete "${rep.title}"?`)) {
-                                            setReports(prev => prev.filter(r => r.id !== rep.id));
+                                            handleDeleteReport(rep.id, rep.title);
                                           }
                                         }}
                                         className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"

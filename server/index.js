@@ -1,4 +1,4 @@
-﻿process.noDeprecation = true;
+process.noDeprecation = true;
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -1112,6 +1112,130 @@ app.get('/api/download-result/:jobId', async (req, res) => {
   }
 });
 
+// Get all reports for user
+app.get('/api/reports', getUserId, async (req, res) => {
+  try {
+    const result = await db.query(
+      `SELECT id, title, type, status, date, author, priority, topic, keywords,
+              brand_keywords as "brandKeywords", competitor_keywords as "competitorKeywords",
+              summary, tags, metrics, sections, bookmarks
+       FROM reports
+       WHERE user_id = $1
+       ORDER BY created_at DESC`,
+      [req.userId]
+    );
+    res.status(200).json(result.rows);
+  } catch (err) {
+    console.error('Error in GET /api/reports:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Upsert a report for user
+app.post('/api/reports', getUserId, async (req, res) => {
+  const {
+    id, title, type, status, date, author, priority, topic, keywords,
+    brandKeywords, competitorKeywords, summary, tags, metrics, sections, bookmarks
+  } = req.body;
+
+  if (!id || !title || !type) {
+    return res.status(400).json({ error: 'ID, title, and type are required' });
+  }
+
+  try {
+    const result = await db.query(
+      `INSERT INTO reports (
+        id, user_id, title, type, status, date, author, priority, topic, keywords,
+        brand_keywords, competitor_keywords, summary, tags, metrics, sections, bookmarks
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
+      ) ON CONFLICT (id) DO UPDATE SET
+        title = EXCLUDED.title,
+        type = EXCLUDED.type,
+        status = EXCLUDED.status,
+        date = EXCLUDED.date,
+        author = EXCLUDED.author,
+        priority = EXCLUDED.priority,
+        topic = EXCLUDED.topic,
+        keywords = EXCLUDED.keywords,
+        brand_keywords = EXCLUDED.brand_keywords,
+        competitor_keywords = EXCLUDED.competitor_keywords,
+        summary = EXCLUDED.summary,
+        tags = EXCLUDED.tags,
+        metrics = EXCLUDED.metrics,
+        sections = EXCLUDED.sections,
+        bookmarks = EXCLUDED.bookmarks
+      RETURNING id, title, type, status, date, author, priority, topic, keywords,
+                brand_keywords as "brandKeywords", competitor_keywords as "competitorKeywords",
+                summary, tags, metrics, sections, bookmarks`,
+      [
+        id,
+        req.userId,
+        title,
+        type,
+        status || 'Generated',
+        date || new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+        author || 'Cerebro Autonomous AI',
+        priority || 'High',
+        topic || 'All',
+        keywords || '',
+        brandKeywords || '',
+        competitorKeywords || '',
+        summary || '',
+        tags || [],
+        metrics ? JSON.stringify(metrics) : null,
+        sections ? JSON.stringify(sections) : null,
+        bookmarks ? JSON.stringify(bookmarks) : null
+      ]
+    );
+    res.status(200).json(result.rows[0]);
+  } catch (err) {
+    console.error('Error in POST /api/reports:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get a specific report (shared or owned)
+app.get('/api/reports/:id', getUserId, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await db.query(
+      `SELECT id, title, type, status, date, author, priority, topic, keywords,
+              brand_keywords as "brandKeywords", competitor_keywords as "competitorKeywords",
+              summary, tags, metrics, sections, bookmarks
+       FROM reports
+       WHERE id = $1`,
+      [id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Report not found' });
+    }
+    res.status(200).json(result.rows[0]);
+  } catch (err) {
+    console.error('Error in GET /api/reports/:id:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Delete a report for user
+app.delete('/api/reports/:id', getUserId, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await db.query(
+      'DELETE FROM reports WHERE id = $1 AND user_id = $2 RETURNING id',
+      [id, req.userId]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Report not found or unauthorized' });
+    }
+    res.status(200).json({ message: 'Report deleted successfully', id: result.rows[0].id });
+  } catch (err) {
+    console.error('Error in DELETE /api/reports:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
+

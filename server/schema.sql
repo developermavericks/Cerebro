@@ -84,4 +84,29 @@ CREATE TABLE IF NOT EXISTS domain_authority_cache (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS reports (
+  id VARCHAR(255) PRIMARY KEY,
+  user_id INT REFERENCES users(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  type VARCHAR(255) NOT NULL,
+  status VARCHAR(255) DEFAULT 'Generated',
+  date VARCHAR(255),
+  author VARCHAR(255),
+  priority VARCHAR(255),
+  topic VARCHAR(255),
+  keywords TEXT,
+  brand_keywords TEXT,
+  competitor_keywords TEXT,
+  summary TEXT,
+  tags TEXT[],
+  metrics JSONB,
+  sections JSONB,
+  bookmarks JSONB,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS user_id INT REFERENCES users(id) ON DELETE CASCADE;
+
+
+
 
