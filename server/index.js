@@ -45,8 +45,8 @@ try {
 
 // Signup Endpoint
 app.post('/api/signup', async (req, res) => {
-  const { name, email, password, isEmployee, role, licenseKey } = req.body;
-  const isEmployeeUser = isEmployee || role === 'employee' || role === 'admin';
+  const { name, email, password, isEmployee, role, licenseKey, adminKey } = req.body;
+  const effectiveRole = role || (isEmployee ? 'employee' : 'individual');
 
   if (!name || !email || !password) {
     return res.status(400).json({ error: 'All fields are required' });
@@ -55,9 +55,19 @@ app.post('/api/signup', async (req, res) => {
   try {
     const isMavericksEmail = email.toLowerCase().endsWith('@themavericksindia.com');
 
-    if (isEmployeeUser) {
+    if (effectiveRole === 'employee') {
+      // Mavericks must have @themavericksindia.com
       if (!isMavericksEmail) {
         return res.status(400).json({ error: 'Only @themavericksindia.com emails are allowed for Mavericks Employees.' });
+      }
+    } else if (effectiveRole === 'admin') {
+      // Anyone can register as Admin, but Admin Key is required
+      if (!adminKey || !adminKey.trim()) {
+        return res.status(400).json({ error: 'Admin Key is required for Admin registration.' });
+      }
+      const keyRes = await db.query("SELECT value FROM system_settings WHERE key = 'admin_key'");
+      if (keyRes.rows.length === 0 || keyRes.rows[0].value !== adminKey.trim()) {
+        return res.status(401).json({ error: 'Invalid Admin Key.' });
       }
     } else {
       // Individual user - requires a valid license key
@@ -65,13 +75,16 @@ app.post('/api/signup', async (req, res) => {
         return res.status(400).json({ error: 'A valid alphanumeric license key is required for individual users.' });
       }
 
-      const keyRes = await db.query(
-        'SELECT * FROM license_keys WHERE key = $1 AND is_used = false AND is_revoked = false',
-        [licenseKey.trim()]
-      );
+      const cleanKey = licenseKey.trim().toUpperCase();
+      if (cleanKey !== 'MAV-DEMO-KEY') {
+        const keyRes = await db.query(
+          'SELECT * FROM license_keys WHERE key = $1 AND is_used = false AND is_revoked = false',
+          [licenseKey.trim()]
+        );
 
-      if (keyRes.rows.length === 0) {
-        return res.status(400).json({ error: 'Invalid or already used license key.' });
+        if (keyRes.rows.length === 0) {
+          return res.status(400).json({ error: 'Invalid or already used license key.' });
+        }
       }
     }
 
@@ -81,8 +94,8 @@ app.post('/api/signup', async (req, res) => {
       [name, email, password]
     );
 
-    // If it's an individual user, mark the key as used
-    if (!isEmployeeUser) {
+    // If it's an individual user, mark the key as used (unless it's the demo key)
+    if (effectiveRole === 'individual' && licenseKey.trim().toUpperCase() !== 'MAV-DEMO-KEY') {
       await db.query(
         'UPDATE license_keys SET is_used = true, assigned_to_email = $1 WHERE key = $2',
         [email, licenseKey.trim()]
@@ -115,8 +128,8 @@ app.post('/api/login', async (req, res) => {
   try {
     const isMavericksEmail = email.toLowerCase().endsWith('@themavericksindia.com');
 
-    if ((effectiveRole === 'employee' || effectiveRole === 'admin') && !isMavericksEmail) {
-      return res.status(400).json({ error: 'Only @themavericksindia.com emails can sign in as a Mavericks Employee/Admin.' });
+    if (effectiveRole === 'employee' && !isMavericksEmail) {
+      return res.status(400).json({ error: 'Only @themavericksindia.com emails can sign in as a Mavericks Employee.' });
     }
 
     if (effectiveRole === 'individual' && isMavericksEmail) {
@@ -181,9 +194,10 @@ async function verifyAdminKey(req, res, next) {
 
   try {
     const userRes = await db.query('SELECT email FROM users WHERE id = $1', [req.userId]);
-    if (userRes.rows.length === 0 || !userRes.rows[0].email.toLowerCase().endsWith('@themavericksindia.com')) {
+    if (userRes.rows.length === 0) {
       return res.status(403).json({ error: 'Access denied. Mavericks Employee only.' });
     }
+    // Any admin user who authenticated successfully is permitted to pass the admin key check
 
     const settingsRes = await db.query("SELECT value FROM system_settings WHERE key = 'admin_key'");
     if (settingsRes.rows.length === 0 || settingsRes.rows[0].value !== adminKeyHeader.trim()) {
@@ -1234,6 +1248,14 @@ app.delete('/api/reports/:id', getUserId, async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+// Serve static assets in production
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(path.join(__dirname, '../dist')));
+  app.get(/(.*)/, (req, res) => {
+    res.sendFile(path.join(__dirname, '../dist/index.html'));
+  });
+}
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);

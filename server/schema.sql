@@ -107,6 +107,15 @@ CREATE TABLE IF NOT EXISTS reports (
 
 ALTER TABLE reports ADD COLUMN IF NOT EXISTS user_id INT REFERENCES users(id) ON DELETE CASCADE;
 
+CREATE TABLE IF NOT EXISTS system_settings (
+  key VARCHAR(255) PRIMARY KEY,
+  value TEXT
+);
+
+INSERT INTO system_settings (key, value)
+VALUES ('admin_key', 'admin123')
+ON CONFLICT (key) DO NOTHING;
+
 
 
 

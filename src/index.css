@@ -150,17 +150,13 @@ h1, h2, h3, h4, h5, h6, .font-heading, aside button, aside span, aside label {
     border-color: rgba(255, 255, 255, 0.4);
   }
 
-  /* Custom Scrollbar for Dropdowns */
+  /* Custom Scrollbar for Dropdowns - Hidden but scrollable */
+  .custom-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
   .custom-scrollbar::-webkit-scrollbar {
-    width: 8px;
-  }
-  
-  .custom-scrollbar::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  
-  .custom-scrollbar::-webkit-scrollbar-thumb {
-    @apply bg-slate-300 rounded-full hover:bg-slate-400 transition-colors;
+    display: none;
   }
 }
 
@@ -197,6 +193,7 @@ h1, h2, h3, h4, h5, h6, .font-heading, aside button, aside span, aside label {
   white-space: pre-wrap;
   word-break: break-word;
   line-height: 2.2;
+  font-family: inherit;
 }
 
 .ProseMirror p {
@@ -403,6 +400,11 @@ h1, h2, h3, h4, h5, h6, .font-heading, aside button, aside span, aside label {
 @media print { .fixed, [class*='fixed'] { position: relative !important; inset: auto !important; } }
 
 @media print {
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
   .grid > div, [class*='border rounded-3xl'], [class*='bg-white border'] {
     break-inside: avoid !important;
     page-break-inside: avoid !important;
@@ -410,10 +412,12 @@ h1, h2, h3, h4, h5, h6, .font-heading, aside button, aside span, aside label {
   }
 
   @page {
-    margin: 12mm !important;
+    size: landscape !important;
+    margin: 0 !important;
   }
 
   body {
+    padding: 15mm !important;
     zoom: 0.8 !important;
   }
 

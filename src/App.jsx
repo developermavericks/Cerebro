@@ -130,6 +130,8 @@ import { Youtube } from '@tiptap/extension-youtube';
 import { HorizontalRule as TiptapHorizontalRule } from '@tiptap/extension-horizontal-rule';
 
 const lowlight = createLowlight(all);
+const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
+
 
 // Error Boundary to catch runtime React errors and show a useful message
 class ErrorBoundary extends React.Component {
@@ -546,6 +548,14 @@ const SectionRichEditor = ({ id, content, onUpdate, style, className, savedRange
       onEditorStateChange(editor);
     }
   }, [isActiveEditor, editor, onEditorStateChange]);
+
+  React.useEffect(() => {
+    return () => {
+      if (onEditorStateChange) {
+        onEditorStateChange(prev => prev === editor ? null : prev);
+      }
+    };
+  }, [editor, onEditorStateChange]);
 
   return (
     <div
@@ -1441,7 +1451,8 @@ function App() {
     setError('');
     setSuccessMessage('');
     setViewInternal(newView);
-    if (newView === 'login' || newView === 'signup') {
+    const isAuthView = (v) => ['login', 'signup', 'forgot', 'reset'].includes(v);
+    if (isAuthView(newView) && !isAuthView(view)) {
       setVideoEnded(isTestEnv);
       setBrainMovedLeft(isTestEnv);
     }
@@ -1649,6 +1660,8 @@ function App() {
   const [textHighlight, setTextHighlight] = useState(false);
   const [fontSize, setFontSize] = useState(20);
   const [fontFamily, setFontFamily] = useState('Inter, sans-serif');
+  const [previewFontFamily, setPreviewFontFamily] = useState(null);
+  const [isFontDropdownOpen, setIsFontDropdownOpen] = useState(false);
   const [changeHistory, setChangeHistory] = useState([
     { id: Date.now(), timestamp: new Date().toISOString(), action: 'Initialized Cerebro Studio Briefing Document', section: 'Document Root' }
   ]);
@@ -2002,7 +2015,7 @@ function App() {
       return;
     }
     setIsFetchingTelemetry(true);
-    fetch('http://localhost:3001/api/curated-search', {
+    fetch(`${API_BASE}/api/curated-search`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -2020,7 +2033,7 @@ function App() {
   }, [selectedReport?.id, selectedReport?.brandKeywords, selectedReport?.competitorKeywords, selectedReport?.keywords, selectedReport?.topic]);
 
   useEffect(() => {
-    if (view === 'landing' && activeTab === 'dashboard' && showPets && window.initWebmeji) {
+    if (view === 'landing' && user && activeTab === 'dashboard' && showPets && window.initWebmeji) {
       const timer = setTimeout(() => {
         window.initWebmeji();
       }, 100);
@@ -2039,12 +2052,12 @@ function App() {
       }
       document.querySelectorAll('.webmeji-container').forEach(el => el.remove());
     }
-  }, [activeTab, showPets, view]);
+  }, [activeTab, showPets, view, user]);
 
   const fetchTrackedBrands = async () => {
     if (!user || !user.id) return;
     try {
-      const res = await fetch('http://localhost:3001/api/brands', {
+      const res = await fetch(`${API_BASE}/api/brands`, {
         headers: { 'X-User-Id': user.id }
       });
       if (res.ok) {
@@ -2058,7 +2071,7 @@ function App() {
 
   const fetchGlobalCompanies = async () => {
     try {
-      const res = await fetch('http://localhost:3001/api/global-company-names');
+      const res = await fetch(`${API_BASE}/api/global-company-names`);
       if (res.ok) {
         const data = await res.json();
         setGlobalCompanies(data);
@@ -2071,7 +2084,7 @@ function App() {
   const fetchReports = async () => {
     if (!user || !user.id) return;
     try {
-      const res = await fetch('http://localhost:3001/api/reports', {
+      const res = await fetch(`${API_BASE}/api/reports`, {
         headers: { 'X-User-Id': user.id }
       });
       if (res.ok) {
@@ -2089,7 +2102,7 @@ function App() {
     const report = reportToSave || selectedReport;
     if (!report || !user || !user.id) return;
     try {
-      const res = await fetch('http://localhost:3001/api/reports', {
+      const res = await fetch(`${API_BASE}/api/reports`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -2101,6 +2114,8 @@ function App() {
         const savedReport = await res.json();
         setReports(prev => prev.map(r => r.id === savedReport.id ? savedReport : r));
         setSelectedReport(savedReport);
+        setIsSavingFlash(true);
+        setTimeout(() => setIsSavingFlash(false), 1500);
         alert(`Successfully saved "${savedReport.title}" to PostgreSQL.`);
       } else {
         const errData = await res.json();
@@ -2115,7 +2130,7 @@ function App() {
   const handleDeleteReport = async (repId, repTitle) => {
     if (!user || !user.id) return;
     try {
-      const res = await fetch(`http://localhost:3001/api/reports/${repId}`, {
+      const res = await fetch(`${API_BASE}/api/reports/${repId}`, {
         method: 'DELETE',
         headers: { 'X-User-Id': user.id }
       });
@@ -2176,7 +2191,7 @@ function App() {
       const pendingId = localStorage.getItem('cerebro_pending_share_id');
       if (pendingId && user && user.id) {
         try {
-          const res = await fetch(`http://localhost:3001/api/reports/${pendingId}`, {
+          const res = await fetch(`${API_BASE}/api/reports/${pendingId}`, {
             headers: { 'X-User-Id': user.id }
           });
           if (res.ok) {
@@ -2215,7 +2230,7 @@ function App() {
   const fetchBrandArticles = async (brandId) => {
     if (!user || !user.id) return;
     try {
-      const res = await fetch(`http://localhost:3001/api/brands/${brandId}/articles`, {
+      const res = await fetch(`${API_BASE}/api/brands/${brandId}/articles`, {
         headers: { 'X-User-Id': user.id }
       });
       if (res.ok) {
@@ -2239,7 +2254,7 @@ function App() {
 
     setLoadingArticleContents(prev => ({ ...prev, [article.id]: true }));
     try {
-      const res = await fetch(`http://localhost:3001/api/articles/${article.id}/content`, {
+      const res = await fetch(`${API_BASE}/api/articles/${article.id}/content`, {
         headers: { 'X-User-Id': user.id }
       });
       if (res.ok) {
@@ -2259,7 +2274,7 @@ function App() {
     if (!brand || !user || !user.id) return;
     setTrackedBrands(prev => prev.map(b => b.id === brand.id ? { ...b, new_mentions: 0 } : b));
     try {
-      await fetch(`http://localhost:3001/api/brands/${brand.id}/viewed`, {
+      await fetch(`${API_BASE}/api/brands/${brand.id}/viewed`, {
         method: 'POST',
         headers: { 'X-User-Id': user.id }
       });
@@ -2338,7 +2353,7 @@ function App() {
   const handleAddBrand = async (name, region) => {
     if (!user || !user.id || !name.trim()) return;
     try {
-      const res = await fetch('http://localhost:3001/api/brands', {
+      const res = await fetch(`${API_BASE}/api/brands`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-User-Id': user.id },
         body: JSON.stringify({ name: name.trim(), region })
@@ -2359,7 +2374,7 @@ function App() {
   const handleDeleteBrand = async (brandId) => {
     if (!user || !user.id) return;
     try {
-      const res = await fetch(`http://localhost:3001/api/brands/${brandId}`, {
+      const res = await fetch(`${API_BASE}/api/brands/${brandId}`, {
         method: 'DELETE',
         headers: { 'X-User-Id': user.id }
       });
@@ -2378,7 +2393,7 @@ function App() {
     if (!user || !user.id || isRefreshingBrand) return;
     setIsRefreshingBrand(true);
     try {
-      await fetch('http://localhost:3001/api/brands/fetch-now', {
+      await fetch(`${API_BASE}/api/brands/fetch-now`, {
         method: 'POST',
         headers: { 'X-User-Id': user.id }
       });
@@ -2399,7 +2414,7 @@ function App() {
   const fetchLicenseKeys = async () => {
     if (!user || !user.id || !user.email.toLowerCase().endsWith('@themavericksindia.com') || user.role !== 'admin') return;
     try {
-      const res = await fetch('http://localhost:3001/api/admin/license-keys', {
+      const res = await fetch(`${API_BASE}/api/admin/license-keys`, {
         headers: {
           'X-User-Id': user.id,
           'X-Admin-Key': userAdminKey || ''
@@ -2418,7 +2433,7 @@ function App() {
     if (!user || !user.id || isGeneratingKey || user.role !== 'admin') return;
     setIsGeneratingKey(true);
     try {
-      const res = await fetch('http://localhost:3001/api/admin/license-keys/generate', {
+      const res = await fetch(`${API_BASE}/api/admin/license-keys/generate`, {
         method: 'POST',
         headers: {
           'X-User-Id': user.id,
@@ -2439,7 +2454,7 @@ function App() {
     if (!user || !user.id || user.role !== 'admin') return;
     if (!window.confirm(`Are you sure you want to revoke the license key: ${key}?`)) return;
     try {
-      const res = await fetch('http://localhost:3001/api/admin/license-keys/revoke', {
+      const res = await fetch(`${API_BASE}/api/admin/license-keys/revoke`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -2464,7 +2479,7 @@ function App() {
     setError('');
     setSuccessMessage('');
     try {
-      const res = await fetch('http://localhost:3001/api/admin/update-key', {
+      const res = await fetch(`${API_BASE}/api/admin/update-key`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -2530,10 +2545,22 @@ function App() {
     setChangeHistory(prev => [newEntry, ...prev]);
   };
 
+  React.useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && isPresentView) {
+        setIsPresentView(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isPresentView]);
+
   const savedRangeRef = React.useRef(null);
   const [activeEditor, setActiveEditor] = useState(null);
   const [textColor, setTextColor] = useState('#000000');
   const [chartDragState, setChartDragState] = useState(null);
+  const [activeResizingChartId, setActiveResizingChartId] = useState(null);
+  const [isSavingFlash, setIsSavingFlash] = useState(false);
 
   React.useEffect(() => {
     const handleGlobalMouseMove = (e) => {
@@ -2714,7 +2741,7 @@ function App() {
         const remaining = Math.round((parseInt(target, 10) - Date.now()) / 1000);
         if (remaining <= 0) {
           if (activeTab === 'brand-tracker' && user && user.id) {
-            fetch('http://localhost:3001/api/brands/fetch-now', {
+            fetch(`${API_BASE}/api/brands/fetch-now`, {
               method: 'POST',
               headers: { 'X-User-Id': user.id }
             }).finally(() => {
@@ -2756,7 +2783,7 @@ function App() {
     try {
       const targetKeywords = targetBrandsInput.split(',').map(b => b.trim()).filter(Boolean);
       const excludedKeywords = excludedKeywordsInput.split(',').map(b => b.trim()).filter(Boolean);
-      const res = await fetch('http://localhost:3001/api/curated-search', {
+      const res = await fetch(`${API_BASE}/api/curated-search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ targetKeywords, excludedKeywords, topic: analysisSector })
@@ -2805,7 +2832,7 @@ function App() {
     startReachTimer(timeToWait);
 
     try {
-      const response = await fetch('http://localhost:3001/api/analyze', {
+      const response = await fetch(`${API_BASE}/api/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: reachUrl, version: reachVersion })
@@ -2838,7 +2865,7 @@ function App() {
     formData.append('version', reachVersion);
 
     try {
-      const response = await fetch('http://localhost:3001/api/upload-sheet', {
+      const response = await fetch(`${API_BASE}/api/upload-sheet`, {
         method: 'POST',
         body: formData
       });
@@ -2858,7 +2885,7 @@ function App() {
   const pollReachBatchStatus = (jobId) => {
     const interval = setInterval(async () => {
       try {
-        const response = await fetch(`http://localhost:3001/api/batch-status/${jobId}`);
+        const response = await fetch(`${API_BASE}/api/batch-status/${jobId}`);
         if (!response.ok) {
           throw new Error('Failed to fetch status');
         }
@@ -2876,7 +2903,7 @@ function App() {
 
   const loadLatestBatchJob = async () => {
     try {
-      const response = await fetch('http://localhost:3001/api/latest-batch-job');
+      const response = await fetch(`${API_BASE}/api/latest-batch-job`);
       if (response.ok) {
         const job = await response.json();
         if (job) {
@@ -2913,7 +2940,7 @@ function App() {
     setReachResult(null); // Clear previous search result
     setReachError(''); // Clear previous error
     try {
-      const response = await fetch('http://localhost:3001/api/latest-batch-job');
+      const response = await fetch(`${API_BASE}/api/latest-batch-job`);
       if (response.ok) {
         const job = await response.json();
         if (job) {
@@ -2944,7 +2971,7 @@ function App() {
       setIsAnalysing(true);
       setIsLoadingAnalysis(true);
       try {
-        const res = await fetch(`http://localhost:3001/api/competitor-analysis?keyword1=${encodeURIComponent(comp1)}&keyword2=${encodeURIComponent(comp2)}`, {
+        const res = await fetch(`${API_BASE}/api/competitor-analysis?keyword1=${encodeURIComponent(comp1)}&keyword2=${encodeURIComponent(comp2)}`, {
           headers: { 'X-User-Id': user?.id }
         });
         if (res.ok) {
@@ -2996,7 +3023,7 @@ function App() {
     try {
       if (view === 'login') {
         setLoading(true);
-        const response = await fetch('http://localhost:3001/api/login', {
+        const response = await fetch(`${API_BASE}/api/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, password, role: authRole, adminKey: adminKeyInput }),
@@ -3024,10 +3051,10 @@ function App() {
           return;
         }
         setLoading(true);
-        const response = await fetch('http://localhost:3001/api/signup', {
+        const response = await fetch(`${API_BASE}/api/signup`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, email, password, role: authRole, licenseKey }),
+          body: JSON.stringify({ name, email, password, role: authRole, licenseKey, adminKey: adminKeyInput }),
         });
         const data = await response.json();
         setLoading(false);
@@ -3039,7 +3066,7 @@ function App() {
         setTimeout(() => setView('login'), 2000);
       } else if (view === 'forgot') {
         setLoading(true);
-        const response = await fetch('http://localhost:3001/api/check-email', {
+        const response = await fetch(`${API_BASE}/api/check-email`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email }),
@@ -4213,7 +4240,7 @@ function App() {
                             <button onClick={() => setIsScanningReach(false)} className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all">Back</button>
                             {reachBatchJob?.status === 'completed' && (
                               <button
-                                onClick={() => window.open(`http://localhost:3001/api/download-result/${reachBatchJob.id}`, '_blank')}
+                                onClick={() => window.open(`${API_BASE}/api/download-result/${reachBatchJob.id}`, '_blank')}
                                 className="px-6 py-3 bg-[#219ebc] hover:bg-[#023047] text-white rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg flex items-center gap-2"
                               >
                                 <Download size={14} />
@@ -5052,7 +5079,7 @@ function App() {
                                   setIsAnalysing(true);
                                   setIsLoadingAnalysis(true);
                                   try {
-                                    const res = await fetch(`http://localhost:3001/api/competitor-analysis?keyword1=${encodeURIComponent(item.comp1)}&keyword2=${encodeURIComponent(item.comp2)}`, {
+                                    const res = await fetch(`${API_BASE}/api/competitor-analysis?keyword1=${encodeURIComponent(item.comp1)}&keyword2=${encodeURIComponent(item.comp2)}`, {
                                       headers: { 'X-User-Id': user?.id }
                                     });
                                     if (res.ok) {
@@ -5698,7 +5725,7 @@ function App() {
                               <p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest mt-1">Region: {selectedBrandForDetail.region}</p>
                             </div>
                             <button
-                              onClick={() => window.open(`http://localhost:3001/api/brands/${selectedBrandForDetail.id}/report?userId=${user?.id}`, '_blank')}
+                              onClick={() => window.open(`${API_BASE}/api/brands/${selectedBrandForDetail.id}/report?userId=${user?.id}`, '_blank')}
                               className="px-5 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl shadow-indigo-100 flex items-center gap-2 transition-all active:scale-95"
                             >
                               <Download size={16} /> Download Report
@@ -6013,10 +6040,10 @@ function App() {
                 ) : activeTab === 'report-analysis' ? (
                   <div className={`w-full ${sidebarCollapsed ? 'max-w-[1850px]' : 'max-w-[1700px]'} mx-auto h-full flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-700 pb-12 transition-all duration-500`}>
                     {selectedReport ? (
-                      <div className="fixed inset-0 z-[100] bg-slate-100 flex overflow-hidden animate-in fade-in duration-500 font-sans">
+                      <div className="fixed inset-0 z-[100] bg-slate-100 flex overflow-hidden animate-in fade-in duration-500 font-sans print:relative print:inset-auto print:z-0 print:bg-white print:block print:overflow-visible print:h-auto">
                         {/* Left Sidebar Wrapper with Floating Border Button */}
                         {!isPresentView && (
-                          <div className="relative z-50 flex shrink-0 font-sans h-full">
+                          <div className="relative z-50 flex shrink-0 font-sans h-full print:hidden">
                             <div className={`bg-slate-900 text-white flex flex-col shadow-2xl h-full transition-all duration-300 ${isLeftSidebarOpen ? 'w-80 border-r border-slate-800 opacity-100' : 'w-0 overflow-hidden border-none opacity-0'}`}>
                               <div className="p-6 border-b border-slate-800 flex items-center justify-between shrink-0">
                                 <div className="flex items-center gap-3">
@@ -6312,7 +6339,7 @@ function App() {
 
 
                         {/* Center Canvas: Pinned Toolbar & Continuous Full-Width Landscape Document */}
-                        <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col items-center bg-white relative h-full">
+                        <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col items-center bg-white relative h-full print:overflow-visible print:h-auto print:w-full print:block print:bg-white print:p-0">
                           {/* Pinned Top Toolbar & Ruler / Present Mode Topbar */}
                           {isPresentView ? (
                             <div className="sticky top-0 w-full bg-slate-900 text-white backdrop-blur-md z-50 border-b border-slate-800 shadow-2xl px-12 py-4 flex items-center justify-between font-sans print:hidden">
@@ -6424,7 +6451,7 @@ function App() {
                                 </div>
 
                                 {/* Text Formatting Toolbar */}
-                                <div className="flex items-center gap-2 w-full overflow-x-auto pb-1">
+                                <div className="flex flex-wrap items-center gap-2 w-full pb-1 overflow-visible">
                                   {(() => {
                                     const isBold = activeEditor?.isActive?.('bold') ?? textBold;
                                     const isItalic = activeEditor?.isActive?.('italic') ?? textItalic;
@@ -6452,26 +6479,60 @@ function App() {
                                       <div className="flex flex-wrap items-center gap-2">
                                         {/* Font Family, Size & Color */}
                                         <div className="flex items-center gap-2 bg-slate-800/80 p-1 px-2.5 rounded-xl border border-slate-700 text-xs text-slate-300 shadow-md">
-                                          <select
-                                            value={fontFamily}
-                                            onChange={e => {
-                                              const val = e.target.value;
-                                              setFontFamily(val);
-                                              if (activeEditor) {
-                                                activeEditor.chain().focus().setFontFamily(val).run();
-                                              } else {
-                                                applyInlineStyle('fontFamily', val);
-                                              }
-                                            }}
-                                            className="bg-transparent border-none outline-none cursor-pointer py-1 font-bold text-white font-sans max-w-[140px] truncate"
-                                            title="Select Font Family (45+ options)"
-                                          >
-                                            {FONT_OPTIONS.map((fOpt, fIdx) => (
-                                              <option key={fIdx} value={fOpt} className="bg-slate-800 text-white" style={{ fontFamily: fOpt }}>
-                                                {fOpt.split(',')[0]}
-                                              </option>
-                                            ))}
-                                          </select>
+                                          <div className="relative font-sans">
+                                             <button
+                                               type="button"
+                                               onClick={() => setIsFontDropdownOpen(!isFontDropdownOpen)}
+                                               className="bg-transparent border-none outline-none cursor-pointer py-1 font-bold text-white flex items-center gap-1.5 max-w-[140px] truncate"
+                                               title="Select Font Family (45+ options)"
+                                             >
+                                               <span>{fontFamily.split(',')[0]}</span>
+                                               <ChevronDown size={12} className={`text-slate-400 transition-transform ${isFontDropdownOpen ? 'rotate-180' : ''}`} />
+                                             </button>
+
+                                             {isFontDropdownOpen && (
+                                               <>
+                                                 <div 
+                                                   className="fixed inset-0 z-[90]" 
+                                                   onClick={() => {
+                                                     setIsFontDropdownOpen(false);
+                                                     setPreviewFontFamily(null);
+                                                   }}
+                                                 />
+                                                 <div 
+                                                   className="absolute top-8 left-0 w-56 bg-slate-900 border border-slate-700/85 rounded-2xl shadow-2xl p-2 z-[100] max-h-80 overflow-y-auto"
+                                                   style={{ scrollbarWidth: 'none' }}
+                                                   onMouseLeave={() => setPreviewFontFamily(null)}
+                                                 >
+                                                   {FONT_OPTIONS.map((fOpt, fIdx) => (
+                                                     <button
+                                                       key={fIdx}
+                                                       type="button"
+                                                       onMouseEnter={() => setPreviewFontFamily(fOpt)}
+                                                       onClick={() => {
+                                                         setFontFamily(fOpt);
+                                                         setPreviewFontFamily(null);
+                                                         setIsFontDropdownOpen(false);
+                                                         if (activeEditor) {
+                                                           activeEditor.chain().focus().setFontFamily(fOpt).run();
+                                                         } else {
+                                                           applyInlineStyle('fontFamily', fOpt);
+                                                         }
+                                                       }}
+                                                       className={`w-full text-left px-3 py-2 rounded-xl text-xs transition-colors ${
+                                                         fontFamily === fOpt 
+                                                           ? 'bg-indigo-600 text-white font-bold' 
+                                                           : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                                                       }`}
+                                                       style={{ fontFamily: fOpt }}
+                                                     >
+                                                       {fOpt.split(',')[0]}
+                                                     </button>
+                                                   ))}
+                                                 </div>
+                                               </>
+                                             )}
+                                           </div>
                                           <div className="w-px h-4 bg-slate-700"></div>
                                           <div className="flex items-center gap-1.5 text-white">
                                             <span className="text-slate-400 font-mono text-[10px]">Size:</span>
@@ -6659,9 +6720,31 @@ function App() {
                                                 if (isLink) {
                                                   activeEditor.chain().focus().unsetLink().run();
                                                 } else {
-                                                  const url = window.prompt('Enter Hyperlink URL (e.g. https://google.com):');
+                                                  const { from, to } = activeEditor.state.selection;
+                                                  const selectedText = activeEditor.state.doc.textBetween(from, to, ' ');
+                                                  
+                                                  let linkText = selectedText;
+                                                  let isCustomInsert = !selectedText;
+
+                                                  if (!linkText) {
+                                                    linkText = window.prompt('Text to Display:');
+                                                    if (!linkText) return;
+                                                  } else {
+                                                    const newText = window.prompt('Text to Display:', linkText);
+                                                    if (newText === null) return;
+                                                    if (newText !== linkText) {
+                                                      linkText = newText;
+                                                      isCustomInsert = true;
+                                                    }
+                                                  }
+
+                                                  const url = window.prompt(`Address / URL for "${linkText}":`, 'https://');
                                                   if (url) {
-                                                    activeEditor.chain().focus().setLink({ href: url }).run();
+                                                    if (isCustomInsert) {
+                                                      activeEditor.chain().focus().insertContent(`<a href="${url}">${linkText}</a>`).run();
+                                                    } else {
+                                                      activeEditor.chain().focus().setLink({ href: url }).run();
+                                                    }
                                                   }
                                                 }
                                               }
@@ -6752,12 +6835,12 @@ function App() {
                                         <div className="flex items-center gap-1 bg-slate-800/80 p-1 rounded-xl border border-slate-700 shadow-md">
                                           <button
                                             onClick={() => activeEditor?.chain().focus().undo().run()}
-                                            disabled={!activeEditor?.can().undo()}
+                                            disabled={!activeEditor || activeEditor.isDestroyed || !activeEditor.can().undo()}
                                             className="p-2 rounded-lg text-slate-300 hover:bg-slate-700 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed transition-all" title="Undo (Ctrl+Z)"
                                           ><Undo size={15} /></button>
                                           <button
                                             onClick={() => activeEditor?.chain().focus().redo().run()}
-                                            disabled={!activeEditor?.can().redo()}
+                                            disabled={!activeEditor || activeEditor.isDestroyed || !activeEditor.can().redo()}
                                             className="p-2 rounded-lg text-slate-300 hover:bg-slate-700 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed transition-all" title="Redo (Ctrl+Y)"
                                           ><Redo size={15} /></button>
                                           <button
@@ -6776,7 +6859,7 @@ function App() {
                                     className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg active:scale-95 transition-all ml-2"
                                     title="Embed image from local device"
                                   >
-                                    <Image size={15} /> Insert External Image
+                                    <Image size={15} /> Insert Image
                                   </button>
                                   <input
                                     id="local-image-upload"
@@ -6852,6 +6935,7 @@ function App() {
                                   type="range"
                                   min="24"
                                   max="240"
+                                  step="8"
                                   value={rulerIndent}
                                   onChange={e => setRulerIndent(Number(e.target.value))}
                                   className="w-48 accent-indigo-500 cursor-ew-resize bg-slate-800 rounded-lg h-1.5"
@@ -6865,18 +6949,18 @@ function App() {
                           )}
 
                           {/* Continuous Spacious Landscape Canvas Spanned Full Width */}
-                          <div className={`w-full bg-white min-h-[900px] flex flex-col ${fontFamily} relative pb-36 transition-all shadow-inner print:p-0 print:m-0 print:shadow-none print:bg-white`}>
+                          <div className={`w-full bg-white min-h-[900px] flex flex-col relative pb-36 transition-all shadow-inner print:p-0 print:m-0 print:shadow-none print:bg-white ${isSavingFlash ? 'ring-8 ring-emerald-500/40 shadow-[0_0_50px_rgba(16,185,129,0.3)]' : ''}`} style={{ fontFamily: previewFontFamily || fontFamily }}>
                             <div className="py-16 space-y-24 print:py-0 print:space-y-16" style={{ paddingLeft: `${rulerIndent}px`, paddingRight: `${rulerIndent}px` }}>
                               {(selectedReport.sections || []).map((sec, sIdx) => (
                                 <div
                                   id={`canvas-sec-${sIdx}`}
                                   key={sec.id}
                                   onClick={() => !isPresentView && setActiveSectionIndex(sIdx)}
-                                  className={`p-10 rounded-3xl transition-all print:p-0 print:border-none print:shadow-none ${isPresentView ? 'border-none shadow-none p-0' : activeSectionIndex === sIdx ? 'bg-slate-50/70 border border-indigo-300 shadow-2xl ring-4 ring-indigo-500/10' : 'border border-transparent hover:border-slate-200'
+                                  className={`p-10 rounded-3xl transition-all print:p-0 print:border-none print:shadow-none ${sIdx > 0 ? 'print:break-before-page' : ''} ${isPresentView ? 'border-none shadow-none p-0' : activeSectionIndex === sIdx ? 'bg-slate-50/70 border border-indigo-300 shadow-2xl ring-4 ring-indigo-500/10' : 'border border-transparent hover:border-slate-200'
                                     }`}
                                 >
                                   {isPresentView ? (
-                                    <div className="max-w-5xl mx-auto print:max-w-none mb-12" style={{ fontFamily: fontFamily }}>
+                                    <div className="max-w-5xl mx-auto print:max-w-none mb-12" style={{ fontFamily: previewFontFamily || fontFamily }}>
                                       <h1 className="text-4xl font-black tracking-tight text-slate-900 text-center mb-8 pb-6 border-b border-slate-200/80">{sec.title.replace(/^\d+\.\s*/, '')}</h1>
                                     </div>
                                   ) : (
@@ -6907,7 +6991,7 @@ function App() {
                                         }}
                                         onBlur={(e) => recordHistory(`Updated title of Section ${sIdx + 1} to "${e.target.value}"`, `Section ${sIdx + 1}`)}
                                         className="text-4xl font-normal tracking-tight text-slate-900 text-center w-full outline-none focus:ring-0 pb-2 border-b border-transparent hover:border-slate-300 focus:border-indigo-500 transition-colors bg-transparent"
-                                        style={{ fontFamily: fontFamily }}
+                                        style={{ fontFamily: previewFontFamily || fontFamily }}
                                         placeholder="Enter Section Title..."
                                       />
                                     </div>
@@ -6937,10 +7021,11 @@ function App() {
                                         };
 
                                         const cardBg = reportTheme === 'Corporate Dark' ? 'bg-slate-900 border-slate-850 text-slate-100' : 'bg-white border-slate-200/80 text-slate-900';
-                                        const textMuted = reportTheme === 'Corporate Dark' ? 'text-slate-400' : 'text-slate-500';
-                                        const labelColor = reportTheme === 'Corporate Dark' ? 'text-slate-350' : 'text-slate-755';
+                                        
+                                        const isResizingOrDragging = activeResizingChartId === chart.id || chartDragState?.chartId === chart.id;
+                                        const transitionClass = isResizingOrDragging ? 'transition-none' : 'transition-all duration-300';
 
-                                        const classStr = `${cardBg} rounded-3xl p-8 shadow-xl hover:shadow-2xl transition-all duration-300 relative group print:shadow-none print:border-none ` + (isDashboard
+                                        const classStr = `${cardBg} rounded-3xl p-8 shadow-xl hover:shadow-2xl ${transitionClass} relative group print:shadow-none print:border-none ` + (isDashboard
                                           ? "w-full block"
                                           : `${chart.align === 'left' ? 'mr-8 mb-6 float-left' : chart.align === 'right' ? 'ml-8 mb-6 float-right' : 'mx-auto mb-8 clear-both block'}`);
 
@@ -6952,6 +7037,7 @@ function App() {
                                         return (
                                           <div
                                             key={chart.id}
+                                            id={chart.id}
                                             style={styleObj}
                                             className={classStr}
                                           >
@@ -7011,28 +7097,68 @@ function App() {
                                                   </button>
                                                   
                                                   {!isDashboard && (
-                                                    <>
-                                                      <span className="text-[10px] text-slate-400 font-black uppercase tracking-wider pr-1 border-r border-slate-700">
-                                                        Width ({typeof chart.width === 'number' ? chart.width : chart.width === 'full' ? 100 : 85}%)
-                                                      </span>
-                                                      <input
-                                                        type="range"
-                                                        min="30"
-                                                        max="100"
-                                                        value={typeof chart.width === 'number' ? chart.width : chart.width === 'full' ? 100 : 85}
-                                                        onChange={(e) => {
-                                                          const val = Number(e.target.value);
-                                                          const updatedSecs = [...selectedReport.sections];
-                                                          const updatedCharts = [...updatedSecs[sIdx].charts];
-                                                          updatedCharts[cIdx] = { ...chart, width: val };
-                                                          updatedSecs[sIdx] = { ...updatedSecs[sIdx], charts: updatedCharts };
-                                                          const updated = { ...selectedReport, sections: updatedSecs };
-                                                          setSelectedReport(updated);
-                                                          setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
-                                                        }}
-                                                        className="w-20 accent-indigo-500 cursor-pointer h-1.5 bg-slate-700 rounded"
-                                                        title="Resize Chart Width (30% - 100%)"
-                                                      />
+                                                     <>
+                                                       <span 
+                                                         id={`width-label-${chart.id}`}
+                                                         className="text-[10px] text-slate-400 font-black uppercase tracking-wider pr-1 border-r border-slate-700 font-sans"
+                                                       >
+                                                         Width ({typeof chart.width === 'number' ? chart.width : chart.width === 'full' ? 100 : 85}%)
+                                                       </span>
+                                                       <input
+                                                         key={chart.id + '-' + (typeof chart.width === 'number' ? chart.width : chart.width === 'full' ? 100 : 85)}
+                                                         type="range"
+                                                         min="30"
+                                                         max="100"
+                                                         defaultValue={typeof chart.width === 'number' ? chart.width : chart.width === 'full' ? 100 : 85}
+                                                         onMouseDown={() => setActiveResizingChartId(chart.id)}
+                                                         onTouchStart={() => setActiveResizingChartId(chart.id)}
+                                                         onChange={(e) => {
+                                                           const val = Number(e.target.value);
+                                                           const el = document.getElementById(chart.id);
+                                                           if (el) {
+                                                             el.style.width = `${val}%`;
+                                                           }
+                                                           const labelEl = document.getElementById(`width-label-${chart.id}`);
+                                                           if (labelEl) {
+                                                             labelEl.innerText = `Width (${val}%)`;
+                                                           }
+                                                         }}
+                                                         onMouseUp={(e) => {
+                                                           setActiveResizingChartId(null);
+                                                           const val = Number(e.target.value);
+                                                           const updatedSecs = [...selectedReport.sections];
+                                                           const updatedCharts = [...updatedSecs[sIdx].charts];
+                                                           updatedCharts[cIdx] = { ...chart, width: val };
+                                                           updatedSecs[sIdx] = { ...updatedSecs[sIdx], charts: updatedCharts };
+                                                           const updated = { ...selectedReport, sections: updatedSecs };
+                                                           setSelectedReport(updated);
+                                                           setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
+                                                         }}
+                                                         onTouchEnd={(e) => {
+                                                           setActiveResizingChartId(null);
+                                                           const val = Number(e.target.value);
+                                                           const updatedSecs = [...selectedReport.sections];
+                                                           const updatedCharts = [...updatedSecs[sIdx].charts];
+                                                           updatedCharts[cIdx] = { ...chart, width: val };
+                                                           updatedSecs[sIdx] = { ...updatedSecs[sIdx], charts: updatedCharts };
+                                                           const updated = { ...selectedReport, sections: updatedSecs };
+                                                           setSelectedReport(updated);
+                                                           setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
+                                                         }}
+                                                         onKeyUp={(e) => {
+                                                           setActiveResizingChartId(null);
+                                                           const val = Number(e.target.value);
+                                                           const updatedSecs = [...selectedReport.sections];
+                                                           const updatedCharts = [...updatedSecs[sIdx].charts];
+                                                           updatedCharts[cIdx] = { ...chart, width: val };
+                                                           updatedSecs[sIdx] = { ...updatedSecs[sIdx], charts: updatedCharts };
+                                                           const updated = { ...selectedReport, sections: updatedSecs };
+                                                           setSelectedReport(updated);
+                                                           setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
+                                                         }}
+                                                         className="w-20 accent-indigo-500 cursor-pointer h-1.5 bg-slate-700 rounded"
+                                                         title="Resize Chart Width (30% - 100%)"
+                                                       />
 
                                                       <span className="text-[10px] text-slate-400 font-black uppercase tracking-wider px-1 border-x border-slate-700">Position</span>
                                                       <button
@@ -7716,7 +7842,7 @@ function App() {
                                     {/* Sibling 3: The Rich Text Content (Flows perfectly around the floated items) */}
                                     {isPresentView ? (
                                       <div
-                                        style={{ textAlign: textAlign, fontSize: `${fontSize}px`, fontFamily: fontFamily }}
+                                        style={{ textAlign: textAlign, fontSize: `${fontSize}px`, fontFamily: previewFontFamily || fontFamily }}
                                         className={`text-slate-800 leading-[2.2] whitespace-pre-wrap ${textBold ? 'font-bold' : 'font-normal'} ${textItalic ? 'italic' : 'not-italic'} ${textUnderline ? 'underline underline-offset-4' : 'no-underline'} overflow-visible`}
                                         dangerouslySetInnerHTML={{ __html: sec.content }}
                                       />
@@ -7740,7 +7866,7 @@ function App() {
                                         savedRangeRef={savedRangeRef}
                                         recordHistory={recordHistory}
                                         sectionTitle={sec.title}
-                                        style={{ textAlign: textAlign, fontSize: `${fontSize}px`, fontFamily: fontFamily }}
+                                        style={{ textAlign: textAlign, fontSize: `${fontSize}px`, fontFamily: previewFontFamily || fontFamily }}
                                         className="w-full min-h-[300px] outline-none text-slate-800 leading-[2.2] whitespace-pre-wrap transition-all bg-transparent p-4 rounded-2xl border border-transparent hover:border-slate-200 focus:border-indigo-300 focus:bg-slate-50/50 shadow-inner overflow-visible"
                                       />
                                     )}
@@ -7836,7 +7962,7 @@ function App() {
 
                         {/* Right Drawer Panel (Analytics & Chart Insertion Suite) */}
                         {isRightDrawerOpen && (
-                          <div className="w-96 bg-white border-l border-slate-200 shadow-2xl flex flex-col z-50 animate-in slide-in-from-right duration-500 shrink-0 font-sans">
+                          <div className="w-96 bg-white border-l border-slate-200 shadow-2xl flex flex-col z-50 animate-in slide-in-from-right duration-500 shrink-0 font-sans print:hidden">
                             <div className="p-6 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800 shrink-0">
                               <div className="flex items-center gap-2.5">
                                 <div className="w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center font-bold">
@@ -9565,9 +9691,9 @@ const spec = JSON.parse(response.text);
             : 'opacity-0 translate-y-8 scale-95 pointer-events-none'
         } left-1/2 -translate-x-1/2 top-[45%] w-[92%] max-w-md md:left-[8%] md:translate-x-0 md:top-1/2 md:-translate-y-1/2 md:w-[35%] md:max-w-md`}
       >
-        <div className="glass-card w-full max-w-md p-8 md:p-10 rounded-[2.5rem] relative text-white" style={{ background: '#4f46e5', border: '1px solid rgba(255,255,255,0.15)' }}>
+        <div className="glass-card w-full max-w-md p-8 md:p-10 rounded-[2.5rem] relative text-white max-h-[85vh] overflow-y-auto custom-scrollbar" style={{ background: '#4f46e5', border: '1px solid rgba(255,255,255,0.15)' }}>
           <button 
-            onClick={() => setView('landing')} 
+            onClick={() => setView(view === 'signup' ? 'login' : 'landing')} 
             className="absolute top-6 left-6 text-white/50 hover:text-white transition-all flex items-center gap-1.5 text-xs font-bold"
           >
             <ArrowLeft size={14} /> Back
@@ -9617,7 +9743,7 @@ const spec = JSON.parse(response.text);
                     <input
                       type="email"
                       required
-                      placeholder={authRole === 'individual' ? "you@example.com" : "user@themavericksindia.com"}
+                      placeholder={authRole === 'individual' ? "you@example.com" : authRole === 'admin' ? "admin@example.com" : "user@themavericksindia.com"}
                       className="w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold outline-none transition-all placeholder-indigo-300"
                       style={{ background: 'rgba(255,255,255,0.92)', border: '1px solid rgba(255,255,255,0.6)', color: '#1e1b4b' }}
                       value={email}
@@ -9691,26 +9817,24 @@ const spec = JSON.parse(response.text);
               {successMessage && <div className="mb-6 p-4 bg-green-500/20 border border-green-500/30 rounded-2xl text-green-200 text-xs font-bold">{successMessage}</div>}
 
               <div className="flex bg-white/5 border border-white/10 p-1 rounded-2xl mb-6 gap-1">
-                <button
-                  type="button"
-                  onClick={() => setAuthRole('employee')}
-                  className={`flex-1 py-2 px-2 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all ${authRole === 'employee'
-                    ? 'bg-indigo-600 text-white shadow-md font-bold'
-                    : 'text-white/60 hover:text-white'
-                    }`}
-                >
-                  Maverick
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAuthRole('individual')}
-                  className={`flex-1 py-2 px-2 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all ${authRole === 'individual'
-                    ? 'bg-indigo-600 text-white shadow-md font-bold'
-                    : 'text-white/60 hover:text-white'
-                    }`}
-                >
-                  Individual User
-                </button>
+                {['admin', 'employee', 'individual'].map((role) => {
+                  const label = role === 'employee' ? 'Maverick' : role === 'admin' ? 'Admin' : 'Individual';
+                  const isActive = authRole === role;
+                  return (
+                    <button
+                      key={role}
+                      type="button"
+                      onClick={() => setAuthRole(role)}
+                      className={`flex-1 py-2 px-2 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all ${
+                        isActive
+                          ? 'bg-indigo-600 text-white shadow-md font-bold'
+                          : 'text-white/60 hover:text-white hover:bg-white/5'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-4">
@@ -9718,16 +9842,33 @@ const spec = JSON.parse(response.text);
                   <label className="text-[10px] font-black text-white/70 uppercase tracking-[0.2em] ml-1">Full Name</label>
                   <div className="relative">
                     <User className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400 group-focus-within:text-indigo-700 transition-colors" size={18} />
-                    <input type="text" required placeholder="Your Full Name" className="glass-input w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold text-white placeholder-white/30" value={name} onChange={(e) => setName(e.target.value)} />
+                    <input type="text" required placeholder="Your Full Name" className="w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold outline-none transition-all placeholder-indigo-300" style={{ background: 'rgba(255,255,255,0.92)', border: '1px solid rgba(255,255,255,0.6)', color: '#1e1b4b' }} value={name} onChange={(e) => setName(e.target.value)} />
                   </div>
                 </div>
                 <div className="space-y-1.5 group">
                   <label className="text-[10px] font-black text-white/70 uppercase tracking-[0.2em] ml-1">Email Address</label>
                   <div className="relative">
                     <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400 group-focus-within:text-indigo-700 transition-colors" size={18} />
-                    <input type="email" required placeholder={authRole === 'individual' ? "you@example.com" : "user@themavericksindia.com"} className="glass-input w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold text-white placeholder-white/30" value={email} onChange={(e) => setEmail(e.target.value)} />
+                    <input type="email" required placeholder={authRole === 'individual' ? "you@example.com" : authRole === 'admin' ? "admin@example.com" : "user@themavericksindia.com"} className="w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold outline-none transition-all placeholder-indigo-300" style={{ background: 'rgba(255,255,255,0.92)', border: '1px solid rgba(255,255,255,0.6)', color: '#1e1b4b' }} value={email} onChange={(e) => setEmail(e.target.value)} />
                   </div>
                 </div>
+                {authRole === 'admin' && (
+                  <div className="space-y-1.5 group">
+                    <label className="text-[10px] font-black text-white/70 uppercase tracking-[0.2em] ml-1">Admin Key</label>
+                    <div className="relative">
+                      <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400 group-focus-within:text-indigo-700 transition-colors" size={18} />
+                      <input
+                        type="text"
+                        required
+                        placeholder="Enter Admin Key"
+                        className="w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold outline-none transition-all placeholder-indigo-300"
+                        style={{ background: 'rgba(255,255,255,0.92)', border: '1px solid rgba(255,255,255,0.6)', color: '#1e1b4b' }}
+                        value={adminKeyInput}
+                        onChange={(e) => setAdminKeyInput(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                )}
                 {authRole === 'individual' && (
                   <div className="space-y-1.5 group">
                     <label className="text-[10px] font-black text-white/70 uppercase tracking-[0.2em] ml-1">License Key</label>
@@ -9736,8 +9877,9 @@ const spec = JSON.parse(response.text);
                       <input
                         type="text"
                         required
-                        placeholder="MAV-XXXX-XXXX"
-                        className="glass-input w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold text-white placeholder-white/30"
+                        placeholder="MAV-XXXX-XXXX (e.g., MAV-DEMO-KEY)"
+                        className="w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold outline-none transition-all placeholder-indigo-300"
+                        style={{ background: 'rgba(255,255,255,0.92)', border: '1px solid rgba(255,255,255,0.6)', color: '#1e1b4b' }}
                         value={licenseKey}
                         onChange={(e) => setLicenseKey(e.target.value)}
                       />
@@ -9748,7 +9890,7 @@ const spec = JSON.parse(response.text);
                   <label className="text-[10px] font-black text-white/70 uppercase tracking-[0.2em] ml-1">Create Password</label>
                   <div className="relative">
                     <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400 group-focus-within:text-indigo-700 transition-colors" size={18} />
-                    <input type={showPassword ? "text" : "password"} required placeholder="••••••••" className="glass-input w-full py-4 pl-12 pr-12 rounded-2xl text-sm font-semibold text-white placeholder-white/30" value={password} onChange={(e) => setPassword(e.target.value)} />
+                    <input type={showPassword ? "text" : "password"} required placeholder="••••••••" className="w-full py-4 pl-12 pr-12 rounded-2xl text-sm font-semibold outline-none transition-all placeholder-indigo-300" style={{ background: 'rgba(255,255,255,0.92)', border: '1px solid rgba(255,255,255,0.6)', color: '#1e1b4b' }} value={password} onChange={(e) => setPassword(e.target.value)} />
                     <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-indigo-400 hover:text-indigo-700 transition-colors">
                       {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                     </button>
@@ -9758,7 +9900,7 @@ const spec = JSON.parse(response.text);
                   <label className="text-[10px] font-black text-white/70 uppercase tracking-[0.2em] ml-1">Confirm Password</label>
                   <div className="relative">
                     <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400 group-focus-within:text-indigo-700 transition-colors" size={18} />
-                    <input type={showPassword ? "text" : "password"} required placeholder="••••••••" className="glass-input w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold text-white placeholder-white/30" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+                    <input type={showPassword ? "text" : "password"} required placeholder="••••••••" className="w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold outline-none transition-all placeholder-indigo-300" style={{ background: 'rgba(255,255,255,0.92)', border: '1px solid rgba(255,255,255,0.6)', color: '#1e1b4b' }} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
                   </div>
                 </div>
                 <div className="flex items-center gap-3 px-1 py-2">
@@ -9769,7 +9911,7 @@ const spec = JSON.parse(response.text);
                     I agree to the <button type="button" className="text-cyan-300 hover:underline">Terms of Service</button> and <button type="button" className="text-cyan-300 hover:underline">Privacy Policy</button>.
                   </span>
                 </div>
-                <button type="submit" disabled={loading} className="glass-button-primary w-full py-4 flex items-center justify-center gap-3 mt-6">
+                <button type="submit" disabled={loading} className="w-full py-4 flex items-center justify-center gap-3 mt-6 rounded-2xl font-bold text-sm tracking-wide transition-all active:scale-95" style={{ background: 'rgba(255,255,255,0.92)', color: '#3730a3' }}>
                   {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <>Create Account <ArrowRight size={18} /></>}
                 </button>
               </form>
