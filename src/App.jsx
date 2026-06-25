@@ -97,7 +97,9 @@ import {
   Minus,
   Video,
   MessageSquare,
-  Brain
+  Brain,
+  Play,
+  Pause
 } from 'lucide-react';
 
 import { useEditor, EditorContent, ReactNodeViewRenderer, Extension } from '@tiptap/react';
@@ -1412,6 +1414,944 @@ const CoverageIntensityCard = ({ score, name, isPrimary }) => {
     </div>
   );
 };
+
+// --- System Flow Component (Architecture Visualization) ---
+const SystemFlowComponent = ({ sidebarCollapsed, darkMode }) => {
+  const [activeSimulation, setActiveSimulation] = useState('auth'); // 'auth', 'analysis', 'reports', 'cleo'
+  const [currentStep, setCurrentStep] = useState(-1);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [hoveredNode, setHoveredNode] = useState(null);
+  const [diagLoading, setDiagLoading] = useState(false);
+  const [diagData, setDiagData] = useState({
+    status: 'checking',
+    latency: null,
+    dbStatus: 'checking',
+    dbLatency: null,
+    rows: { users: 0, companies: 0, articles: 0, reports: 0, license_keys: 0 },
+    system: null,
+    isMock: false
+  });
+  const [activeTechTab, setActiveTechTab] = useState('api'); // 'api', 'db', 'scraper', 'cleo'
+
+  // Run diagnostics on load
+  const runDiagnostics = async () => {
+    setDiagLoading(true);
+    const start = Date.now();
+    try {
+      const res = await fetch('http://localhost:3001/api/diagnostics', {
+        headers: { 'Cache-Control': 'no-cache' }
+      });
+      if (!res.ok) throw new Error('Server returned error status');
+      const data = await res.json();
+      const end = Date.now();
+      setDiagData({
+        status: 'online',
+        latency: end - start,
+        dbStatus: data.database.status === 'online' ? 'online' : 'error',
+        dbLatency: data.database.latency,
+        rows: data.database.rows || { users: 0, companies: 0, articles: 0, reports: 0, license_keys: 0 },
+        system: data.system,
+        isMock: false
+      });
+    } catch (err) {
+      console.warn('Diagnostics endpoint failed, using mock data:', err);
+      // Fallback simulated metrics if server not running locally
+      setDiagData({
+        status: 'offline',
+        latency: null,
+        dbStatus: 'offline',
+        dbLatency: null,
+        rows: { users: 4, companies: 18, articles: 1248, reports: 12, license_keys: 35 },
+        system: {
+          uptime: 3600 * 24 + 4820,
+          platform: 'win32',
+          memory: { heapUsed: 42 * 1024 * 1024, heapTotal: 84 * 1024 * 1024 },
+          nodeVersion: 'v20.11.0'
+        },
+        isMock: true
+      });
+    } finally {
+      setDiagLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    runDiagnostics();
+  }, []);
+
+  // Simulation steps configuration
+  const simulations = {
+    auth: {
+      title: 'User Authentication Flow',
+      description: 'Follows a client signing in using credentials or an admin registering license keys.',
+      steps: [
+        {
+          title: '1. Initiate Connection & JWT Request',
+          info: 'React Client submits credentials (email/password) or license keys to the Node Express server. Path: Client Portal ➔ Auth Gateway.',
+          highlightNodes: ['client', 'auth'],
+          activePaths: ['client-auth']
+        },
+        {
+          title: '2. Route Authorization & Verification',
+          info: 'The API server routes the request through the auth gateway. Verification check verifyAdminKey or verifyToken is executed.',
+          highlightNodes: ['auth', 'api'],
+          activePaths: ['auth-api']
+        },
+        {
+          title: '3. DB Lookup & Credential Matching',
+          info: 'Querying database: SELECT * FROM users WHERE email = $1. Uses bcrypt.compare to match the submitted password hash.',
+          highlightNodes: ['api', 'db'],
+          activePaths: ['api-db']
+        },
+        {
+          title: '4. Signed Token Generation',
+          info: 'On verification, the Express API creates a signed JSON Web Token (JWT) with user roles (Admin, Maverick, Individual) and returns status 200.',
+          highlightNodes: ['api', 'client'],
+          activePaths: ['api-client']
+        }
+      ]
+    },
+    analysis: {
+      title: 'Competitor PR Analysis Flow',
+      description: 'Simulates querying search keywords, scanning RSS, scraping Google News, and measuring Sentiment/Reach.',
+      steps: [
+        {
+          title: '1. Analysis Request Raised',
+          info: 'Client requests comparative analytics: GET /api/competitor-analysis?keyword1=X&keyword2=Y. Path: Client Portal ➔ Express API.',
+          highlightNodes: ['client', 'api'],
+          activePaths: ['client-api']
+        },
+        {
+          title: '2. Validate Database Cache',
+          info: 'Express API queries articles and domain_authority_cache to retrieve existing entries. Stale cached articles (older than 24h) are flagged.',
+          highlightNodes: ['api', 'db'],
+          activePaths: ['api-db']
+        },
+        {
+          title: '3. Scrape Live RSS & Google News Links',
+          info: 'If cache is missing, Express API triggers background fetching. Google News RSS decoder is invoked to decrypt redirecting URLs.',
+          highlightNodes: ['api', 'scraper'],
+          activePaths: ['api-scraper']
+        },
+        {
+          title: '4. Extract Article Content & Sentiment',
+          info: 'Puppeteer Stealth (via proxy) scrapes raw article text. Sentiment module processes text to score Positive, Neutral, or Negative.',
+          highlightNodes: ['scraper', 'api'],
+          activePaths: ['scraper-api']
+        },
+        {
+          title: '5. Save Scraped Intel to DB',
+          info: 'Parsed articles and Domain Authority results (PageRank metrics) are saved to SQL: INSERT INTO articles. Path: Express API ➔ Postgres.',
+          highlightNodes: ['api', 'db'],
+          activePaths: ['api-db']
+        },
+        {
+          title: '6. Output SOV & Reach Metrics',
+          info: 'Express compiles analytics (Share of Voice, Mentions Velocity, Intensity Score) and outputs JSON. Frontend React draws the telemetry charts.',
+          highlightNodes: ['api', 'client'],
+          activePaths: ['api-client']
+        }
+      ]
+    },
+    reports: {
+      title: 'Report Management & Excel Export',
+      description: 'Flow for creating reports, editing sections in TipTap, and exporting structured Excel files.',
+      steps: [
+        {
+          title: '1. Report Composition & Section Edits',
+          info: 'User compiles sections in the Client Portal. Rich texts are styled using TipTap. Saving sends a POST payload to /api/reports.',
+          highlightNodes: ['client', 'api'],
+          activePaths: ['client-api']
+        },
+        {
+          title: '2. JSON Document Storage',
+          info: 'Reports are stored in Postgres with schema JSONB fields (sections, metrics, bookmarks). Executes INSERT ... ON CONFLICT (id) DO UPDATE.',
+          highlightNodes: ['api', 'db'],
+          activePaths: ['api-db']
+        },
+        {
+          title: '3. Excel Exporter Triggered',
+          info: 'User requests spreadsheet export: GET /api/brands/:id/report. Auth header (x-user-id) validates requester privileges.',
+          highlightNodes: ['client', 'api'],
+          activePaths: ['client-api']
+        },
+        {
+          title: '4. Buffer Compilation & Transmission',
+          info: 'Node xlsx converts DB records into a spreadsheet buffer. Server sets Content-Disposition headers and returns the file buffer.',
+          highlightNodes: ['api', 'db', 'client'],
+          activePaths: ['db-api', 'api-client']
+        }
+      ]
+    },
+    cleo: {
+      title: 'Cleo AI Autonomous Copilot',
+      description: 'Autonomous PR Copilot chatting, analyzing context, and recommending actions.',
+      steps: [
+        {
+          title: '1. Chat Prompt Submitted',
+          info: 'User asks Cleo AI for advice (e.g. "Draft a press pitch"). Path: Cleo Widget ➔ Express API.',
+          highlightNodes: ['cleo', 'api'],
+          activePaths: ['api-cleo']
+        },
+        {
+          title: '2. Fetch Brand Context & Articles',
+          info: 'Express backend queries recent articles and brand details from Postgres to construct a prompt context.',
+          highlightNodes: ['api', 'db'],
+          activePaths: ['api-db']
+        },
+        {
+          title: '3. Generate Recommendations',
+          info: 'Cleo agent matches context with PR playbooks, computes response metrics, and designs structured markdown answers.',
+          highlightNodes: ['api', 'cleo'],
+          activePaths: ['api-cleo']
+        }
+      ]
+    }
+  };
+
+  // Playback timer
+  useEffect(() => {
+    let timer;
+    if (isPlaying) {
+      timer = setInterval(() => {
+        setCurrentStep((prev) => {
+          const totalSteps = simulations[activeSimulation].steps.length;
+          if (prev >= totalSteps - 1) {
+            return 0; // Loop
+          }
+          return prev + 1;
+        });
+      }, 3000);
+    }
+    return () => clearInterval(timer);
+  }, [isPlaying, activeSimulation]);
+
+  const currentSim = simulations[activeSimulation];
+  const activeStepData = currentStep >= 0 && currentStep < currentSim.steps.length ? currentSim.steps[currentStep] : null;
+
+  // Node technical summaries for tooltips/hover states
+  const nodeDetails = {
+    client: {
+      name: 'Client Portal (Frontend)',
+      tech: 'Vite, React 19, Tailwind CSS, TipTap Editor',
+      desc: 'Renders dashboard analytics, interactive charts, and reports. Communicates with server over REST APIs on port 3001.'
+    },
+    auth: {
+      name: 'Auth Gateway (Middleware)',
+      tech: 'JWT, bcrypt, verifyToken Express handlers',
+      desc: 'Validates license keys and user roles (Admin, Maverick, Individual) before requests proceed to application logic.'
+    },
+    api: {
+      name: 'Express API Server (Backend)',
+      tech: 'Node.js, Express 5.x, cors, multer',
+      desc: 'Application core running on port 3001. Handles routing, file uploads, Excel formatting, and scraper orchestration.'
+    },
+    db: {
+      name: 'PostgreSQL Database',
+      tech: 'PostgreSQL, pg Client Pool',
+      desc: 'Stores structured data. Core tables: users, companies, articles, reports, system_settings, and license_keys.'
+    },
+    scraper: {
+      name: 'Puppeteer & RSS Scraper',
+      tech: 'Puppeteer Stealth, rss-parser, cheerio, sentiment',
+      desc: 'Crawls Google News, decodes links, extracts readable body text, and calculates positive/neutral/negative sentiment scores.'
+    },
+    cleo: {
+      name: 'Cleo AI PR Agent',
+      tech: 'NLP rules, sentiment index, prompt context compiler',
+      desc: 'Autonomous agent widget that gives PR tips, draft pitches, and real-time coverage advice based on database metrics.'
+    }
+  };
+
+  const getPathClass = (pathId) => {
+    if (!activeStepData) return 'stroke-slate-300 dark:stroke-slate-700';
+    const isActive = activeStepData.activePaths.includes(pathId);
+    return isActive
+      ? 'stroke-indigo-600 dark:stroke-indigo-400 stroke-2 active-flow-path'
+      : 'stroke-slate-300 dark:stroke-slate-700 opacity-30';
+  };
+
+  const getNodeClass = (nodeId) => {
+    const isHighlighted = activeStepData && activeStepData.highlightNodes.includes(nodeId);
+    const isHovered = hoveredNode === nodeId;
+    const base = 'transition-all duration-300 cursor-pointer ';
+    if (isHighlighted) {
+      return base + 'scale-105 filter drop-shadow-[0_0_12px_rgba(99,102,241,0.5)]';
+    }
+    if (isHovered) {
+      return base + 'scale-105';
+    }
+    return base + (activeStepData ? 'opacity-40' : '');
+  };
+
+  const getNodeFill = (nodeId, defaultColor) => {
+    const isHighlighted = activeStepData && activeStepData.highlightNodes.includes(nodeId);
+    if (isHighlighted) return 'fill-indigo-600 dark:fill-indigo-500';
+    return defaultColor;
+  };
+
+  return (
+    <div className={`w-full ${sidebarCollapsed ? 'max-w-[1850px]' : 'max-w-[1700px]'} mx-auto h-full flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-700 pb-12 transition-all duration-500`}>
+      <style>{`
+        @keyframes flowDash {
+          to {
+            stroke-dashoffset: -20;
+          }
+        }
+        .active-flow-path {
+          stroke-dasharray: 6, 4;
+          animation: flowDash 0.8s linear infinite;
+        }
+      `}</style>
+
+      {/* Header */}
+      <div className="flex flex-col md:flex-row items-center justify-between mb-8 gap-4">
+        <div>
+          <h1 className={`text-4xl tracking-tight mb-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+            <span className="font-light">System</span> <span className="font-black">Architecture Flow</span>
+          </h1>
+          <p className="text-slate-500 font-bold text-[10px] uppercase tracking-widest leading-relaxed">
+            Interactive topology & data flow mappings for the Cerebro Engine
+          </p>
+        </div>
+
+        {/* Diagnostics Widget */}
+        <div className={`p-4 rounded-2xl border flex flex-wrap items-center gap-6 shadow-sm ${
+          darkMode ? 'bg-slate-900/60 border-white/5 text-white' : 'bg-white/80 border-slate-200/60 text-slate-900'
+        }`}>
+          <div className="flex items-center gap-2">
+            <span className={`w-2.5 h-2.5 rounded-full ${diagData.status === 'online' ? 'bg-emerald-500' : 'bg-rose-500'} animate-pulse`}></span>
+            <div>
+              <div className="text-[9px] uppercase tracking-widest text-slate-400 font-black">API Status</div>
+              <div className="text-xs font-bold font-mono">
+                {diagData.status === 'online' ? `Online (${diagData.latency}ms)` : 'Offline'}
+              </div>
+            </div>
+          </div>
+          <div className="w-px h-6 bg-slate-200 dark:bg-white/10" />
+          <div className="flex items-center gap-2">
+            <span className={`w-2.5 h-2.5 rounded-full ${diagData.dbStatus === 'online' ? 'bg-emerald-500' : 'bg-rose-500'} animate-pulse`}></span>
+            <div>
+              <div className="text-[9px] uppercase tracking-widest text-slate-400 font-black">PostgreSQL</div>
+              <div className="text-xs font-bold font-mono">
+                {diagData.dbStatus === 'online' ? `Connected (${diagData.dbLatency}ms)` : 'Disconnected'}
+              </div>
+            </div>
+          </div>
+          {diagData.isMock && (
+            <>
+              <div className="w-px h-6 bg-slate-200 dark:bg-white/10" />
+              <div className="px-2 py-1 rounded bg-amber-500/10 border border-amber-500/20 text-amber-500 text-[9px] font-black uppercase tracking-wider">
+                Simulated Env
+              </div>
+            </>
+          )}
+          <div className="w-px h-6 bg-slate-200 dark:bg-white/10" />
+          <button
+            onClick={runDiagnostics}
+            disabled={diagLoading}
+            className={`p-2 rounded-xl transition-all active:scale-95 ${
+              darkMode ? 'bg-white/5 hover:bg-white/10 text-white' : 'bg-slate-50 hover:bg-slate-100 text-slate-700'
+            }`}
+            title="Refresh Diagnostics"
+          >
+            <RefreshCw size={14} className={diagLoading ? 'animate-spin' : ''} />
+          </button>
+        </div>
+      </div>
+
+      {/* Database Statistics Panel */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+        {[
+          { label: 'Active Users', key: 'users', color: 'text-blue-500', icon: User },
+          { label: 'Tracked Brands', key: 'companies', color: 'text-indigo-500', icon: Activity },
+          { label: 'Scraped Articles', key: 'articles', color: 'text-emerald-500', icon: Globe },
+          { label: 'Saved Reports', key: 'reports', color: 'text-purple-500', icon: FileText },
+          { label: 'Generated Licenses', key: 'license_keys', color: 'text-amber-500', icon: Key }
+        ].map((stat) => (
+          <div key={stat.key} className={`p-4 rounded-2xl border shadow-sm flex items-center gap-4 ${
+            darkMode ? 'bg-slate-900/40 border-white/5' : 'bg-white border-slate-100'
+          }`}>
+            <div className={`p-3 rounded-xl bg-slate-100 dark:bg-white/5 ${stat.color}`}>
+              <stat.icon size={18} />
+            </div>
+            <div>
+              <p className="text-[9px] uppercase tracking-wider text-slate-400 font-bold">{stat.label}</p>
+              <h4 className={`text-xl font-black ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                {diagData.rows[stat.key]}
+              </h4>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Main Interactive Flow section */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
+        
+        {/* Left Simulator Control Panel */}
+        <div className={`lg:col-span-4 p-6 rounded-[2rem] border flex flex-col justify-between ${
+          darkMode ? 'bg-slate-900/50 border-white/5' : 'bg-white border-slate-200/60'
+        }`}>
+          <div>
+            <h3 className={`text-base font-black uppercase tracking-wider mb-4 ${darkMode ? 'text-white' : 'text-slate-950'}`}>
+              Flow Controller
+            </h3>
+            
+            {/* Flow selection tabs */}
+            <div className="space-y-2 mb-6">
+              {[
+                { id: 'auth', name: 'User Authentication', desc: 'Login, JWT signing & roles' },
+                { id: 'analysis', name: 'Competitor PR Scanner', desc: 'RSS fetch, Scrape & Sentiment' },
+                { id: 'reports', name: 'Report & Excel Export', desc: 'TipTap JSONB save & spreadsheet download' },
+                { id: 'cleo', name: 'Cleo AI Copilot', desc: 'Autonomous chat & context prompt' }
+              ].map((sim) => (
+                <button
+                  key={sim.id}
+                  onClick={() => {
+                    setActiveSimulation(sim.id);
+                    setCurrentStep(-1);
+                    setIsPlaying(false);
+                  }}
+                  className={`w-full text-left p-3 rounded-xl border transition-all ${
+                    activeSimulation === sim.id
+                      ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg'
+                      : darkMode
+                        ? 'bg-white/5 border-white/5 text-slate-300 hover:bg-white/10'
+                        : 'bg-slate-50 border-slate-100 text-slate-700 hover:bg-slate-100'
+                  }`}
+                >
+                  <div className="text-xs font-black uppercase tracking-wider leading-none mb-1">{sim.name}</div>
+                  <div className={`text-[10px] ${activeSimulation === sim.id ? 'text-indigo-200' : 'text-slate-400'}`}>{sim.desc}</div>
+                </button>
+              ))}
+            </div>
+
+            {/* Play/Pause controls */}
+            <div className="flex items-center gap-3 mb-6">
+              <button
+                onClick={() => {
+                  if (currentStep === -1) setCurrentStep(0);
+                  setIsPlaying(!isPlaying);
+                }}
+                className="flex-1 py-3 px-4 rounded-xl font-bold text-xs uppercase tracking-widest bg-indigo-600 hover:bg-indigo-500 text-white flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-indigo-600/20"
+              >
+                {isPlaying ? <><Pause size={14} /> Pause</> : <><Play size={14} /> Simulate</>}
+              </button>
+              <button
+                onClick={() => {
+                  setIsPlaying(false);
+                  setCurrentStep(-1);
+                }}
+                className={`py-3 px-4 rounded-xl font-bold text-xs uppercase tracking-widest border transition-all active:scale-95 ${
+                  darkMode ? 'border-white/10 hover:bg-white/5 text-white' : 'border-slate-200 hover:bg-slate-50 text-slate-700'
+                }`}
+              >
+                Reset
+              </button>
+            </div>
+          </div>
+
+          {/* Current Step Documentation Card */}
+          <div className={`p-5 rounded-2xl border min-h-[180px] flex flex-col justify-between ${
+            darkMode ? 'bg-white/5 border-white/5' : 'bg-slate-50 border-slate-100'
+          }`}>
+            {currentStep === -1 ? (
+              <div className="flex flex-col items-center justify-center text-center h-full py-6 text-slate-400">
+                <Zap size={24} className="mb-2 text-indigo-500 animate-pulse" />
+                <p className="text-xs font-bold uppercase tracking-wider">Ready to Simulate</p>
+                <p className="text-[10px] mt-1 max-w-[200px]">Click Simulate to animate data moving through the app topology.</p>
+              </div>
+            ) : (
+              <>
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-[9px] font-black uppercase tracking-widest text-indigo-500">
+                      Step {currentStep + 1} of {currentSim.steps.length}
+                    </span>
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                  </div>
+                  <h4 className={`text-xs font-black uppercase tracking-wider mb-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                    {activeStepData?.title}
+                  </h4>
+                  <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 leading-relaxed">
+                    {activeStepData?.info}
+                  </p>
+                </div>
+                <div className="flex justify-between items-center pt-4 border-t border-slate-200 dark:border-white/5 mt-4">
+                  <button
+                    disabled={currentStep <= 0}
+                    onClick={() => { setIsPlaying(false); setCurrentStep(prev => prev - 1); }}
+                    className="text-[10px] font-black uppercase tracking-wider text-slate-400 hover:text-indigo-500 disabled:opacity-30 disabled:pointer-events-none flex items-center gap-1"
+                  >
+                    <ArrowLeft size={10} /> Prev
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsPlaying(false);
+                      const totalSteps = currentSim.steps.length;
+                      if (currentStep < totalSteps - 1) {
+                        setCurrentStep(prev => prev + 1);
+                      } else {
+                        setCurrentStep(0);
+                      }
+                    }}
+                    className="text-[10px] font-black uppercase tracking-wider text-indigo-500 hover:text-indigo-400 flex items-center gap-1"
+                  >
+                    {currentStep === currentSim.steps.length - 1 ? 'Start Over' : 'Next'} <ArrowRight size={10} />
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Right Topological Graph SVG Canvas */}
+        <div className={`lg:col-span-8 p-6 rounded-[2rem] border relative overflow-hidden flex flex-col justify-between ${
+          darkMode ? 'bg-slate-900/50 border-white/5' : 'bg-white border-slate-200/60'
+        }`}>
+          {/* Topology Canvas */}
+          <div className="w-full aspect-[8/4.5] relative min-h-[300px]">
+            <svg viewBox="0 0 800 450" className="w-full h-full">
+              {/* Arrow Markers */}
+              <defs>
+                <marker id="arrow-gray" viewBox="0 0 10 10" refX="28" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill={darkMode ? '#475569' : '#cbd5e1'} />
+                </marker>
+                <marker id="arrow-active" viewBox="0 0 10 10" refX="28" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#6366f1" />
+                </marker>
+              </defs>
+
+              {/* Connecting paths */}
+              {/* Client -> Auth */}
+              <path
+                id="client-auth"
+                d="M 150 170 C 150 65, 230 65, 330 65"
+                fill="none"
+                className={`${getPathClass('client-auth')} transition-all duration-500`}
+                strokeWidth="2.5"
+                markerEnd={activeStepData?.activePaths.includes('client-auth') ? 'url(#arrow-active)' : 'url(#arrow-gray)'}
+              />
+              
+              {/* Auth -> API */}
+              <path
+                id="auth-api"
+                d="M 400 100 L 400 170"
+                fill="none"
+                className={`${getPathClass('auth-api')} transition-all duration-500`}
+                strokeWidth="2.5"
+                markerEnd={activeStepData?.activePaths.includes('auth-api') ? 'url(#arrow-active)' : 'url(#arrow-gray)'}
+              />
+
+              {/* Client -> API */}
+              <path
+                id="client-api"
+                d="M 220 205 L 330 205"
+                fill="none"
+                className={`${getPathClass('client-api')} transition-all duration-500`}
+                strokeWidth="2.5"
+                markerEnd={activeStepData?.activePaths.includes('client-api') ? 'url(#arrow-active)' : 'url(#arrow-gray)'}
+              />
+
+              {/* API -> Client */}
+              <path
+                id="api-client"
+                d="M 330 215 L 220 215"
+                fill="none"
+                className={`${getPathClass('api-client')} transition-all duration-500`}
+                strokeWidth="2.5"
+                markerEnd={activeStepData?.activePaths.includes('api-client') ? 'url(#arrow-active)' : 'url(#arrow-gray)'}
+              />
+
+              {/* API -> DB */}
+              <path
+                id="api-db"
+                d="M 470 205 L 580 205"
+                fill="none"
+                className={`${getPathClass('api-db')} transition-all duration-500`}
+                strokeWidth="2.5"
+                markerEnd={activeStepData?.activePaths.includes('api-db') ? 'url(#arrow-active)' : 'url(#arrow-gray)'}
+              />
+
+              {/* DB -> API */}
+              <path
+                id="db-api"
+                d="M 580 215 L 470 215"
+                fill="none"
+                className={`${getPathClass('db-api')} transition-all duration-500`}
+                strokeWidth="2.5"
+                markerEnd={activeStepData?.activePaths.includes('db-api') ? 'url(#arrow-active)' : 'url(#arrow-gray)'}
+              />
+
+              {/* API -> Scraper */}
+              <path
+                id="api-scraper"
+                d="M 400 240 L 400 310"
+                fill="none"
+                className={`${getPathClass('api-scraper')} transition-all duration-500`}
+                strokeWidth="2.5"
+                markerEnd={activeStepData?.activePaths.includes('api-scraper') ? 'url(#arrow-active)' : 'url(#arrow-gray)'}
+              />
+
+              {/* Scraper -> API */}
+              <path
+                id="scraper-api"
+                d="M 410 310 L 410 240"
+                fill="none"
+                className={`${getPathClass('scraper-api')} transition-all duration-500`}
+                strokeWidth="2.5"
+                markerEnd={activeStepData?.activePaths.includes('scraper-api') ? 'url(#arrow-active)' : 'url(#arrow-gray)'}
+              />
+
+              {/* API -> Cleo AI */}
+              <path
+                id="api-cleo"
+                d="M 330 220 C 270 220, 270 345, 220 345"
+                fill="none"
+                className={`${getPathClass('api-cleo')} transition-all duration-500`}
+                strokeWidth="2.5"
+                markerEnd={activeStepData?.activePaths.includes('api-cleo') ? 'url(#arrow-active)' : 'url(#arrow-gray)'}
+              />
+
+              {/* Interactive Nodes */}
+              {/* NODE 1: Client Portal */}
+              <g
+                className={getNodeClass('client')}
+                onMouseEnter={() => setHoveredNode('client')}
+                onMouseLeave={() => setHoveredNode(null)}
+              >
+                <rect x="80" y="170" width="140" height="70" rx="16" className={`${darkMode ? 'fill-slate-800 stroke-indigo-500/30' : 'fill-indigo-50 stroke-indigo-200'} stroke-2`} />
+                <rect x="92" y="182" width="28" height="28" rx="8" className="fill-indigo-600 text-white" />
+                <LayoutDashboard x="98" y="188" size={16} className="text-white" />
+                <text x="128" y="200" className={`text-[10px] font-black uppercase tracking-wide ${darkMode ? 'fill-white' : 'fill-slate-900'}`}>Client Portal</text>
+                <text x="92" y="226" className="text-[8px] font-bold fill-slate-400 tracking-wider">PORT 5173 (Vite)</text>
+              </g>
+
+              {/* NODE 2: Auth Gateway */}
+              <g
+                className={getNodeClass('auth')}
+                onMouseEnter={() => setHoveredNode('auth')}
+                onMouseLeave={() => setHoveredNode(null)}
+              >
+                <rect x="330" y="30" width="140" height="70" rx="16" className={`${darkMode ? 'fill-slate-800 stroke-amber-500/30' : 'fill-amber-50 stroke-amber-200'} stroke-2`} />
+                <rect x="342" y="42" width="28" height="28" rx="8" className="fill-amber-500 text-white" />
+                <ShieldCheck x="348" y="48" size={16} className="text-white" />
+                <text x="378" y="60" className={`text-[10px] font-black uppercase tracking-wide ${darkMode ? 'fill-white' : 'fill-slate-900'}`}>Auth Gateway</text>
+                <text x="342" y="86" className="text-[8px] font-bold fill-slate-400 tracking-wider">JWT / OAuth / Key Check</text>
+              </g>
+
+              {/* NODE 3: Express API Server */}
+              <g
+                className={getNodeClass('api')}
+                onMouseEnter={() => setHoveredNode('api')}
+                onMouseLeave={() => setHoveredNode(null)}
+              >
+                <rect x="330" y="170" width="140" height="70" rx="16" className={`${darkMode ? 'fill-slate-800 stroke-emerald-500/30' : 'fill-emerald-50 stroke-emerald-200'} stroke-2`} />
+                <rect x="342" y="182" width="28" height="28" rx="8" className="fill-emerald-500 text-white" />
+                <Cpu x="348" y="188" size={16} className="text-white" />
+                <text x="378" y="200" className={`text-[10px] font-black uppercase tracking-wide ${darkMode ? 'fill-white' : 'fill-slate-900'}`}>Express Server</text>
+                <text x="342" y="226" className="text-[8px] font-bold fill-slate-400 tracking-wider">PORT 3001 (Node)</text>
+              </g>
+
+              {/* NODE 4: PostgreSQL Database */}
+              <g
+                className={getNodeClass('db')}
+                onMouseEnter={() => setHoveredNode('db')}
+                onMouseLeave={() => setHoveredNode(null)}
+              >
+                <rect x="580" y="170" width="140" height="70" rx="16" className={`${darkMode ? 'fill-slate-800 stroke-purple-500/30' : 'fill-purple-50 stroke-purple-200'} stroke-2`} />
+                <rect x="592" y="182" width="28" height="28" rx="8" className="fill-purple-500 text-white" />
+                <Database x="598" y="188" size={16} className="text-white" />
+                <text x="628" y="200" className={`text-[10px] font-black uppercase tracking-wide ${darkMode ? 'fill-white' : 'fill-slate-900'}`}>PostgreSQL DB</text>
+                <text x="592" y="226" className="text-[8px] font-bold fill-slate-400 tracking-wider">Relational Storage</text>
+              </g>
+
+              {/* NODE 5: Puppeteer Crawler */}
+              <g
+                className={getNodeClass('scraper')}
+                onMouseEnter={() => setHoveredNode('scraper')}
+                onMouseLeave={() => setHoveredNode(null)}
+              >
+                <rect x="330" y="310" width="140" height="70" rx="16" className={`${darkMode ? 'fill-slate-800 stroke-rose-500/30' : 'fill-rose-50 stroke-rose-200'} stroke-2`} />
+                <rect x="342" y="322" width="28" height="28" rx="8" className="fill-rose-500 text-white" />
+                <Globe x="348" y="328" size={16} className="text-white" />
+                <text x="378" y="340" className={`text-[10px] font-black uppercase tracking-wide ${darkMode ? 'fill-white' : 'fill-slate-900'}`}>Stealth Scraper</text>
+                <text x="342" y="366" className="text-[8px] font-bold fill-slate-400 tracking-wider">Puppeteer / RSS</text>
+              </g>
+
+              {/* NODE 6: Cleo AI Agent */}
+              <g
+                className={getNodeClass('cleo')}
+                onMouseEnter={() => setHoveredNode('cleo')}
+                onMouseLeave={() => setHoveredNode(null)}
+              >
+                <rect x="80" y="310" width="140" height="70" rx="16" className={`${darkMode ? 'fill-slate-800 stroke-fuchsia-500/30' : 'fill-fuchsia-50 stroke-fuchsia-200'} stroke-2`} />
+                <rect x="92" y="322" width="28" height="28" rx="8" className="fill-fuchsia-500 text-white" />
+                <Sparkles x="98" y="328" size={16} className="text-white" />
+                <text x="128" y="340" className={`text-[10px] font-black uppercase tracking-wide ${darkMode ? 'fill-white' : 'fill-slate-900'}`}>Cleo AI Copilot</text>
+                <text x="92" y="366" className="text-[8px] font-bold fill-slate-400 tracking-wider">PR Chat Widget</text>
+              </g>
+            </svg>
+          </div>
+
+          {/* Node Hover/Selection Detail Bar */}
+          <div className={`p-4 rounded-2xl border text-xs leading-relaxed mt-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all ${
+            hoveredNode
+              ? (darkMode ? 'bg-indigo-950/20 border-indigo-500/30' : 'bg-indigo-50/70 border-indigo-100')
+              : (darkMode ? 'bg-white/5 border-white/5 text-slate-400' : 'bg-slate-50 border-slate-100 text-slate-500')
+          }`}>
+            {hoveredNode ? (
+              <>
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-black">
+                    {nodeDetails[hoveredNode].name[0]}
+                  </div>
+                  <div>
+                    <h5 className={`font-black uppercase tracking-wider leading-none mb-1 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                      {nodeDetails[hoveredNode].name}
+                    </h5>
+                    <p className="text-[10px] text-slate-400 font-semibold">{nodeDetails[hoveredNode].tech}</p>
+                  </div>
+                </div>
+                <p className={`flex-1 md:max-w-md text-[11px] font-semibold ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                  {nodeDetails[hoveredNode].desc}
+                </p>
+              </>
+            ) : (
+              <p className="text-[10px] uppercase font-black tracking-widest text-slate-400 mx-auto text-center py-1">
+                ℹ️ Hover over any architecture node in the topology canvas above to inspect technical specs.
+              </p>
+            )}
+          </div>
+        </div>
+
+      </div>
+
+      {/* Bottom Technical Reference Tabbed Panel */}
+      <div className={`mt-8 p-6 rounded-[2.5rem] border ${
+        darkMode ? 'bg-slate-900/50 border-white/5' : 'bg-white border-slate-200/60'
+      }`}>
+        <div className="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-white/5 mb-6">
+          <h3 className={`text-base font-black uppercase tracking-wider ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+            System Technical Specifications
+          </h3>
+          <div className="flex gap-2">
+            {[
+              { id: 'api', name: 'Express APIs', icon: Terminal },
+              { id: 'db', name: 'Database Schemas', icon: Database },
+              { id: 'scraper', name: 'Scraper Engine', icon: Globe },
+              { id: 'cleo', name: 'Cleo Prompts', icon: Sparkles }
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTechTab(tab.id)}
+                className={`flex items-center gap-2 py-2 px-4 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
+                  activeTechTab === tab.id
+                    ? 'bg-indigo-600 text-white shadow-md'
+                    : darkMode
+                      ? 'bg-white/5 text-slate-400 hover:bg-white/10'
+                      : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <tab.icon size={12} />
+                {tab.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Tab Contents */}
+        <div className="overflow-x-auto">
+          {activeTechTab === 'api' && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <h4 className="text-xs font-black uppercase tracking-widest text-indigo-500 mb-2">Core API Route Map</h4>
+                  <div className="space-y-2 text-xs font-mono">
+                    <div className="p-3 rounded-xl bg-slate-100 dark:bg-white/5 flex justify-between items-center">
+                      <span className="font-bold text-emerald-600 dark:text-emerald-400">POST /api/login</span>
+                      <span className="text-slate-400 text-[10px]">Signs user JWT & verifies password</span>
+                    </div>
+                    <div className="p-3 rounded-xl bg-slate-100 dark:bg-white/5 flex justify-between items-center">
+                      <span className="font-bold text-emerald-600 dark:text-emerald-400">POST /api/signup</span>
+                      <span className="text-slate-400 text-[10px]">Creates user & validates license keys</span>
+                    </div>
+                    <div className="p-3 rounded-xl bg-slate-100 dark:bg-white/5 flex justify-between items-center">
+                      <span className="font-bold text-blue-600 dark:text-blue-400">GET /api/competitor-analysis</span>
+                      <span className="text-slate-400 text-[10px]">Analyzes Share of Voice & Trends</span>
+                    </div>
+                    <div className="p-3 rounded-xl bg-slate-100 dark:bg-white/5 flex justify-between items-center">
+                      <span className="font-bold text-blue-600 dark:text-blue-400">GET /api/brands/:id/articles</span>
+                      <span className="text-slate-400 text-[10px]">Retrieves unique scraped headlines</span>
+                    </div>
+                    <div className="p-3 rounded-xl bg-slate-100 dark:bg-white/5 flex justify-between items-center">
+                      <span className="font-bold text-emerald-600 dark:text-emerald-400">POST /api/reports</span>
+                      <span className="text-slate-400 text-[10px]">Upserts custom report markdown JSONB</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <h4 className="text-xs font-black uppercase tracking-widest text-indigo-500 mb-2">Port Configuration</h4>
+                  <div className="p-4 rounded-2xl border text-xs font-semibold leading-relaxed space-y-2 dark:border-white/5 bg-slate-50 dark:bg-white/5">
+                    <p className="flex justify-between">
+                      <span className="text-slate-400">Frontend Client URL:</span>
+                      <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">http://localhost:5173</span>
+                    </p>
+                    <p className="flex justify-between">
+                      <span className="text-slate-400">Backend Server URL:</span>
+                      <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">http://localhost:3001</span>
+                    </p>
+                    <p className="flex justify-between">
+                      <span className="text-slate-400">Database Engine:</span>
+                      <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">PostgreSQL (Local/Cloud SQL)</span>
+                    </p>
+                    <p className="flex justify-between">
+                      <span className="text-slate-400">Node API Gateway CORS:</span>
+                      <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">Allowed origins: [5173]</span>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTechTab === 'db' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <h4 className="text-xs font-black uppercase tracking-widest text-indigo-500 mb-2">Core SQL Schemas</h4>
+                <pre className={`p-4 rounded-2xl text-[10px] font-mono overflow-x-auto max-h-72 border leading-relaxed ${
+                  darkMode ? 'bg-slate-950 border-white/5 text-slate-300' : 'bg-slate-50 border-slate-100 text-slate-700'
+                }`}>
+{`CREATE TABLE IF NOT EXISTS users (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  email VARCHAR(255) UNIQUE NOT NULL,
+  password VARCHAR(255) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS companies (
+  id SERIAL PRIMARY KEY,
+  user_id INT REFERENCES users(id) ON DELETE CASCADE,
+  name VARCHAR(255) NOT NULL,
+  region VARCHAR(50) DEFAULT 'Global',
+  last_status VARCHAR(255) DEFAULT 'Pending fetch',
+  mentions INT DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);`}
+                </pre>
+              </div>
+
+              <div>
+                <h4 className="text-xs font-black uppercase tracking-widest text-indigo-500 mb-2">Extended Tables</h4>
+                <pre className={`p-4 rounded-2xl text-[10px] font-mono overflow-x-auto max-h-72 border leading-relaxed ${
+                  darkMode ? 'bg-slate-950 border-white/5 text-slate-300' : 'bg-slate-50 border-slate-100 text-slate-700'
+                }`}>
+{`CREATE TABLE IF NOT EXISTS articles (
+  id SERIAL PRIMARY KEY,
+  company_id INT REFERENCES companies(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  link TEXT UNIQUE NOT NULL,
+  published_at TEXT,
+  source TEXT,
+  summary TEXT,
+  sentiment VARCHAR(50) DEFAULT 'Neutral',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS reports (
+  id VARCHAR(255) PRIMARY KEY,
+  user_id INT REFERENCES users(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  type VARCHAR(255) NOT NULL,
+  metrics JSONB,
+  sections JSONB,
+  bookmarks JSONB,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);`}
+                </pre>
+              </div>
+            </div>
+          )}
+
+          {activeTechTab === 'scraper' && (
+            <div className="space-y-4">
+              <div className="p-4 rounded-2xl border text-xs font-semibold leading-relaxed space-y-4 dark:border-white/5 bg-slate-50 dark:bg-white/5">
+                <div>
+                  <h5 className="font-black uppercase tracking-wider text-indigo-500 mb-1">Decoding Google News Redirects</h5>
+                  <p className="text-slate-500 mb-2 leading-relaxed">
+                    Google News feeds wrap target urls in redirection scripts. Cerebro resolves them in a loop before running scraper runs:
+                  </p>
+                  <pre className={`p-3 rounded-xl text-[10px] font-mono overflow-x-auto ${
+                    darkMode ? 'bg-slate-950 text-slate-300' : 'bg-slate-100 text-slate-800'
+                  }`}>
+{`const decoded = await googleNewsDecoder.decode(article.link);
+if (decoded && decoded.decoded_url) {
+  targetUrl = decoded.decoded_url;
+}`}
+                  </pre>
+                </div>
+                <div>
+                  <h5 className="font-black uppercase tracking-wider text-indigo-500 mb-1">Stealth Crawling & Browser Configurations</h5>
+                  <p className="text-slate-500 mb-2 leading-relaxed">
+                    To bypass Cloudflare / security blockers, Puppeteer executes with stealth plugins, randomized User-Agents, and proxy rotation:
+                  </p>
+                  <pre className={`p-3 rounded-xl text-[10px] font-mono overflow-x-auto ${
+                    darkMode ? 'bg-slate-950 text-slate-300' : 'bg-slate-100 text-slate-800'
+                  }`}>
+{`const browser = await puppeteerExtra.launch({
+  headless: true,
+  args: ['--no-sandbox', '--disable-blink-features=AutomationControlled', '--proxy-server=proxy_url']
+});
+await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0');`}
+                  </pre>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTechTab === 'cleo' && (
+            <div className="space-y-4">
+              <div className="p-4 rounded-2xl border text-xs font-semibold leading-relaxed space-y-4 dark:border-white/5 bg-slate-50 dark:bg-white/5">
+                <div>
+                  <h5 className="font-black uppercase tracking-wider text-indigo-500 mb-1">Cleo AI Autonomous PR Logic</h5>
+                  <p className="text-slate-500 mb-2 leading-relaxed">
+                    Cleo AI runs custom client-side heuristics and parses server-side context arrays to act as an autonomous public relations advisor.
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                    <div className={`p-3 rounded-xl ${darkMode ? 'bg-slate-950 text-slate-300' : 'bg-slate-100 text-slate-800'}`}>
+                      <div className="font-black uppercase text-[9px] text-slate-400 mb-1">Input Context Array</div>
+                      <code className="text-[10px] font-mono block whitespace-pre-wrap">
+{`{
+  brandName: "Acme Corp",
+  totalMentions: 48,
+  sentimentPct: { positive: 65, neutral: 25, negative: 10 },
+  topSources: ["Times of India", "Economic Times"]
+}`}
+                      </code>
+                    </div>
+                    <div className={`p-3 rounded-xl ${darkMode ? 'bg-slate-950 text-slate-300' : 'bg-slate-100 text-slate-800'}`}>
+                      <div className="font-black uppercase text-[9px] text-slate-400 mb-1">Autonomous Recommendations Output</div>
+                      <code className="text-[10px] font-mono block whitespace-pre-wrap">
+{`1. Positive sentiment is high. Draft a press pitch centering on growth.
+2. 40% of mentions are from top tier agencies. Secure follow-ups.
+3. Suggestion: pitch exclusive tech release to top writers.`}
+                      </code>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+    </div>
+  );
+};
+
+
 
 
 function App() {
@@ -3550,6 +4490,7 @@ function App() {
               <div className="space-y-1">
                 {[
                   { id: 'settings', label: 'Settings', icon: Settings },
+                  { id: 'system-flow', label: 'System Flow', icon: Layers },
                   { id: 'help', label: 'Help & Support', icon: HelpCircle },
                 ].map(item => (
                   <button
@@ -8936,6 +9877,8 @@ const spec = JSON.parse(response.text);
                       </div>
                     )}
                   </div>
+                ) : activeTab === 'system-flow' ? (
+                  <SystemFlowComponent sidebarCollapsed={sidebarCollapsed} darkMode={darkMode} />
                 ) : activeTab === 'help' ? (
                   <div className={`w-full ${sidebarCollapsed ? 'max-w-[1850px]' : 'max-w-[1700px]'} mx-auto h-full flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-700 pb-12 transition-all duration-500`}>
                     <div className="text-center max-w-2xl mx-auto mb-12">

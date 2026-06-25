@@ -132,21 +132,24 @@ function normalizeText(text) {
   return text.toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 
-function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [], topic = 'All' }) {
-  const rootDir = path.resolve(__dirname, '..');
-  const excelFiles = fs.readdirSync(rootDir).filter(f => f.startsWith('NEXUS_') && f.endsWith('.xlsx'));
+async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [], topic = 'All' }) {
+  const db = require('./db');
   let articles = [];
 
-  for (const file of excelFiles) {
-    try {
-      const excelPath = path.resolve(rootDir, file);
-      const wb = xlsx.readFile(excelPath);
-      const sheet = wb.Sheets[wb.SheetNames[0]];
-      const data = xlsx.utils.sheet_to_json(sheet);
-      articles = articles.concat(data);
-    } catch (err) {
-      console.error(`Error loading Excel file ${file}:`, err.message);
-    }
+  try {
+    const result = await db.query(`
+      SELECT 
+        title as "Title", 
+        link as "Resolved URL", 
+        published_at as "Published At", 
+        source as "Publisher/Agency", 
+        summary as "Summary", 
+        summary as "Full Body"
+      FROM articles
+    `);
+    articles = result.rows;
+  } catch (err) {
+    console.error('Error fetching articles from database for analysis:', err.message);
   }
 
   const targetBrands = (targetKeywords || []).map(b => b.trim()).filter(Boolean);

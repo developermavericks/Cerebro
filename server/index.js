@@ -543,6 +543,52 @@ app.get('/api/competitor-analysis', getUserId, async (req, res) => {
   }
 });
 
+// System diagnostics endpoint for architecture / system flow visualization
+app.get('/api/diagnostics', async (req, res) => {
+  const start = Date.now();
+  const diag = {
+    database: { status: 'offline', latency: 0, rows: {} },
+    scraper: { status: 'online', version: 'Stealth-v5', engine: 'Puppeteer/RSS-Parser' },
+    system: {
+      uptime: process.uptime(),
+      platform: process.platform,
+      memory: process.memoryUsage(),
+      nodeVersion: process.version
+    }
+  };
+
+  try {
+    const dbRes = await db.query('SELECT NOW()');
+    diag.database.status = 'online';
+    diag.database.latency = Date.now() - start;
+
+    // Get count statistics for key tables
+    const userCount = await db.query('SELECT COUNT(*) FROM users');
+    const companyCount = await db.query('SELECT COUNT(*) FROM companies');
+    const articleCount = await db.query('SELECT COUNT(*) FROM articles');
+    const reportCount = await db.query('SELECT COUNT(*) FROM reports');
+    let licenseCountVal = 0;
+    try {
+      const licenseCount = await db.query('SELECT COUNT(*) FROM license_keys');
+      licenseCountVal = parseInt(licenseCount.rows[0].count);
+    } catch (e) {}
+
+    diag.database.rows = {
+      users: parseInt(userCount.rows[0].count),
+      companies: parseInt(companyCount.rows[0].count),
+      articles: parseInt(articleCount.rows[0].count),
+      reports: parseInt(reportCount.rows[0].count),
+      license_keys: licenseCountVal
+    };
+  } catch (err) {
+    console.error('Diagnostics DB check failed:', err);
+    diag.database.status = 'error';
+    diag.database.error = err.message;
+  }
+
+  res.status(200).json(diag);
+});
+
 // Get all unique company names tracked globally in the system
 app.get('/api/global-company-names', async (req, res) => {
   try {
@@ -1028,7 +1074,7 @@ app.post('/api/curated-search', async (req, res) => {
   const { targetKeywords, excludedKeywords, topic } = req.body;
   try {
     const analyzer = require('./analyzer');
-    const results = analyzer.analyzeSpecificBrands({ targetKeywords, excludedKeywords, topic });
+    const results = await analyzer.analyzeSpecificBrands({ targetKeywords, excludedKeywords, topic });
     console.log('Analysis results keys:', Object.keys(results.brands || {}));
     res.status(200).json(results);
   } catch (err) {

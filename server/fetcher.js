@@ -13,6 +13,41 @@ const parser = new Parser({
   }
 });
 
+function cleanForWin1252(str) {
+  if (!str) return '';
+  let s = str.toString()
+           .replace(/₹/g, 'Rs.')
+           .replace(/[\u2018\u2019]/g, "'")
+           .replace(/[\u201C\u201D]/g, '"')
+           .replace(/\u2014/g, '--')
+           .replace(/\u2013/g, '-')
+           .replace(/\u2026/g, '...')
+           .replace(/\u00A0/g, ' ');
+  
+  let result = '';
+  for (let i = 0; i < s.length; i++) {
+    const code = s.charCodeAt(i);
+    if ((code >= 0 && code <= 127) || (code >= 160 && code <= 255)) {
+      result += s[i];
+    } else {
+      const allowedPoints = [
+        0x20AC, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021, 0x02C6, 
+        0x2030, 0x0160, 0x2039, 0x0152, 0x017D, 0x2018, 0x2019, 0x201C, 
+        0x201D, 0x2022, 0x2013, 0x2014, 0x02DC, 0x2122, 0x0161, 0x203A, 
+        0x0153, 0x017E, 0x0178
+      ];
+      if (allowedPoints.includes(code)) {
+        result += s[i];
+      } else {
+        if (code === 305) result += 'i';
+        else if (code === 304) result += 'I';
+        else result += ' ';
+      }
+    }
+  }
+  return result;
+}
+
 // Enforce 2 days window
 function isWithin2Days(pubDateStr) {
   if (!pubDateStr || pubDateStr === 'Unknown Date') return false;
@@ -216,7 +251,8 @@ async function fetchRssForCompany(company) {
           const fullContent = cleanContent ? cleanContent : rawContent;
 
           // Duplicate checking based on company_id and title
-          const dupRes = await db.query('SELECT id FROM articles WHERE company_id = $1 AND title = $2', [company.id, title]);
+          const cleanTitle = cleanForWin1252(title);
+          const dupRes = await db.query('SELECT id FROM articles WHERE company_id = $1 AND title = $2', [company.id, cleanTitle]);
           if (dupRes.rows.length > 0) {
             return;
           }
@@ -231,7 +267,7 @@ async function fetchRssForCompany(company) {
             INSERT INTO articles (company_id, title, link, published_at, source, summary, sentiment, created_at)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             ON CONFLICT (link) DO NOTHING
-          `, [company.id, title, decodedUrl, pubDateStr, source, fullContent, sentimentScore, pingTimestamp]);
+          `, [company.id, cleanTitle, decodedUrl, pubDateStr, cleanForWin1252(source), cleanForWin1252(fullContent), sentimentScore, pingTimestamp]);
 
           if (insertRes.rowCount > 0) {
             newCount++;
