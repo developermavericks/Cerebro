@@ -10,6 +10,7 @@ export default defineConfig({
     })
   ],
   server: {
+    host: true,
     watch: {
       ignored: [
         '**/final_compiled code poooja*/**',

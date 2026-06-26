@@ -59,6 +59,15 @@
   border-color: rgba(255, 255, 255, 0.08) !important;
 }
 
+.cleo-btn-off {
+  background-color: #ffffff !important;
+  border-color: #ffffff !important;
+  color: #1e293b !important;
+}
+.cleo-btn-off:hover {
+  background-color: #f1f5f9 !important;
+}
+
 .dark .border-slate-100,
 .dark .border-slate-200,
 .dark .border-slate-300 {

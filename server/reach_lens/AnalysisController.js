@@ -11,10 +11,10 @@ const processUrlInternal = async (url, version = 'v9') => {
         throw new Error('URL is required');
     }
 
-    // Default to v9 if not specified
-    if (!version) version = 'v9';
+    // Default to v10 if not specified
+    if (!version) version = 'v10';
     // Validate version
-    if (!['v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9'].includes(version)) version = 'v9';
+    if (!['v2', 'v3', 'v4', 'v5', 'v6', 'v7', 'v8', 'v9', 'v10'].includes(version)) version = 'v10';
 
     try {
         const [smartResult, redditResult] = await Promise.all([
@@ -77,6 +77,10 @@ const processUrlInternal = async (url, version = 'v9') => {
         let uv = 0;
         let upv = 0;
 
+        // Enrich smartResult with extra fields needed by v10
+        smartResult.redditMentions = redditCount;
+        smartResult.title = smartResult.title || '';
+
         if (smartResult.source === 'Estimator') {
             // CORE 2: The "Estimator" Path
             const estimate = ReachEstimator.estimate(url, smartResult.title || '', version, smartResult);
@@ -130,18 +134,67 @@ const processUrlInternal = async (url, version = 'v9') => {
             // Sentiment (v4+) - Weighted Analysis
             if ((version === 'v4' || version === 'v5' || version === 'v6')) {
                 sentimentScore = ReachEstimator.analyzeSentiment(
-                    smartResult.title || '', 
-                    smartResult.metaDescription, 
+                    smartResult.title || '',
+                    smartResult.metaDescription,
                     smartResult.snippet
                 );
             }
+
+            // ── v10 Apex Override ────────────────────────────────────────────────────
+            if (version === 'v10') {
+                // FIX 2: Continuous (non-bucketed) domain weight
+                const continuousWeight = await ReachEstimator.getDomainWeightContinuous(targetHostname);
+
+                // FIX 1: Deduplicate Google mentions by domain diversity
+                const rawDomains = Array.isArray(smartResult.domains) ? smartResult.domains : [];
+                const uniqueRootDomains = new Set(rawDomains.map(d =>
+                    d.replace('www.', '').split('.').slice(-2).join('.')));
+                const diversityRatio = rawDomains.length > 0
+                    ? Math.min(1.0, uniqueRootDomains.size / rawDomains.length)
+                    : 1.0;
+                const effectiveGoogleCount = Math.max(1, Math.ceil(googleCount * (0.5 + diversityRatio * 0.5)));
+
+                // FIX 6: Reddit as amplification %, NOT added to mention count
+                const redditBoost = redditCount > 0
+                    ? 1.0 + Math.min(0.15, (Math.log10(redditCount + 1) / Math.log10(201)) * 0.15)
+                    : 1.0;
+
+                // FIX 4: Strict front-page detection (require ≥ 2 path segments)
+                let strictFrontPage = false;
+                if (smartResult.isFrontPage === true) {
+                    try {
+                        const segments = new URL(url).pathname.split('/').filter(Boolean);
+                        strictFrontPage = segments.length >= 2;
+                    } catch (_) { strictFrontPage = false; }
+                }
+
+                const v10Positional = smartResult.prominenceScore || 1.0;
+                estimatedReach = (effectiveGoogleCount * 415 * continuousWeight * v10Positional * redditBoost);
+
+                if (strictFrontPage) estimatedReach *= 3.0; // Calibrated vs v9's 4×
+
+                // FIX 3: Calculate sentiment ONCE — stored for display & used once in modifiers
+                sentimentScore = ReachEstimator.analyzeSentiment(
+                    smartResult.title || '',
+                    smartResult.metaDescription || '',
+                    smartResult.snippet || ''
+                );
+                // Apply sentiment once here (modifiers v10 will NOT re-apply)
+                let v10SentimentMult = 1.0;
+                if      (sentimentScore >  3.0) v10SentimentMult = 1.22;
+                else if (sentimentScore >  1.0) v10SentimentMult = 1.08;
+                else if (sentimentScore < -3.0) v10SentimentMult = 1.28;
+                else if (sentimentScore < -1.0) v10SentimentMult = 1.12;
+                estimatedReach *= v10SentimentMult;
+            }
+            // ─────────────────────────────────────────────────────────────────────────
         }
 
         // --- Universal Modifiers (Versioned) ---
 
-        // v9.0: Content Provenance Graph (CPG) & 5-Tier Classification
+        // v9.0 / v10.0: Content Provenance Graph (CPG) & 5-Tier Classification
         let provenanceTier = 'T0';
-        if (version === 'v9') {
+        if (version === 'v9' || version === 'v10') {
             const topDomains = smartResult.domains.slice(0, 5);
             let targetDomain = '';
             try {
@@ -259,6 +312,7 @@ function getVersionName(v) {
     if (v === 'v7') return 'Truth Engine (Maximum Accuracy)';
     if (v === 'v8') return 'Oracle Truth Engine (Monte Carlo)';
     if (v === 'v9') return 'Sovereign Precision (QMC Sequence)';
+    if (v === 'v10') return 'Apex Precision (Deduplicated QMC + Bayesian)';
     return 'Integrated (Grounded + Stickiness)';
 }
 

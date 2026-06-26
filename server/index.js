@@ -9,11 +9,21 @@ const { fetchAllCompanies } = require('./fetcher');
 const xlsx = require('xlsx');
 const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
+const nodemailer = require('nodemailer');
+const crypto = require('crypto');
 
 const upload = multer({ dest: path.join(__dirname, 'uploads/') });
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Security Middleware: Cache-Control header setup to prevent back-button caching
+app.use((req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
 
 app.use(cors());
 app.use(express.json());
@@ -38,6 +48,16 @@ try {
     // Start background fetcher
     setTimeout(() => fetchAllCompanies(), 2000);
     setInterval(() => fetchAllCompanies(), 5 * 60 * 1000);
+
+    // NEXUS: create table + initial 7-day sync
+    const nexusClient = require('./nexus_client');
+    nexusClient.ensureTable()
+      .then(() => nexusClient.syncDateRange(7))
+      .catch(err => console.error('[NEXUS] Startup sync failed:', err.message));
+    // Daily resync at midnight
+    setInterval(() => {
+      nexusClient.syncDateRange(1).catch(err => console.error('[NEXUS] Daily sync failed:', err.message));
+    }, 24 * 60 * 60 * 1000);
   }).catch(err => console.error('Error verifying database tables:', err));
 } catch (err) {
   console.error('Failed to read schema.sql:', err);
@@ -170,13 +190,25 @@ app.post('/api/login', async (req, res) => {
       }
     }
 
+    const sessionToken = crypto.randomBytes(32).toString('hex');
+    const ip = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || '127.0.0.1';
+
+    await db.query(
+      `INSERT INTO user_sessions (user_id, session_token, ip_address, last_activity) 
+       VALUES ($1, $2, $3, CURRENT_TIMESTAMP) 
+       ON CONFLICT (user_id) 
+       DO UPDATE SET session_token = EXCLUDED.session_token, ip_address = EXCLUDED.ip_address, last_activity = CURRENT_TIMESTAMP`,
+      [user.id, sessionToken, ip]
+    );
+
     res.status(200).json({
       message: 'Login successful',
       user: {
         id: user.id,
         name: user.name,
         email: user.email,
-        role: effectiveRole
+        role: effectiveRole,
+        sessionToken: sessionToken
       }
     });
   } catch (err) {
@@ -284,25 +316,191 @@ app.post('/api/admin/update-key', getUserId, verifyAdminKey, async (req, res) =>
   }
 });
 
-// Check Email Endpoint
-app.post('/api/check-email', async (req, res) => {
+// SMTP Transporter setup for Password Recovery
+const mailTransporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST || 'smtp.gmail.com',
+  port: parseInt(process.env.SMTP_PORT || '587', 10),
+  secure: process.env.SMTP_PORT === '465', // true for 465, false for other ports
+  auth: {
+    user: process.env.SMTP_USER || '',
+    pass: process.env.SMTP_PASS || '',
+  },
+});
+
+// Helper to send recovery email
+// Helper to send recovery OTP email
+async function sendOtpEmail(email, otp) {
+  const mailOptions = {
+    from: process.env.SMTP_FROM || '"Cerebro Support" <support@themavericksindia.com>',
+    to: email,
+    subject: 'Cerebro Password Reset Verification Code',
+    text: `Your password reset verification code is: ${otp}\n\nThis OTP is valid for 10 minutes.`,
+    html: `
+      <div style="font-family: Arial, sans-serif; padding: 20px; color: #1e1b4b; background-color: #f8fafc;">
+        <h2 style="color: #4f46e5;">Cerebro Verification Code</h2>
+        <p>You requested to reset your password for your Cerebro account.</p>
+        <p>Your 6-digit verification OTP code is:</p>
+        <div style="margin: 24px 0; font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #4f46e5; text-align: center; background: #e0e7ff; padding: 16px; border-radius: 12px; display: inline-block;">
+          ${otp}
+        </div>
+        <p style="font-size: 12px; color: #64748b;">This OTP code is valid for 10 minutes.</p>
+        <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;">
+        <p style="font-size: 11px; color: #94a3b8;">If you did not request this, please ignore this email.</p>
+      </div>
+    `,
+  };
+
+  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+    console.log('\n======================================================');
+    console.log('[Cerebro Mail Fallback] SMTP is not fully configured.');
+    console.log(`Verification OTP code for ${email}: ${otp}`);
+    console.log('======================================================\n');
+    return { loggedToConsole: true };
+  }
+
+  return mailTransporter.sendMail(mailOptions);
+}
+
+// Forgot Password Endpoint - Sends OTP code
+app.post('/api/forgot-password', async (req, res) => {
   const { email } = req.body;
+  if (!email) {
+    return res.status(400).json({ error: 'Email address is required.' });
+  }
+
   try {
     const result = await db.query('SELECT id FROM users WHERE email = $1', [email]);
     if (result.rows.length > 0) {
-      res.status(200).json({ exists: true });
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+      // Clean up old resets
+      await db.query('DELETE FROM password_resets WHERE email = $1', [email]);
+
+      // Save OTP to DB
+      await db.query(
+        'INSERT INTO password_resets (email, token, expires_at) VALUES ($1, $2, $3)',
+        [email, otp, expiresAt]
+      );
+
+      // Send verification email
+      await sendOtpEmail(email, otp);
+
+      res.status(200).json({ exists: true, message: 'Verification OTP sent successfully.' });
     } else {
-      res.status(404).json({ exists: false });
+      res.status(404).json({ exists: false, error: 'This email address is not registered in our system.' });
     }
   } catch (err) {
-    console.error(err);
+    console.error('Forgot password error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// Middleware to extract user ID from headers or query
-function getUserId(req, res, next) {
+// Verify OTP Endpoint
+app.post('/api/verify-otp', async (req, res) => {
+  const { email, otp } = req.body;
+  if (!email || !otp) {
+    return res.status(400).json({ error: 'Email and OTP code are required.' });
+  }
+
+  try {
+    const result = await db.query(
+      'SELECT * FROM password_resets WHERE email = $1 AND token = $2 AND expires_at > NOW()',
+      [email, otp]
+    );
+    if (result.rows.length > 0) {
+      res.status(200).json({ valid: true, message: 'OTP verified successfully.' });
+    } else {
+      res.status(400).json({ valid: false, error: 'Invalid or expired verification code.' });
+    }
+  } catch (err) {
+    console.error('Verify OTP error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Backward compatible Check Email Endpoint
+app.post('/api/check-email', async (req, res) => {
+  const { email } = req.body;
+  if (!email) {
+    return res.status(400).json({ error: 'Email address is required.' });
+  }
+
+  try {
+    const result = await db.query('SELECT id FROM users WHERE email = $1', [email]);
+    if (result.rows.length > 0) {
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+      await db.query('DELETE FROM password_resets WHERE email = $1', [email]);
+      await db.query(
+        'INSERT INTO password_resets (email, token, expires_at) VALUES ($1, $2, $3)',
+        [email, otp, expiresAt]
+      );
+
+      await sendOtpEmail(email, otp);
+      res.status(200).json({ exists: true, message: 'Verification OTP code generated.' });
+    } else {
+      res.status(404).json({ exists: false, error: 'This email address is not registered in our system.' });
+    }
+  } catch (err) {
+    console.error('Check email error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Reset Password Endpoint
+app.post('/api/reset-password', async (req, res) => {
+  const { email, token, password } = req.body;
+  if (!email || !token || !password) {
+    return res.status(400).json({ error: 'Email, reset token, and new password are required.' });
+  }
+
+  try {
+    // Check if token exists, matches email, and is not expired
+    const tokenRes = await db.query(
+      'SELECT * FROM password_resets WHERE email = $1 AND token = $2 AND expires_at > NOW()',
+      [email, token]
+    );
+
+    if (tokenRes.rows.length === 0) {
+      return res.status(400).json({ error: 'Invalid or expired password reset link. Please request a new one.' });
+    }
+
+    // Update password
+    await db.query('UPDATE users SET password = $1 WHERE email = $2', [password, email]);
+
+    // Delete token so it cannot be used again
+    await db.query('DELETE FROM password_resets WHERE email = $1', [email]);
+
+    res.status(200).json({ message: 'Password reset successful.' });
+  } catch (err) {
+    console.error('Password reset error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Session validation check endpoint
+app.get('/api/session-check', getUserId, (req, res) => {
+  res.status(200).json({ valid: true });
+});
+
+// Logout endpoint to remove session from database
+app.post('/api/logout', getUserId, async (req, res) => {
+  try {
+    await db.query('DELETE FROM user_sessions WHERE user_id = $1', [req.userId]);
+    res.status(200).json({ message: 'Session logged out successfully' });
+  } catch (err) {
+    console.error('Logout API error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Middleware to extract and validate user ID and session token
+async function getUserId(req, res, next) {
   const userId = req.headers['x-user-id'] || req.query.userId;
+  const sessionToken = req.headers['x-session-token'] || req.query.sessionToken;
+
   if (!userId) {
     return res.status(401).json({ error: 'Unauthorized: User ID required' });
   }
@@ -310,6 +508,28 @@ function getUserId(req, res, next) {
   if (isNaN(req.userId)) {
     return res.status(400).json({ error: 'Invalid User ID' });
   }
+
+  // Enforce session validation
+  try {
+    const sessionRes = await db.query(
+      'SELECT session_token FROM user_sessions WHERE user_id = $1',
+      [req.userId]
+    );
+    if (sessionRes.rows.length > 0) {
+      if (!sessionToken || sessionRes.rows[0].session_token !== sessionToken) {
+        return res.status(401).json({ error: 'Session invalidated: Account logged in on another device or browser.' });
+      }
+      
+      // Update last activity
+      await db.query(
+        'UPDATE user_sessions SET last_activity = CURRENT_TIMESTAMP WHERE user_id = $1',
+        [req.userId]
+      );
+    }
+  } catch (err) {
+    console.error('Session validation error in getUserId:', err);
+  }
+
   next();
 }
 
@@ -1292,6 +1512,34 @@ app.delete('/api/reports/:id', getUserId, async (req, res) => {
   } catch (err) {
     console.error('Error in DELETE /api/reports:', err);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// NEXUS sync — manually trigger article import
+app.post('/api/nexus/sync', getUserId, async (req, res) => {
+  try {
+    const days = Math.min(parseInt(req.body.days) || 7, 30);
+    const nexusClient = require('./nexus_client');
+    const result = await nexusClient.syncDateRange(days);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('[NEXUS] Manual sync error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// NEXUS status — how many articles are in the local cache
+app.get('/api/nexus/status', getUserId, async (req, res) => {
+  try {
+    const count = await db.query('SELECT COUNT(*) AS total FROM nexus_articles');
+    const range = await db.query('SELECT MAX(published_at) AS latest, MIN(published_at) AS oldest FROM nexus_articles');
+    res.json({
+      total: parseInt(count.rows[0].total),
+      latest: range.rows[0].latest,
+      oldest: range.rows[0].oldest
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

@@ -99,7 +99,10 @@ import {
   MessageSquare,
   Brain,
   Play,
-  Pause
+  Pause,
+  Volume2,
+  CreditCard,
+  AlertCircle
 } from 'lucide-react';
 
 import { useEditor, EditorContent, ReactNodeViewRenderer, Extension } from '@tiptap/react';
@@ -132,7 +135,51 @@ import { Youtube } from '@tiptap/extension-youtube';
 import { HorizontalRule as TiptapHorizontalRule } from '@tiptap/extension-horizontal-rule';
 
 const lowlight = createLowlight(all);
-const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
+const API_BASE = window.location.port === '5173' ? `http://${window.location.hostname}:3001` : '';
+
+// Global Fetch Interceptor to automatically add User ID and Session Token headers to all API requests
+const originalFetch = window.fetch;
+window.fetch = async function (url, options = {}) {
+  const urlStr = typeof url === 'string' ? url : (url instanceof URL ? url.toString() : '');
+  
+  if (urlStr.startsWith('/api/') || urlStr.includes('/api/') || (API_BASE && urlStr.startsWith(API_BASE))) {
+    options.headers = options.headers || {};
+    
+    try {
+      const saved = localStorage.getItem('cerebro_user');
+      if (saved) {
+        const parsedUser = JSON.parse(saved);
+        if (parsedUser) {
+          if (parsedUser.id && !options.headers['X-User-Id']) {
+            options.headers['X-User-Id'] = parsedUser.id.toString();
+          }
+          if (parsedUser.sessionToken && !options.headers['X-Session-Token']) {
+            options.headers['X-Session-Token'] = parsedUser.sessionToken;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[Cerebro Security] Error setting request headers:', e);
+    }
+  }
+
+  const response = await originalFetch(url, options);
+
+  if (response.status === 401) {
+    try {
+      const clone = response.clone();
+      const body = await clone.json();
+      if (body.error && body.error.includes('Session invalidated')) {
+        console.warn('[Cerebro Security] Session invalidated by database. Logging out.');
+        window.dispatchEvent(new CustomEvent('cerebro_session_invalidated'));
+      }
+    } catch (err) {
+      // Ignore
+    }
+  }
+
+  return response;
+};
 
 
 // Error Boundary to catch runtime React errors and show a useful message
@@ -2387,9 +2434,24 @@ function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [isTestEnv]);
 
+  const clearFormFields = () => {
+    setEmail('');
+    setPassword('');
+    setConfirmPassword('');
+    setName('');
+    setAgreeTerms(false);
+    setAdminKeyInput('');
+    setLicenseKey('');
+    setError('');
+    setSuccessMessage('');
+    setForgotStep('email');
+    setOtpInput('');
+  };
+
   const setView = (newView) => {
     setError('');
     setSuccessMessage('');
+    clearFormFields();
     setViewInternal(newView);
     const isAuthView = (v) => ['login', 'signup', 'forgot', 'reset'].includes(v);
     if (isAuthView(newView) && !isAuthView(view)) {
@@ -2399,6 +2461,10 @@ function App() {
     if (!isTestEnv) {
       window.history.pushState({ view: newView }, '', '');
     }
+    setTimeout(() => {
+      const cards = document.querySelectorAll('.glass-card');
+      cards.forEach(c => { c.scrollTop = 0; });
+    }, 50);
   };
   const [email, setEmail] = useState('');
   const [user, setUser] = useState(() => {
@@ -2421,7 +2487,7 @@ function App() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [authRole, setAuthRole] = useState('employee'); // 'employee', 'individual', 'admin'
+  const [authRole, setAuthRole] = useState('individual'); // 'employee', 'individual', 'admin'
   const [licenseKey, setLicenseKey] = useState('');
   const [adminLicenseKeys, setAdminLicenseKeys] = useState([]);
   const [isGeneratingKey, setIsGeneratingKey] = useState(false);
@@ -2429,6 +2495,41 @@ function App() {
   const [newAdminKey, setNewAdminKey] = useState('');
   const [userAdminKey, setUserAdminKey] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [resetToken, setResetToken] = useState('');
+  const [resetEmail, setResetEmail] = useState('');
+  const [forgotStep, setForgotStep] = useState('email'); // 'email', 'otp', 'reset'
+  const [otpInput, setOtpInput] = useState('');
+  const [showDemoVideo, setShowDemoVideo] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [selectedPaymentPlan, setSelectedPaymentPlan] = useState('');
+  const [showContactSales, setShowContactSales] = useState(false);
+  const [showDuplicateSessionModal, setShowDuplicateSessionModal] = useState(false);
+
+  const handleLogout = async () => {
+    try {
+      fetch(`${API_BASE}/api/logout`, { method: 'POST' });
+    } catch (e) {}
+    localStorage.removeItem('cerebro_user');
+    localStorage.removeItem('cerebro_active_tab_id');
+    setUser(null);
+    setUserAdminKey('');
+    setAdminKeyInput('');
+    setAuthRole('individual');
+    setView('login');
+  };
+
+  React.useEffect(() => {
+    const handleSessionInvalidated = () => {
+      console.warn('[Cerebro Security] Session invalidated event received. Clearing local storage and showing modal.');
+      localStorage.removeItem('cerebro_user');
+      localStorage.removeItem('cerebro_active_tab_id');
+      setUser(null);
+      setView('login');
+      setShowDuplicateSessionModal(true);
+    };
+    window.addEventListener('cerebro_session_invalidated', handleSessionInvalidated);
+    return () => window.removeEventListener('cerebro_session_invalidated', handleSessionInvalidated);
+  }, []);
 
   React.useEffect(() => {
     if (user) {
@@ -2442,6 +2543,171 @@ function App() {
   React.useEffect(() => {
     localStorage.setItem('cerebro_active_tab', activeTab);
   }, [activeTab]);
+
+  // Security Effect: Handle history popstate (Back/Forward buttons) securely
+  React.useEffect(() => {
+    if (isTestEnv) return;
+    window.history.replaceState({ view: 'landing' }, '', '');
+    
+    const handlePopState = (event) => {
+      clearFormFields();
+      const savedUser = localStorage.getItem('cerebro_user');
+      const requestedView = event.state && event.state.view;
+      if (savedUser && ['login', 'signup', 'forgot', 'reset'].includes(requestedView)) {
+        handleLogout();
+        return;
+      }
+      if (!savedUser) {
+        const allowedPublic = ['landing', 'login', 'signup', 'forgot', 'reset', 'success'];
+        if (requestedView && allowedPublic.includes(requestedView)) {
+          setViewInternal(requestedView);
+        } else {
+          setViewInternal('landing');
+        }
+      } else {
+        if (requestedView) {
+          setViewInternal(requestedView);
+        } else {
+          setViewInternal('landing');
+        }
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [isTestEnv]);
+
+  // Security Effect: Detect duplicate tabs and enforce a single active session
+  React.useEffect(() => {
+    if (isTestEnv) return;
+
+    let tabId = sessionStorage.getItem('cerebro_tab_id');
+    if (!tabId) {
+      tabId = Math.random().toString(36).substring(2) + Date.now().toString(36);
+      sessionStorage.setItem('cerebro_tab_id', tabId);
+    }
+
+    const checkSession = () => {
+      const savedUser = localStorage.getItem('cerebro_user');
+      if (savedUser) {
+        const activeTabId = localStorage.getItem('cerebro_active_tab_id');
+        if (activeTabId && activeTabId !== tabId) {
+          console.warn('[Cerebro Security] Duplicate active session tab detected. Transitioning to login.');
+          setUser(null);
+          setView('login');
+          setShowDuplicateSessionModal(true);
+        }
+      }
+    };
+
+    const channel = new BroadcastChannel('cerebro_session_channel');
+
+    channel.onmessage = (event) => {
+      if (event.data.type === 'ping_active_session') {
+        if (user && localStorage.getItem('cerebro_active_tab_id') === tabId) {
+          channel.postMessage({ type: 'pong_active_session', tabId: tabId });
+        }
+      } else if (event.data.type === 'new_tab_opened') {
+        if (user && localStorage.getItem('cerebro_active_tab_id') === tabId) {
+          channel.postMessage({ type: 'session_already_active', activeTabId: tabId });
+        }
+      } else if (event.data.type === 'session_already_active') {
+        if (user) {
+          console.warn('[Cerebro Security] Another tab is already active with this session.');
+          setUser(null);
+          setView('login');
+          setShowDuplicateSessionModal(true);
+        }
+      } else if (event.data.type === 'session_claimed') {
+        if (user && event.data.tabId !== tabId) {
+          console.warn('[Cerebro Security] Another tab has claimed the active session.');
+          setUser(null);
+          setView('login');
+          setShowDuplicateSessionModal(true);
+        }
+      }
+    };
+
+    if (user) {
+      channel.postMessage({ type: 'new_tab_opened', tabId });
+    }
+
+    const interval = setInterval(checkSession, 1500);
+
+    const handleStorageChange = (e) => {
+      if (e.key === 'cerebro_user') {
+        if (!e.newValue) {
+          setUser(null);
+          setView('login');
+        } else {
+          // Only auto-login if this tab itself is active or no other active tab is defined
+          const activeTabId = localStorage.getItem('cerebro_active_tab_id');
+          if (!activeTabId || activeTabId === tabId) {
+            const newUser = JSON.parse(e.newValue);
+            setUser(newUser);
+            setView('landing');
+          }
+        }
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('storage', handleStorageChange);
+      channel.close();
+    };
+  }, [user, isTestEnv]);
+
+  // Security Effect: 15-minute session inactivity timeout
+  React.useEffect(() => {
+    if (!user || isTestEnv) return;
+
+    let timeoutId;
+    const INACTIVITY_TIME = 15 * 60 * 1000; // 15 minutes
+
+    const logoutDueToInactivity = () => {
+      console.warn('[Cerebro Security] Logging out due to inactivity.');
+      localStorage.removeItem('cerebro_user');
+      localStorage.removeItem('cerebro_active_tab_id');
+      setUser(null);
+      setView('login');
+      setError('Your session has timed out due to inactivity.');
+    };
+
+    const resetTimer = () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      timeoutId = setTimeout(logoutDueToInactivity, INACTIVITY_TIME);
+    };
+
+    const events = ['mousemove', 'mousedown', 'keypress', 'scroll', 'touchstart'];
+    events.forEach((name) => window.addEventListener(name, resetTimer));
+
+    resetTimer();
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      events.forEach((name) => window.removeEventListener(name, resetTimer));
+    };
+  }, [user, isTestEnv]);
+
+  // Security Effect: Database active session verification heartbeat (every 5 seconds)
+  React.useEffect(() => {
+    if (!user || isTestEnv) return;
+
+    const checkDbSession = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/session-check`);
+        if (!res.ok) {
+          console.warn('[Cerebro Security] DB session check failed with status:', res.status);
+        }
+      } catch (err) {
+        // Silent fail for network disconnects
+      }
+    };
+
+    const interval = setInterval(checkDbSession, 5000);
+    return () => clearInterval(interval);
+  }, [user, isTestEnv]);
 
 
   const [comp1, setComp1] = useState('');
@@ -2511,11 +2777,24 @@ function App() {
   const [curatedTimelineType, setCuratedTimelineType] = useState('Line Chart');
   const [curatedDrillBrand, setCuratedDrillBrand] = useState('');
   const [curatedDrillSentiment, setCuratedDrillSentiment] = useState('Positive');
+  const [keywordSearchError, setKeywordSearchError] = useState(null);
+  const [keywordSearchCount, setKeywordSearchCount] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('cerebro_kw_usage') || '{"date":"","count":0}');
+      const today = new Date().toDateString();
+      return saved.date === today ? saved.count : 0;
+    } catch { return 0; }
+  });
+  const [pieTooltip, setPieTooltip] = useState(null);
+  const [barTooltip, setBarTooltip] = useState(null);
+  const [maximizedChart, setMaximizedChart] = useState(null);
+  const [deleteConfirmReport, setDeleteConfirmReport] = useState(null);
+  const [statusDropdownRepId, setStatusDropdownRepId] = useState(null);
   const [reachUrl, setReachUrl] = useState('');
   const [isScanningReach, setIsScanningReach] = useState(false);
   const [reachMode, setReachMode] = useState('single'); // 'single', 'excel'
   const [excelFile, setExcelFile] = useState(null);
-  const [reachVersion, setReachVersion] = useState('v9');
+  const [reachVersion, setReachVersion] = useState('v10');
   const [reachScanning, setReachScanning] = useState(false);
   const [reachResult, setReachResult] = useState(null);
   const [reachTimer, setReachTimer] = useState(0);
@@ -2541,11 +2820,35 @@ function App() {
   const [ticketSuccessMessage, setTicketSuccessMessage] = useState('');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
-  const [showCleoAi, setShowCleoAi] = useState(true);
-  const [cleoMessages, setCleoMessages] = useState([
-    { sender: 'cleo', text: 'Hi! I am Cleo, your autonomous PR assistant. Ask me anything about Cerebro or how to manage your workspace!' }
-  ]);
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [darkMode]);
+  const [showCleoAi, setShowCleoAi] = useState(false);
+  const [cleoMessages, setCleoMessages] = useState(() => {
+    try {
+      const stored = localStorage.getItem('cerebro_cleo_history');
+      return stored ? JSON.parse(stored) : [
+        { sender: 'cleo', text: 'Hi! I am Cleo, your autonomous PR assistant. Ask me anything about Cerebro or how to manage your workspace!' }
+      ];
+    } catch (e) {
+      return [
+        { sender: 'cleo', text: 'Hi! I am Cleo, your autonomous PR assistant. Ask me anything about Cerebro or how to manage your workspace!' }
+      ];
+    }
+  });
   const [cleoInput, setCleoInput] = useState('');
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [notifications, setNotifications] = useState([
+    { id: 1, title: 'Maverick Labs Sentiment Increase', desc: 'Brand sentiment score improved by +5.2% over the last 24 hours.', read: false, time: '2h ago' },
+    { id: 2, title: 'Weekly Assessment Ready', desc: 'Your custom media briefings and SOV summaries have been generated.', read: false, time: '5h ago' },
+    { id: 3, title: 'Data Scraper Scan Complete', desc: 'Scrape segment scan for Tech News channels completed successfully.', read: true, time: '1d ago' },
+    { id: 4, title: 'Security Alert: Welcome to Cerebro', desc: 'Secure database session initialized successfully.', read: true, time: '2d ago' }
+  ]);
+  const [isRefreshingDashboard, setIsRefreshingDashboard] = useState(false);
   const [showAddBrandModal, setShowAddBrandModal] = useState(false);
   const [trackedBrands, setTrackedBrands] = useState([]);
   const [newBrandName, setNewBrandName] = useState('');
@@ -2579,6 +2882,10 @@ function App() {
       localStorage.removeItem('cerebro_selected_brand');
     }
   }, [selectedBrandForDetail]);
+
+  React.useEffect(() => {
+    localStorage.setItem('cerebro_cleo_history', JSON.stringify(cleoMessages));
+  }, [cleoMessages]);
   const [expandedArticleId, setExpandedArticleId] = useState(null);
   const [articleContents, setArticleContents] = useState({});
   const [loadingArticleContents, setLoadingArticleContents] = useState({});
@@ -2895,39 +3202,16 @@ function App() {
   };
 
   const handleOpenCleoChat = () => {
-    if (activeTab !== 'dashboard') {
-      setActiveTab('dashboard');
-      setShowCleoAi(true);
-      const scrollToWidget = (attempts = 0) => {
-        const el = document.getElementById('cleo-chat-widget');
-        if (el) {
-          el.scrollIntoView({ behavior: 'smooth' });
+    setShowCleoAi(prev => {
+      const next = !prev;
+      if (next) {
+        setTimeout(() => {
           const inputEl = document.getElementById('cleo-chat-input');
           if (inputEl) inputEl.focus();
-        } else if (attempts < 10) {
-          setTimeout(() => scrollToWidget(attempts + 1), 50);
-        }
-      };
-      scrollToWidget();
-    } else {
-      setShowCleoAi(prev => {
-        const next = !prev;
-        if (next) {
-          const scrollToWidget = (attempts = 0) => {
-            const el = document.getElementById('cleo-chat-widget');
-            if (el) {
-              el.scrollIntoView({ behavior: 'smooth' });
-              const inputEl = document.getElementById('cleo-chat-input');
-              if (inputEl) inputEl.focus();
-            } else if (attempts < 10) {
-              setTimeout(() => scrollToWidget(attempts + 1), 50);
-            }
-          };
-          scrollToWidget();
-        }
-        return next;
-      });
-    }
+        }, 100);
+      }
+      return next;
+    });
   };
 
   const calculateTotalKeywordsAnalyzed = () => {
@@ -3038,6 +3322,32 @@ function App() {
     }
   };
 
+  const handleRefreshDashboard = async () => {
+    if (isRefreshingDashboard) return;
+    setIsRefreshingDashboard(true);
+    try {
+      if (user && user.id) {
+        try {
+          await fetch(`${API_BASE}/api/brands/fetch-now`, {
+            method: 'POST',
+            headers: { 'X-User-Id': user.id }
+          });
+        } catch (fetchErr) {
+          console.warn('[Cerebro] Brand sync failed during dashboard refresh:', fetchErr);
+        }
+      }
+      await Promise.all([
+        fetchTrackedBrands(),
+        fetchGlobalCompanies(),
+        fetchReports()
+      ]);
+    } catch (err) {
+      console.error('Error during dashboard refresh:', err);
+    } finally {
+      setIsRefreshingDashboard(false);
+    }
+  };
+
   const handleSaveReport = async (reportToSave) => {
     const report = reportToSave || selectedReport;
     if (!report || !user || !user.id) return;
@@ -3125,6 +3435,8 @@ function App() {
       }
     }
   }, [user]);
+
+
 
   React.useEffect(() => {
     const checkPendingShare = async () => {
@@ -3650,6 +3962,40 @@ function App() {
       sections: [
         { id: 'sec-1', title: '1. Document Title', content: '', charts: [], images: [] }
       ]
+    },
+    {
+      id: 'rep-3',
+      title: 'APAC Expansion Risk & Opportunity Landscape',
+      type: 'VS Analysis',
+      status: 'Pending',
+      date: 'May 12, 2026',
+      author: 'Cerebro Autonomous AI',
+      priority: 'Medium',
+      brandKeywords: 'APAC, Expansion, Market Entry',
+      competitorKeywords: 'LocalEdge Asia, BridgePoint Ventures',
+      summary: 'Structured evaluation of competitive threats and market entry opportunities across Southeast Asian markets with emphasis on regulatory and cultural risk vectors.',
+      tags: ['APAC', 'Risk Assessment', 'Market Entry'],
+      metrics: { accuracy: '97.2%', confidence: 'High', sourcesCount: 64 },
+      sections: [
+        { id: 'sec-1', title: '1. Document Title', content: '', charts: [], images: [] }
+      ]
+    },
+    {
+      id: 'rep-4',
+      title: 'Brand Health & Executive Perception Index — Q2',
+      type: 'Brand Analysis',
+      status: 'Generated',
+      date: 'May 8, 2026',
+      author: 'Chief Intelligence Analyst',
+      priority: 'High',
+      brandKeywords: 'Brand Health, Executive Perception, Trust Score',
+      competitorKeywords: 'None (Internal Audit)',
+      summary: 'Quarterly brand health pulse tracking executive-level media mentions, trust indices, and perception drift across tier-1 financial and technology publications.',
+      tags: ['Brand Health', 'Trust Index', 'Executive PR'],
+      metrics: { accuracy: '96.8%', confidence: 'High', sourcesCount: 117 },
+      sections: [
+        { id: 'sec-1', title: '1. Document Title', content: '', charts: [], images: [] }
+      ]
     }
   ]);
   const [newReportForm, setNewReportForm] = useState({
@@ -3717,27 +4063,35 @@ function App() {
   ];
 
   const handleKeywordSearch = async () => {
-    if (!targetBrandsInput.trim()) return;
+    const brands = targetBrandsInput.split(',').map(b => b.trim()).filter(Boolean);
+    if (brands.length === 0) return;
     setIsSearchingKeyword(true);
+    setKeywordSearchError(null);
     setCuratedAnalysisResults(null);
     try {
-      const targetKeywords = targetBrandsInput.split(',').map(b => b.trim()).filter(Boolean);
       const excludedKeywords = excludedKeywordsInput.split(',').map(b => b.trim()).filter(Boolean);
       const res = await fetch(`${API_BASE}/api/curated-search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetKeywords, excludedKeywords, topic: analysisSector })
+        body: JSON.stringify({ targetKeywords: brands, excludedKeywords, topic: analysisSector })
       });
       if (res.ok) {
         const data = await res.json();
         setCuratedAnalysisResults(data);
         const analyzedBrands = Object.keys(data.brands || {});
-        if (analyzedBrands.length > 0) {
-          setCuratedDrillBrand(analyzedBrands[0]);
-        }
+        if (analyzedBrands.length > 0) setCuratedDrillBrand(analyzedBrands[0]);
+        const today = new Date().toDateString();
+        const saved = JSON.parse(localStorage.getItem('cerebro_kw_usage') || '{"date":"","count":0}');
+        const newCount = saved.date === today ? saved.count + 1 : 1;
+        localStorage.setItem('cerebro_kw_usage', JSON.stringify({ date: today, count: newCount }));
+        setKeywordSearchCount(newCount);
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        setKeywordSearchError(errData.message || `Search failed (${res.status}). Please try again.`);
       }
     } catch (err) {
       console.error('Error in curated search:', err);
+      setKeywordSearchError('Network error — could not reach the server. Please check your connection.');
     } finally {
       setIsSearchingKeyword(false);
     }
@@ -3757,30 +4111,33 @@ function App() {
   };
 
   const handleReachScan = async () => {
-    if (!reachUrl) return;
+    if (!reachUrl.trim()) return;
+    try { new URL(reachUrl.trim()); } catch {
+      setReachError('Please enter a valid article URL (must start with http:// or https://).');
+      setIsScanningReach(true);
+      return;
+    }
     setReachMode('single');
     setReachScanning(true);
     setIsScanningReach(true);
     setReachResult(null);
     setReachError('');
 
-    let timeToWait = 10;
-    if (reachVersion === 'v9') timeToWait = 24;
-    else if (reachVersion === 'v8') timeToWait = 22;
-    else if (reachVersion === 'v7') timeToWait = 20;
-
+    const timeToWait = reachVersion === 'v10' ? 26 : reachVersion === 'v9' ? 24 : reachVersion === 'v8' ? 22 : 20;
     startReachTimer(timeToWait);
 
     try {
       const response = await fetch(`${API_BASE}/api/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: reachUrl, version: reachVersion })
+        body: JSON.stringify({ url: reachUrl.trim(), version: reachVersion })
       });
       if (!response.ok) {
-        throw new Error('Analysis failed');
+        const errBody = await response.json().catch(() => ({}));
+        throw new Error(errBody.message || `Server returned ${response.status}`);
       }
       const data = await response.json();
+      if (!data || typeof data !== 'object') throw new Error('Empty response from server.');
       setReachResult(data);
     } catch (err) {
       console.error(err);
@@ -3980,6 +4337,14 @@ function App() {
         }
         setUser(data.user);
         localStorage.setItem('cerebro_user', JSON.stringify(data.user));
+        const tabId = sessionStorage.getItem('cerebro_tab_id') || Math.random().toString(36).substring(2);
+        localStorage.setItem('cerebro_active_tab_id', tabId);
+        
+        // Notify other tabs that this tab claimed the session
+        const claimChannel = new BroadcastChannel('cerebro_session_channel');
+        claimChannel.postMessage({ type: 'session_claimed', tabId });
+        claimChannel.close();
+
         setTimeout(() => setView('landing'), 1500);
       } else if (view === 'signup') {
         if (password !== confirmPassword) {
@@ -4005,18 +4370,58 @@ function App() {
         setSuccessMessage('Account created successfully! You can now log in.');
         setTimeout(() => setView('login'), 2000);
       } else if (view === 'forgot') {
-        setLoading(true);
-        const response = await fetch(`${API_BASE}/api/check-email`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email }),
-        });
-        const data = await response.json();
-        setLoading(false);
-        if (response.ok && data.exists) {
-          setSuccessMessage('A recovery link has been sent to your email.');
-        } else {
-          setError(data.error || 'This email address is not registered in our system.');
+        if (forgotStep === 'email') {
+          setLoading(true);
+          const response = await fetch(`${API_BASE}/api/forgot-password`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email }),
+          });
+          const data = await response.json();
+          setLoading(false);
+          if (response.ok && data.exists) {
+            setSuccessMessage('A 6-digit OTP code has been sent to your email.');
+            setError('');
+            setForgotStep('otp');
+          } else {
+            setError(data.error || 'This email address is not registered in our system.');
+          }
+        } else if (forgotStep === 'otp') {
+          setLoading(true);
+          const response = await fetch(`${API_BASE}/api/verify-otp`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, otp: otpInput }),
+          });
+          const data = await response.json();
+          setLoading(false);
+          if (response.ok && data.valid) {
+            setSuccessMessage('OTP code verified. Please set your new password below.');
+            setError('');
+            setForgotStep('reset');
+          } else {
+            setError(data.error || 'Invalid or expired OTP code.');
+          }
+        } else if (forgotStep === 'reset') {
+          if (password !== confirmPassword) {
+            setError('Passwords do not match.');
+            return;
+          }
+          setLoading(true);
+          const response = await fetch(`${API_BASE}/api/reset-password`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, token: otpInput, password }),
+          });
+          const data = await response.json();
+          setLoading(false);
+          if (response.ok) {
+            setView('login');
+            setSuccessMessage('Password reset successfully. Please sign in with your new password.');
+            setError('');
+          } else {
+            setError(data.error || 'Password reset failed.');
+          }
         }
       } else if (view === 'reset') {
         if (password !== confirmPassword) {
@@ -4024,11 +4429,18 @@ function App() {
           return;
         }
         setLoading(true);
-        // Reset password logic would go here
-        setTimeout(() => {
-          setLoading(false);
-          setView('success');
-        }, 1500);
+        const response = await fetch(`${API_BASE}/api/reset-password`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: resetEmail, token: resetToken, password }),
+        });
+        const data = await response.json();
+        setLoading(false);
+        if (!response.ok) {
+          setError(data.error || 'Password reset failed');
+          return;
+        }
+        setView('success');
       }
     } catch (err) {
       setLoading(false);
@@ -4051,13 +4463,28 @@ function App() {
       <div className="min-h-screen bg-[#030712] text-white font-body selection:bg-indigo-500/30 overflow-x-hidden relative">
         {/* Navigation Bar */}
         <nav className="fixed top-0 left-0 w-full z-50 bg-[#030712]/85 backdrop-blur-md border-b border-white/5 px-6 py-4 flex items-center justify-between">
-          <img
-            src="/cerebro_white.png"
-            alt="Cerebro"
-            className="h-10 w-auto object-contain"
-          />
+          <button
+            onClick={() => {
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+              setTimeout(() => { window.location.reload(); }, 550);
+            }}
+            className="focus:outline-none cursor-pointer flex items-center"
+            title="Reload Page"
+          >
+            <img
+              src="/cerebro_white.png"
+              alt="Cerebro"
+              className="h-12 w-auto object-contain hover:scale-105 transition-all duration-300"
+            />
+          </button>
 
           <div className="hidden md:flex absolute left-1/2 -translate-x-1/2 items-center gap-8 text-sm font-semibold text-white/70" style={{ fontFamily: 'var(--font-heading)' }}>
+            <button 
+              onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+              className="hover:text-white transition-colors tracking-wide focus:outline-none font-semibold text-white/70"
+            >
+              Home
+            </button>
             <a href="#features" className="hover:text-white transition-colors tracking-wide">Features</a>
             <a href="#pricing" className="hover:text-white transition-colors tracking-wide">Pricing</a>
             <a href="#testimonials" className="hover:text-white transition-colors tracking-wide">Testimonials</a>
@@ -4113,14 +4540,14 @@ function App() {
           {/* Buttons */}
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
             <button 
-              onClick={() => setView('signup')}
-              className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 px-8 rounded-2xl transition-all shadow-lg shadow-indigo-600/30 active:scale-95 text-xs uppercase tracking-wider"
+              onClick={() => document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth' })}
+              className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 px-8 rounded-2xl transition-all shadow-lg shadow-indigo-600/30 active:scale-95 text-xs uppercase tracking-wider cursor-pointer"
             >
               Start free trial
             </button>
             <button
-              onClick={() => setView('login')}
-              className="bg-white hover:bg-white/90 text-gray-900 font-bold py-4 px-8 rounded-2xl transition-all text-xs uppercase tracking-wider"
+              onClick={() => setShowDemoVideo(true)}
+              className="bg-white hover:bg-white/90 text-gray-900 font-bold py-4 px-8 rounded-2xl transition-all text-xs uppercase tracking-wider cursor-pointer"
             >
               Watch Demo
             </button>
@@ -4258,13 +4685,16 @@ function App() {
                   </ul>
                 </div>
                 <button 
-                  onClick={() => setView('signup')}
-                  className="mt-8 w-full bg-white/5 hover:bg-white/10 border border-white/10 text-white font-black text-xs uppercase tracking-wider py-4 rounded-2xl transition-all"
+                  onClick={() => {
+                    setSelectedPaymentPlan('Starter');
+                    setShowPaymentModal(true);
+                  }}
+                  className="mt-8 w-full bg-white/5 hover:bg-white/10 border border-white/10 text-white font-black text-xs uppercase tracking-wider py-4 rounded-2xl transition-all cursor-pointer"
                 >
                   Choose Starter
                 </button>
               </div>
-
+ 
               {/* Plan 2 (Professional - Featured) */}
               <div className="bg-gradient-to-b from-indigo-900/40 to-indigo-950/20 border-2 border-indigo-500 rounded-[2.5rem] p-8 flex flex-col justify-between relative hover:shadow-2xl hover:shadow-indigo-500/10 transition-all scale-105">
                 <div className="absolute top-0 right-8 -translate-y-1/2 bg-indigo-500 text-white text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full">
@@ -4281,20 +4711,23 @@ function App() {
                   </p>
                   <div className="border-t border-white/10 my-6" />
                   <ul className="space-y-3.5 text-xs text-white/95 font-bold">
-                    <li className="flex items-center gap-3"><CheckCircle2 size={16} className="text-[#00f2fe]" /> Unlimited Tracked Keywords</li>
+                    <li className="flex items-center gap-3"><CheckCircle2 size={16} className="text-[#00f2fe]" /> Up to 6 keywords tracked</li>
                     <li className="flex items-center gap-3"><CheckCircle2 size={16} className="text-[#00f2fe]" /> AI-Powered Document Studio</li>
                     <li className="flex items-center gap-3"><CheckCircle2 size={16} className="text-[#00f2fe]" /> Real-time Sentiment Analytics</li>
                     <li className="flex items-center gap-3"><CheckCircle2 size={16} className="text-[#00f2fe]" /> Custom Live Telemetry Charts</li>
                   </ul>
                 </div>
                 <button 
-                  onClick={() => setView('signup')}
-                  className="mt-8 w-full bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs uppercase tracking-wider py-4 rounded-2xl transition-all shadow-lg shadow-indigo-600/30"
+                  onClick={() => {
+                    setSelectedPaymentPlan('Professional');
+                    setShowPaymentModal(true);
+                  }}
+                  className="mt-8 w-full bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs uppercase tracking-wider py-4 rounded-2xl transition-all shadow-lg shadow-indigo-600/30 cursor-pointer"
                 >
                   Choose Professional
                 </button>
               </div>
-
+ 
               {/* Plan 3 */}
               <div className="bg-white/[0.02] border border-white/5 rounded-[2.5rem] p-8 flex flex-col justify-between hover:border-white/10 transition-all">
                 <div>
@@ -4314,8 +4747,11 @@ function App() {
                   </ul>
                 </div>
                 <button 
-                  onClick={() => setView('signup')}
-                  className="mt-8 w-full bg-white/5 hover:bg-white/10 border border-white/10 text-white font-black text-xs uppercase tracking-wider py-4 rounded-2xl transition-all"
+                  onClick={() => {
+                    setSelectedPaymentPlan('Enterprise');
+                    setShowPaymentModal(true);
+                  }}
+                  className="mt-8 w-full bg-white/5 hover:bg-white/10 border border-white/10 text-white font-black text-xs uppercase tracking-wider py-4 rounded-2xl transition-all cursor-pointer"
                 >
                   Choose Enterprise
                 </button>
@@ -4401,14 +4837,14 @@ function App() {
             </p>
             <div className="relative flex flex-col sm:flex-row gap-4 justify-center items-center">
               <button
-                onClick={() => setView('signup')}
-                className="bg-indigo-500 hover:bg-indigo-400 text-white font-black py-4 px-8 rounded-2xl transition-all shadow-lg active:scale-95 text-xs uppercase tracking-wider"
+                onClick={() => document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth' })}
+                className="bg-indigo-500 hover:bg-indigo-400 text-white font-black py-4 px-8 rounded-2xl transition-all shadow-lg active:scale-95 text-xs uppercase tracking-wider cursor-pointer"
               >
                 Start free trial
               </button>
               <button
-                onClick={() => setView('login')}
-                className="bg-white hover:bg-white/90 text-gray-900 font-black py-4 px-8 rounded-2xl transition-all text-xs uppercase tracking-wider"
+                onClick={() => setShowContactSales(true)}
+                className="bg-white hover:bg-white/90 text-gray-900 font-black py-4 px-8 rounded-2xl transition-all text-xs uppercase tracking-wider cursor-pointer"
               >
                 Contact Sales
               </button>
@@ -4418,6 +4854,167 @@ function App() {
             © {new Date().getFullYear()} Cerebro. All rights reserved.
           </div>
         </footer>
+
+        {/* Watch Demo Video Modal */}
+        {showDemoVideo && (
+          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-300 text-white">
+            <div className="bg-slate-900 border border-white/10 rounded-[2.5rem] max-w-3xl w-full overflow-hidden shadow-2xl relative">
+              <button 
+                onClick={() => setShowDemoVideo(false)}
+                className="absolute top-6 right-6 text-white/50 hover:text-white transition-all cursor-pointer z-10"
+              >
+                <X size={24} />
+              </button>
+              
+              <div className="p-8">
+                <h3 className="text-xl font-black text-white tracking-tight mb-1" style={{ fontFamily: 'var(--font-heading)' }}>Cerebro Platform Tour</h3>
+                <p className="text-xs text-white/50 mb-6">See how Cerebro analyzes keyword exposure, sentiment, and share of voice.</p>
+                
+                {/* Simulated Video Player */}
+                <div className="w-full aspect-video bg-black rounded-2xl relative overflow-hidden group border border-white/5 flex flex-col items-center justify-center">
+                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-indigo-500/10 via-transparent to-transparent pointer-events-none" />
+                  <div className="w-20 h-20 bg-indigo-600/90 text-white rounded-full flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300 cursor-pointer border border-white/20">
+                    <Play size={32} className="ml-1 text-white fill-white" />
+                  </div>
+                  <span className="text-xs text-white/60 font-mono mt-4 font-bold">Cerebro_Product_Demo_HD.mp4</span>
+                  <p className="text-[10px] text-indigo-400 mt-1 uppercase tracking-widest font-black animate-pulse">Video Player Placeholder (Stream Offline)</p>
+                  
+                  {/* Mock Video Controls Bar */}
+                  <div className="absolute bottom-0 left-0 w-full bg-slate-950/90 border-t border-white/5 px-4 py-3 flex items-center justify-between text-xs text-white/60 font-mono">
+                    <div className="flex items-center gap-4 flex-row">
+                      <Play size={14} className="fill-white/60 text-white/60" />
+                      <span>0:00 / 3:15</span>
+                    </div>
+                    <div className="flex items-center gap-4 flex-row">
+                      <Volume2 size={16} />
+                      <div className="w-16 h-1 bg-white/20 rounded-full relative"><div className="absolute left-0 top-0 h-full w-[80%] bg-indigo-500 rounded-full" /></div>
+                      <Maximize2 size={14} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Mock Payment Gateway Modal */}
+        {showPaymentModal && (
+          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-300 text-white">
+            <div className="bg-slate-900 border border-white/10 rounded-[2.5rem] max-w-md w-full overflow-hidden shadow-2xl relative p-8">
+              <button 
+                onClick={() => setShowPaymentModal(false)}
+                className="absolute top-6 right-6 text-white/50 hover:text-white transition-all cursor-pointer"
+              >
+                <X size={24} />
+              </button>
+
+              <div className="flex flex-col items-center mb-6">
+                <div className="w-14 h-14 bg-indigo-500/10 rounded-2xl flex items-center justify-center mb-3 border border-indigo-500/20">
+                  <CreditCard size={28} className="text-indigo-400" />
+                </div>
+                <h3 className="text-xl font-black text-white tracking-tight" style={{ fontFamily: 'var(--font-heading)' }}>Checkout Summary</h3>
+                <p className="text-xs text-slate-400 mt-1">Review your plan and initiate payment method</p>
+              </div>
+
+              {/* Order Info */}
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-5 mb-6 flex justify-between items-center">
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-[#00f2fe]">Subscription Plan</span>
+                  <h4 className="text-lg font-black text-white mt-0.5">{selectedPaymentPlan} Tier</h4>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs font-mono text-slate-400">Total Price</span>
+                  <div className="text-xl font-black text-white mt-0.5">
+                    {selectedPaymentPlan === 'Starter' ? '$49' : selectedPaymentPlan === 'Professional' ? '$99' : 'Custom'}
+                    <span className="text-xs font-normal text-slate-400">/mo</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card Inputs */}
+              <div className="space-y-4">
+                <div className="space-y-1.5 group">
+                  <label className="text-[10px] font-black text-white/70 uppercase tracking-[0.2em] ml-1">Cardholder Name</label>
+                  <input type="text" required placeholder="John Doe" className="glass-input w-full py-4 px-4 rounded-2xl text-sm font-semibold text-white placeholder-white/30" />
+                </div>
+                <div className="space-y-1.5 group">
+                  <label className="text-[10px] font-black text-white/70 uppercase tracking-[0.2em] ml-1">Card Number</label>
+                  <input type="text" required placeholder="4242 4242 4242 4242" className="glass-input w-full py-4 px-4 rounded-2xl text-sm font-semibold text-white placeholder-white/30" />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5 group">
+                    <label className="text-[10px] font-black text-white/70 uppercase tracking-[0.2em] ml-1">Expiration</label>
+                    <input type="text" required placeholder="MM / YY" className="glass-input w-full py-4 px-4 rounded-2xl text-sm font-semibold text-white placeholder-white/30" />
+                  </div>
+                  <div className="space-y-1.5 group">
+                    <label className="text-[10px] font-black text-white/70 uppercase tracking-[0.2em] ml-1">CVC / CVV</label>
+                    <input type="text" required placeholder="123" className="glass-input w-full py-4 px-4 rounded-2xl text-sm font-semibold text-white placeholder-white/30" />
+                  </div>
+                </div>
+
+                <button 
+                  type="button"
+                  onClick={() => alert('Payment gateway integration coming soon! We will connect Stripe/Paypal in the next iteration.')}
+                  className="bg-[#00f2fe] hover:bg-cyan-400 text-slate-900 font-black tracking-wider py-4 rounded-2xl w-full transition-all duration-300 shadow-lg shadow-cyan-400/20 uppercase text-xs flex items-center justify-center gap-2 mt-6 cursor-pointer"
+                >
+                  <ShieldCheck size={16} /> Pay & Complete Subscription
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Contact Sales Modal */}
+        {showContactSales && (
+          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-300 text-white">
+            <div className="bg-slate-900 border border-white/10 rounded-[2.5rem] max-w-md w-full overflow-hidden shadow-2xl relative p-8">
+              <button 
+                onClick={() => setShowContactSales(false)}
+                className="absolute top-6 right-6 text-white/50 hover:text-white transition-all cursor-pointer"
+              >
+                <X size={24} />
+              </button>
+
+              <div className="flex flex-col items-center mb-6">
+                <div className="w-14 h-14 bg-indigo-500/10 rounded-2xl flex items-center justify-center mb-3 border border-indigo-500/20">
+                  <Mail size={28} className="text-indigo-400" />
+                </div>
+                <h3 className="text-xl font-black text-white tracking-tight" style={{ fontFamily: 'var(--font-heading)' }}>Contact Sales</h3>
+                <p className="text-xs text-slate-400 mt-1">Get custom enterprise quotas & dedicated deployment support</p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-1.5 group">
+                  <label className="text-[10px] font-black text-white/70 uppercase tracking-[0.2em] ml-1">Your Name</label>
+                  <input type="text" required placeholder="Enter your full name" className="glass-input w-full py-4 px-4 rounded-2xl text-sm font-semibold text-white placeholder-white/30" />
+                </div>
+                <div className="space-y-1.5 group">
+                  <label className="text-[10px] font-black text-white/70 uppercase tracking-[0.2em] ml-1">Work Email</label>
+                  <input type="email" required placeholder="you@company.com" className="glass-input w-full py-4 px-4 rounded-2xl text-sm font-semibold text-white placeholder-white/30" />
+                </div>
+                <div className="space-y-1.5 group">
+                  <label className="text-[10px] font-black text-white/70 uppercase tracking-[0.2em] ml-1">Company Name</label>
+                  <input type="text" required placeholder="Enter company name" className="glass-input w-full py-4 px-4 rounded-2xl text-sm font-semibold text-white placeholder-white/30" />
+                </div>
+                <div className="space-y-1.5 group">
+                  <label className="text-[10px] font-black text-white/70 uppercase tracking-[0.2em] ml-1">Requirement Brief</label>
+                  <textarea rows={3} placeholder="How can we help your team?" className="glass-input w-full py-3 px-4 rounded-2xl text-sm font-semibold text-white placeholder-white/30 resize-none" />
+                </div>
+
+                <button 
+                  type="button"
+                  onClick={() => {
+                    alert('Thank you! Our enterprise sales team will reach out to you within 24 hours.');
+                    setShowContactSales(false);
+                  }}
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white font-black tracking-wider py-4 rounded-2xl w-full transition-all duration-300 shadow-lg shadow-indigo-600/30 uppercase text-xs flex items-center justify-center gap-2 mt-6 cursor-pointer"
+                >
+                  Send Inquiry Request
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -4468,7 +5065,7 @@ function App() {
                     onClick={() => setActiveTab(item.id)}
                     className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3 px-4'} py-3 rounded-xl text-sm font-bold transition-all relative group/btn font-heading ${activeTab === item.id
                       ? (darkMode ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-950/50' : 'bg-indigo-600 text-white shadow-lg shadow-indigo-100')
-                      : (darkMode ? 'text-white/70 hover:bg-white/5 hover:text-white' : 'text-slate-655 hover:bg-indigo-50 hover:text-indigo-600')
+                      : (darkMode ? 'text-white/70 hover:bg-white/5 hover:text-white' : 'text-slate-600 hover:bg-indigo-50 hover:text-indigo-600')
                       }`}
                   >
                     <item.icon size={20} className={sidebarCollapsed ? 'shrink-0' : ''} />
@@ -4498,7 +5095,7 @@ function App() {
                     onClick={() => setActiveTab(item.id)}
                     className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3 px-4'} py-3 rounded-xl text-sm font-bold transition-all relative group/btn font-heading ${activeTab === item.id
                       ? (darkMode ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-950/50' : 'bg-indigo-600 text-white shadow-lg shadow-indigo-100')
-                      : (darkMode ? 'text-white/70 hover:bg-white/5 hover:text-white' : 'text-slate-650 hover:bg-indigo-50 hover:text-indigo-600')
+                      : (darkMode ? 'text-white/70 hover:bg-white/5 hover:text-white' : 'text-slate-600 hover:bg-indigo-50 hover:text-indigo-600')
                       }`}
                   >
                     <item.icon size={20} className={sidebarCollapsed ? 'shrink-0' : ''} />
@@ -4516,14 +5113,7 @@ function App() {
 
           <div className={`p-4 border-t ${darkMode ? 'border-white/5' : 'border-slate-200/60'}`}>
             <button
-              onClick={() => {
-                localStorage.removeItem('cerebro_user');
-                setUser(null);
-                setUserAdminKey('');
-                setAdminKeyInput('');
-                setAuthRole('employee');
-                setView('login');
-              }}
+              onClick={handleLogout}
               className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3 px-4'} py-3 rounded-xl text-sm font-bold text-slate-400 hover:bg-red-50 hover:text-red-600 transition-all group/logout font-heading`}>
               <LogOut size={20} />
               {!sidebarCollapsed && <span>Sign Out</span>}
@@ -4541,23 +5131,73 @@ function App() {
             <div className="flex items-center gap-4">
               <button
                 onClick={() => setDarkMode(!darkMode)}
-                className={`p-2 transition-all rounded-xl ${darkMode ? 'text-white/70 hover:text-white hover:bg-white/10' : 'text-slate-655 hover:text-slate-900 hover:bg-slate-100'}`}
+                className={`p-2 transition-all rounded-xl ${darkMode ? 'text-white/70 hover:text-white hover:bg-white/10' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'}`}
               >
                 {darkMode ? <Sun size={20} /> : <Moon size={20} />}
               </button>
-              <button className={`p-2 transition-colors relative ${darkMode ? 'text-white/70 hover:text-white' : 'text-slate-655 hover:text-slate-900'}`}>
-                <Bell size={20} />
-                <span className={`absolute top-2 right-2 w-2 h-2 rounded-full border-2 ${darkMode ? 'bg-[#ffb703] border-[#0B121F]' : 'bg-[#ffb703] border-white'}`}></span>
-              </button>
+              
+              {/* Notification Center */}
+              <div className="relative">
+                <button 
+                  onClick={() => setShowNotifications(!showNotifications)}
+                  className={`p-2 transition-colors relative rounded-xl ${darkMode ? 'text-white/70 hover:text-white hover:bg-white/10' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'}`}
+                >
+                  <Bell size={20} />
+                  {notifications.filter(n => !n.read).length > 0 && (
+                    <span className={`absolute top-2 right-2 w-2 h-2 rounded-full border-2 ${darkMode ? 'bg-[#ffb703] border-[#0B121F]' : 'bg-[#ffb703] border-white'}`}></span>
+                  )}
+                </button>
+
+                {showNotifications && (
+                  <>
+                  <div className="fixed inset-0 z-[29]" onClick={() => setShowNotifications(false)} />
+                  <div className={`absolute right-0 top-12 w-80 rounded-3xl p-5 shadow-2xl z-[120] border transition-all duration-300 animate-in fade-in slide-in-from-top-3 ${
+                    darkMode ? 'bg-slate-900 border-white/10 text-white' : 'bg-white border-slate-200 text-slate-800'
+                  }`}>
+                    <div className="flex items-center justify-between pb-3 border-b border-white/10 mb-3">
+                      <span className="text-xs font-black uppercase tracking-wider">Alert Center</span>
+                      {notifications.filter(n => !n.read).length > 0 && (
+                        <button 
+                          onClick={() => setNotifications(prev => prev.map(n => ({ ...n, read: true })))}
+                          className="text-[10px] text-indigo-500 hover:text-indigo-400 font-bold uppercase cursor-pointer"
+                        >
+                          Mark all as read
+                        </button>
+                      )}
+                    </div>
+                    <div className="space-y-3 max-h-60 overflow-y-auto custom-scrollbar pr-1">
+                      {notifications.length > 0 ? (
+                        notifications.map(n => (
+                          <div key={n.id} className={`p-3 rounded-2xl border text-left transition-all ${
+                            n.read 
+                              ? (darkMode ? 'bg-white/5 border-transparent opacity-60' : 'bg-slate-50 border-transparent opacity-75') 
+                              : (darkMode ? 'bg-indigo-500/10 border-indigo-500/20' : 'bg-indigo-50 border-indigo-150')
+                          }`}>
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                              <h5 className="text-[11px] font-black tracking-tight">{n.title}</h5>
+                              <span className="text-[9px] font-mono opacity-50">{n.time}</span>
+                            </div>
+                            <p className="text-[10px] font-semibold leading-relaxed opacity-90">{n.desc}</p>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-[10px] text-center opacity-50 py-4">No notifications yet.</p>
+                      )}
+                    </div>
+                  </div>
+                  </>
+                )}
+              </div>
+
               <div className={`h-8 w-px mx-1 ${darkMode ? 'bg-white/10' : 'bg-slate-200'}`}></div>
 
               <button
                 onClick={handleOpenCleoChat}
                 className={`flex items-center gap-3 pl-2.5 pr-2 py-1.5 rounded-full text-xs font-bold transition-all border shadow-sm hover:scale-[1.01] ${
                   darkMode
-                    ? (showCleoAi 
-                        ? 'bg-indigo-650/20 border-indigo-500/40 text-white' 
-                        : 'bg-white/5 border-white/10 text-slate-200 hover:text-white hover:border-white/20')
+                    ? (showCleoAi
+                        ? 'bg-indigo-600/30 border-indigo-500/60 text-white'
+                        : 'cleo-btn-off')
                     : (showCleoAi
                         ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
                         : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50')
@@ -4598,16 +5238,19 @@ function App() {
 
               <div className={`h-8 w-px mx-1 ${darkMode ? 'bg-white/10' : 'bg-slate-200'}`}></div>
 
-              <div className="flex items-center gap-3">
+              <div 
+                onClick={() => setActiveTab('settings')}
+                className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-all select-none"
+              >
                 <div className="text-right hidden md:block">
-                  <p className={`text-xs font-black leading-tight font-heading ${darkMode ? 'text-white' : 'text-slate-900'}`}>{user?.name || 'Manvi'}</p>
-                  <p className={`text-[10px] font-bold uppercase tracking-widest font-heading ${darkMode ? 'text-white/40' : 'text-slate-500'}`}>
-                    {user?.role === 'admin' ? 'Admin Access' : user?.role === 'employee' ? 'Maverick Access' : 'Individual Access'}
-                  </p>
-                </div>
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white font-black shadow-lg font-heading ${darkMode ? 'bg-indigo-600 shadow-indigo-950/50' : 'bg-indigo-600 shadow-indigo-100'}`}>
-                  {(user?.name || 'M')[0]}
-                </div>
+                   <p className={`text-xs font-black leading-tight font-heading ${darkMode ? 'text-white' : 'text-slate-900'}`}>{user?.name?.trim() || 'Manvi'}</p>
+                   <p className={`text-[10px] font-bold uppercase tracking-widest font-heading ${darkMode ? 'text-white/40' : 'text-slate-500'}`}>
+                     {user?.role === 'admin' ? 'Admin Access' : user?.role === 'employee' ? 'Maverick Access' : 'Individual Access'}
+                   </p>
+                 </div>
+                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white font-black shadow-lg font-heading ${darkMode ? 'bg-indigo-600 shadow-indigo-950/50' : 'bg-indigo-600 shadow-indigo-100'}`}>
+                   {(user?.name?.trim() || 'M')[0].toUpperCase()}
+                 </div>
               </div>
             </div>
           </nav>
@@ -4616,30 +5259,30 @@ function App() {
           <main className="flex-1 overflow-hidden flex flex-col relative">
             <div className="flex-1 flex flex-col overflow-hidden">
               {/* Header with Create Report Button for Report Analysis */}
-              {activeTab !== 'competitor-analysis' && activeTab !== 'dashboard' && (
-                <div className={`px-8 pt-8 flex items-center justify-between ${activeTab === 'report-analysis' ? 'mb-4' : 'mb-10'}`}>
+              {activeTab !== 'competitor-analysis' && activeTab !== 'dashboard' && activeTab !== 'report-analysis' && activeTab !== 'article-reach' && (
+                <div className="px-8 pt-8 mb-10 flex items-center justify-between">
                   <div className="flex items-center gap-6">
-                    {activeTab === 'report-analysis' || activeTab === 'brand-tracker' ? (
-                      activeTab === 'brand-tracker' && selectedBrandForDetail ? null : (
+                    {activeTab === 'brand-tracker' && !selectedBrandForDetail ? (
                         <button
-                          onClick={() => activeTab === 'brand-tracker' ? setShowAddBrandModal(true) : setShowCreateReportModal(true)}
+                          onClick={() => setShowAddBrandModal(true)}
                           className="group flex items-center bg-white border border-slate-200 p-2 rounded-full hover:border-indigo-600 hover:bg-indigo-50 transition-all duration-500 ease-in-out shadow-sm overflow-hidden whitespace-nowrap max-w-[56px] hover:max-w-[200px] z-50"
                         >
                           <div className="w-10 h-10 bg-indigo-600 rounded-full flex items-center justify-center text-white shadow-lg shadow-indigo-100 group-hover:rotate-180 transition-transform duration-700 ease-in-out shrink-0">
                             <Plus size={24} />
                           </div>
                           <span className="ml-3 pr-4 text-sm font-black text-black opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                            {activeTab === 'report-analysis' ? 'Create Report' : 'Add Brand'}
+                            Add Brand
                           </span>
                         </button>
-                      )
+                    ) : activeTab === 'report-analysis' ? (
+                      <div />
                     ) : (
                       <div>
-                        <h2 className="text-3xl font-black text-black tracking-tight capitalize">
+                        <h2 className={`text-3xl font-black tracking-tight capitalize ${darkMode ? 'text-white' : 'text-slate-900'}`}>
                           {activeTab.replace('-', ' ')}
                         </h2>
-                        <p className="text-slate-500 font-bold text-sm mt-1">
-                          Welcome back, {user?.name || 'Maverick'}. Here is your intelligence report.
+                        <p className={`font-bold text-sm mt-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                          Welcome back, {user?.name?.trim() || 'Maverick'}. Here is your intelligence report.
                         </p>
                       </div>
                     )}
@@ -4650,17 +5293,20 @@ function App() {
                         <button className="px-5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-black hover:bg-slate-50 transition-all shadow-sm">Export Data</button>
                       )}
                       <button
-                        onClick={activeTab === 'article-reach' ? handleArticleReachRefresh : undefined}
-                        disabled={activeTab === 'article-reach' && isRefreshingReach}
-                        className="px-5 py-2.5 bg-indigo-600 rounded-xl text-xs font-bold text-white hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 flex items-center gap-2"
+                        onClick={activeTab === 'article-reach' ? handleArticleReachRefresh : handleRefreshDashboard}
+                        disabled={isRefreshingDashboard || (activeTab === 'article-reach' && isRefreshingReach)}
+                        className="px-5 py-2.5 bg-indigo-600 rounded-xl text-xs font-bold text-white hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-105 flex items-center gap-2 cursor-pointer disabled:opacity-50"
                       >
-                        {activeTab === 'article-reach' && isRefreshingReach && (
+                        {(isRefreshingDashboard || (activeTab === 'article-reach' && isRefreshingReach)) && (
                           <svg className="animate-spin h-3.5 w-3.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                           </svg>
                         )}
-                        {activeTab === 'article-reach' ? (isRefreshingReach ? 'Refreshing...' : 'Refresh') : 'Refresh Core'}
+                        {activeTab === 'article-reach' 
+                          ? (isRefreshingReach ? 'Refreshing...' : 'Refresh') 
+                          : (isRefreshingDashboard ? 'Refreshing...' : 'Refresh Core')
+                        }
                       </button>
                     </div>
                   )}
@@ -4680,14 +5326,19 @@ function App() {
                     <div className="relative w-full mb-10 pt-4 flex flex-col items-center text-center">
                       {/* Top Right Actions: Keep only Refresh Core */}
                       <div className="absolute right-0 top-0 mt-2">
-                        <button className="px-5 py-2.5 bg-indigo-600 rounded-xl text-xs font-black uppercase tracking-wider text-white hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20 font-heading">
-                          Refresh Core
+                        <button 
+                          onClick={handleRefreshDashboard}
+                          disabled={isRefreshingDashboard}
+                          className="px-5 py-2.5 bg-indigo-600 rounded-xl text-xs font-black uppercase tracking-wider text-white hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20 font-heading flex items-center gap-2 cursor-pointer disabled:opacity-50 active:scale-95"
+                        >
+                          <RotateCcw size={14} className={isRefreshingDashboard ? 'animate-spin' : ''} />
+                          {isRefreshingDashboard ? 'Refreshing...' : 'Refresh Core'}
                         </button>
                       </div>
 
                       <div className="space-y-4 max-w-3xl mt-12 md:mt-8">
                         <h1 className="text-5xl md:text-6xl font-light tracking-tight text-slate-800 dark:text-white font-heading">
-                          Hi <span className={darkMode ? 'text-[#00F2FE]' : 'text-indigo-650'}>{user?.name || 'Manvi'}</span>
+                          Hi <span className={darkMode ? 'text-[#00F2FE]' : 'text-indigo-600'}>{user?.name?.trim() || 'Manvi'}</span>
                         </h1>
                         <h2 className="text-3xl md:text-4xl font-black tracking-tight text-slate-900 dark:text-white font-heading">
                           what would you like to do today?
@@ -4744,7 +5395,7 @@ function App() {
                               />
                             </div>
                             <div className="flex flex-col">
-                              <h3 className={`text-base font-black leading-snug font-heading ${darkMode ? 'text-[#00F2FE]' : 'text-indigo-650'}`}>
+                              <h3 className={`text-base font-black leading-snug font-heading ${darkMode ? 'text-[#00F2FE]' : 'text-indigo-600'}`}>
                                 {card.title}
                               </h3>
                               <p className={`text-[10.5px] font-bold mt-0.5 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
@@ -4762,115 +5413,7 @@ function App() {
                       ))}
                     </div>
 
-                    {/* Cleo AI Section */}
-                    {showCleoAi && (
-                      <div id="cleo-chat-widget" className={`p-8 rounded-[2rem] border transition-all duration-500 shadow-2xl flex flex-col animate-in fade-in slide-in-from-bottom-8 zoom-in-98 duration-500 ${
-                        darkMode
-                          ? 'bg-[#0e2238] border-white/5 shadow-black/30'
-                          : 'bg-white border-slate-250/50 shadow-slate-100'
-                      }`}>
-                        {/* Header */}
-                        <div className={`flex items-center justify-between pb-5 border-b ${darkMode ? 'border-white/10' : 'border-slate-200'}`}>
-                          <div className="flex items-center gap-3">
-                            <div className="w-12 h-12 rounded-full overflow-hidden shrink-0 border border-indigo-500/20 bg-slate-950/20 flex items-center justify-center shadow-md">
-                              <img
-                                src="/cleo_avatar.png"
-                                alt="Cleo Mascot"
-                                className="w-full h-full object-cover"
-                                onError={(e) => {
-                                  e.target.style.display = 'none';
-                                  e.target.nextSibling.style.display = 'inline';
-                                }}
-                              />
-                              <span style={{ display: 'none' }} className="text-2xl">🐶</span>
-                            </div>
-                            <div>
-                              <h3 className={`text-base font-black tracking-tight font-heading ${darkMode ? 'text-white' : 'text-slate-900'}`}>Cleo AI</h3>
-                              <p className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider flex items-center gap-1.5 mt-0.5">
-                                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                                Autonomous PR Agent Online
-                              </p>
-                            </div>
-                          </div>
-                          
-                          {/* Clear Chat Button */}
-                          <button
-                            type="button"
-                            onClick={() => setCleoMessages([{ sender: 'cleo', text: 'Conversation cleared. How can I assist you now?' }])}
-                            className={`p-2.5 rounded-xl transition-all ${
-                              darkMode ? 'hover:bg-white/10 text-slate-400 hover:text-white' : 'hover:bg-slate-100 text-slate-500 hover:text-slate-900'
-                            }`}
-                            title="Clear conversation"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
 
-                        {/* Chat Body */}
-                        <div 
-                          id="cleo-messages-container" 
-                          className="py-5 space-y-5 max-h-[350px] min-h-[180px] overflow-y-auto custom-scrollbar flex flex-col pr-1"
-                        >
-                          {cleoMessages.map((msg, i) => (
-                            <div
-                              key={i}
-                              className={`flex gap-3 max-w-[80%] items-end ${msg.sender === 'user' ? 'self-end flex-row-reverse' : 'self-start'}`}
-                            >
-                              {msg.sender === 'cleo' && (
-                                <div className="w-7 h-7 rounded-full overflow-hidden shrink-0 border border-indigo-500/10 bg-slate-950/10 flex items-center justify-center shadow-inner">
-                                  <img
-                                    src="/cleo_avatar.png"
-                                    alt="Cleo"
-                                    className="w-full h-full object-cover"
-                                    onError={(e) => {
-                                      e.target.style.display = 'none';
-                                      e.target.nextSibling.style.display = 'inline';
-                                    }}
-                                  />
-                                  <span style={{ display: 'none' }} className="text-xs">🐶</span>
-                                </div>
-                              )}
-                              <div
-                                className={`rounded-2xl p-4 text-xs font-semibold leading-relaxed animate-in fade-in duration-300 shadow-sm ${
-                                  msg.sender === 'user'
-                                    ? 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-tr-none shadow-indigo-600/10'
-                                    : (darkMode 
-                                        ? 'bg-[#1b314f] text-white rounded-tl-none border border-white/5 shadow-inner' 
-                                        : 'bg-slate-50 text-slate-800 rounded-tl-none border border-slate-200/50')
-                                }`}
-                              >
-                                <p className="whitespace-pre-wrap">{msg.text}</p>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* Input Form */}
-                        <form onSubmit={handleSendCleoMessage} className={`flex gap-3 pt-5 border-t ${darkMode ? 'border-white/10' : 'border-slate-200'}`}>
-                          <div className="relative flex-1 flex items-center">
-                            <Sparkles size={14} className={`absolute left-4 ${darkMode ? 'text-indigo-400' : 'text-indigo-600'}`} />
-                            <input
-                              id="cleo-chat-input"
-                              type="text"
-                              placeholder="Ask Cleo: e.g. how do I create a report?"
-                              value={cleoInput}
-                              onChange={(e) => setCleoInput(e.target.value)}
-                              className={`w-full py-4 pl-10 pr-5 rounded-2xl text-xs font-bold outline-none transition-all ${
-                                darkMode
-                                  ? 'bg-white/5 border border-white/10 text-white placeholder:text-slate-500 focus:bg-white/10 focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50'
-                                  : 'bg-slate-50 border border-slate-200 text-slate-950 placeholder:text-slate-400 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500'
-                              }`}
-                            />
-                          </div>
-                          <button
-                            type="submit"
-                            className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-4 rounded-2xl text-xs font-black uppercase tracking-widest transition-all shadow-lg shadow-indigo-600/20 active:scale-95 flex items-center justify-center font-heading"
-                          >
-                            Send
-                          </button>
-                        </form>
-                      </div>
-                    )}
                   </div>
                 ) : activeTab === 'article-reach' ? (
                   <div className={`flex flex-col ${sidebarCollapsed ? 'max-w-[1850px]' : 'max-w-[1700px]'} mx-auto w-full animate-in fade-in duration-700 pr-2 transition-all duration-500`}>
@@ -4950,20 +5493,19 @@ function App() {
                                   <div className="flex items-center justify-between gap-4 mt-2" onClick={(e) => e.stopPropagation()}>
                                     <div className="flex items-center gap-2">
                                       <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Engine:</span>
-                                      <select
-                                        value={reachVersion}
-                                        onChange={(e) => setReachVersion(e.target.value)}
-                                        className={`py-2 px-3 ${
-                                          darkMode ? 'bg-slate-900 border-white/10 text-slate-300' : 'bg-slate-50 border border-slate-200 text-slate-600'
-                                        } rounded-xl text-[9px] font-black uppercase tracking-wider outline-none focus:border-indigo-600 cursor-pointer`}
-                                      >
-                                        <option value="v9">v9.0 Sovereign</option>
-                                        <option value="v8">v8.0 Oracle</option>
-                                        <option value="v7">v7.0 Truth</option>
-                                        <option value="v6">v6.0 Integrated</option>
-                                        <option value="v5">v5.0 Agentic</option>
-                                      </select>
+                                      <span className={`py-2 px-3 rounded-xl text-[9px] font-black uppercase tracking-wider border ${darkMode ? 'bg-slate-900 border-white/10 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>
+                                        v10.0 Apex
+                                      </span>
                                     </div>
+                                    {/* Future engine options — uncomment select below to re-enable:
+                                    <select value={reachVersion} onChange={(e) => setReachVersion(e.target.value)}>
+                                      <option value="v10">v10.0 Apex</option>
+                                      <option value="v9">v9.0 Sovereign</option>
+                                      <option value="v8">v8.0 Oracle</option>
+                                      <option value="v7">v7.0 Truth</option>
+                                      <option value="v6">v6.0 Integrated</option>
+                                      <option value="v5">v5.0 Agentic</option>
+                                    </select> */}
 
                                     <button
                                       onClick={handleReachScan}
@@ -5021,7 +5563,7 @@ function App() {
                                 <div className="flex-1 flex flex-col justify-end mt-auto relative" onClick={(e) => e.stopPropagation()}>
                                   <input
                                     type="file"
-                                    accept=".xlsx, .xls"
+                                    accept=".xlsx,.xls"
                                     className="absolute inset-0 opacity-0 cursor-pointer z-10"
                                     onChange={handleExcelUpload}
                                   />
@@ -5040,41 +5582,46 @@ function App() {
                       </div>
                     ) : reachScanning && reachMode === 'single' && !reachResult ? (
                       /* Clean Glassmorphic Loader Screen */
-                      <div className="w-full max-w-md mx-auto py-20 px-8 bg-white/40 backdrop-blur-md border border-slate-100 rounded-[2.5rem] shadow-xl flex flex-col items-center justify-center text-center space-y-8 animate-in fade-in duration-500">
+                      <div className={`w-full max-w-md mx-auto py-20 px-8 backdrop-blur-md border rounded-[2.5rem] shadow-xl flex flex-col items-center justify-center text-center space-y-8 animate-in fade-in duration-500 ${darkMode ? 'bg-[#151f32] border-white/5' : 'bg-white/80 border-slate-100'}`}>
                         <div className="relative w-16 h-16">
-                          <div className="absolute inset-0 rounded-full border-4 border-indigo-100"></div>
+                          <div className={`absolute inset-0 rounded-full border-4 ${darkMode ? 'border-indigo-900/50' : 'border-indigo-100'}`}></div>
                           <div className="absolute inset-0 rounded-full border-4 border-t-indigo-600 border-r-indigo-600 animate-spin"></div>
                           <div className="absolute inset-2 rounded-full border-2 border-indigo-50/20 bg-indigo-500/10 flex items-center justify-center">
-                            <Zap className="w-6 h-6 text-indigo-600 animate-pulse" />
+                            <Zap className="w-6 h-6 text-indigo-500 animate-pulse" />
                           </div>
                         </div>
                         <div className="space-y-2">
-                          <h3 className="text-xl font-black text-slate-800 tracking-tight">Analyzing Article Impact</h3>
+                          <h3 className={`text-xl font-black tracking-tight ${darkMode ? 'text-white' : 'text-slate-800'}`}>Analyzing Article Impact</h3>
                           <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Running reach estimation models...</p>
                         </div>
-                        <div className="w-48 h-1 bg-slate-100 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-indigo-600 transition-all duration-300 ease-out rounded-full"
-                            style={{ width: `${Math.min(100, Math.max(10, ((24 - reachTimer) / 24) * 100))}%` }}
-                          ></div>
+                        <div className={`w-48 h-1 rounded-full overflow-hidden ${darkMode ? 'bg-white/10' : 'bg-slate-100'}`}>
+                          {(() => {
+                            const maxT = reachVersion === 'v10' ? 26 : reachVersion === 'v9' ? 24 : reachVersion === 'v8' ? 22 : 20;
+                            return (
+                              <div
+                                className="h-full bg-indigo-600 transition-all duration-300 ease-out rounded-full"
+                                style={{ width: `${Math.min(100, Math.max(5, ((maxT - reachTimer) / maxT) * 100))}%` }}
+                              />
+                            );
+                          })()}
                         </div>
-                        <p className="text-xs font-medium text-slate-500">
+                        <p className={`text-xs font-medium ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
                           Querying global traffic metrics, extracting domain weights, and computing sentiment profiles.
                         </p>
                       </div>
                     ) : reachError ? (
                       /* Error View */
-                      <div className="w-full max-w-2xl mx-auto py-12 px-8 bg-red-50 border border-red-100 rounded-[2.5rem] text-center space-y-6">
+                      <div className={`w-full max-w-2xl mx-auto py-12 px-8 border rounded-[2.5rem] text-center space-y-6 ${darkMode ? 'bg-red-950/20 border-red-900/30' : 'bg-red-50 border-red-100'}`}>
                         <div className="w-16 h-16 bg-red-100 rounded-2xl flex items-center justify-center text-red-600 mx-auto">
                           <AlertTriangle size={32} />
                         </div>
                         <div>
-                          <h3 className="text-xl font-black text-red-900">Analysis Interrupted</h3>
-                          <p className="text-sm font-bold text-red-700/80 mt-2">{reachError}</p>
+                          <h3 className={`text-xl font-black ${darkMode ? 'text-red-400' : 'text-red-900'}`}>Analysis Interrupted</h3>
+                          <p className={`text-sm font-bold mt-2 ${darkMode ? 'text-red-400/70' : 'text-red-700/80'}`}>{reachError}</p>
                         </div>
                         <button
-                          onClick={() => setIsScanningReach(false)}
-                          className="px-6 py-3 bg-white border border-red-200 hover:bg-red-100/50 text-red-700 rounded-xl text-xs font-black uppercase tracking-widest transition-all"
+                          onClick={() => { setIsScanningReach(false); setReachError(''); }}
+                          className={`px-6 py-3 border rounded-xl text-xs font-black uppercase tracking-widest transition-all ${darkMode ? 'bg-transparent border-red-700/40 hover:bg-red-900/30 text-red-400' : 'bg-white border-red-200 hover:bg-red-100/50 text-red-700'}`}
                         >
                           Go Back
                         </button>
@@ -5083,15 +5630,15 @@ function App() {
                       /* Minimalist Single URL Result View */
                       <div className="max-w-4xl mx-auto space-y-8 pb-20 animate-in fade-in duration-500">
                         {/* Header */}
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white/40 backdrop-blur-md border border-slate-100 rounded-3xl p-6 shadow-sm">
+                        <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-4 border rounded-3xl p-6 shadow-sm ${darkMode ? 'bg-[#151f32] border-white/5' : 'bg-white border-slate-100'}`}>
                           <div className="min-w-0 flex-1">
                             <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-1">Article Headline</h3>
-                            <p className="text-base font-extrabold text-slate-800 line-clamp-2 leading-snug" title={reachResult.title || reachResult.url}>
+                            <p className={`text-base font-extrabold line-clamp-2 leading-snug ${darkMode ? 'text-white' : 'text-slate-800'}`} title={reachResult.title || reachResult.url}>
                               {reachResult.title || reachResult.url}
                             </p>
                           </div>
                           <button
-                            onClick={() => setIsScanningReach(false)}
+                            onClick={() => { setIsScanningReach(false); setReachResult(null); }}
                             className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all shadow-md shrink-0 self-start sm:self-center"
                           >
                             New Scan
@@ -5101,16 +5648,16 @@ function App() {
                         {/* Two Columns Grid */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                           {/* Card 1: Estimated Reach */}
-                          <div className="bg-white border border-slate-100 rounded-[2.5rem] p-10 shadow-lg flex flex-col justify-between min-h-[240px] relative overflow-hidden transition-all hover:shadow-xl hover:scale-[1.01]">
-                            <div className="absolute top-0 right-0 w-40 h-40 bg-indigo-50/50 rounded-full blur-2xl -mr-20 -mt-20"></div>
+                          <div className={`border rounded-[2.5rem] p-10 shadow-lg flex flex-col justify-between min-h-[240px] relative overflow-hidden transition-all hover:shadow-xl hover:scale-[1.01] ${darkMode ? 'bg-[#151f32] border-white/5' : 'bg-white border-slate-100'}`}>
+                            <div className="absolute top-0 right-0 w-40 h-40 bg-indigo-500/5 rounded-full blur-2xl -mr-20 -mt-20"></div>
                             <div className="relative z-10 flex items-center justify-between mb-4">
                               <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Estimated Reach</span>
-                              <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600">
+                              <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-indigo-600 ${darkMode ? 'bg-indigo-900/40' : 'bg-indigo-50'}`}>
                                 <Globe size={20} />
                               </div>
                             </div>
                             <div className="relative z-10 flex flex-col justify-end mt-auto">
-                              <span className="text-5xl font-black text-indigo-600 tracking-tighter leading-none">
+                              <span className="text-5xl font-black text-indigo-500 tracking-tighter leading-none">
                                 {reachResult.estimatedReach?.toLocaleString() || '0'}
                               </span>
                               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-3">
@@ -5174,11 +5721,11 @@ function App() {
                       <div className="h-full flex flex-col space-y-8 animate-in slide-in-from-bottom-8 duration-700">
                         <div className="flex items-center justify-between">
                           <div>
-                            <h2 className="text-3xl font-black text-slate-900 tracking-tight">Batch Reach Analysis</h2>
+                            <h2 className={`text-3xl font-black tracking-tight ${darkMode ? 'text-white' : 'text-slate-900'}`}>Batch Reach Analysis</h2>
                             <p className="text-slate-400 text-sm font-bold mt-1">Processed {excelFile?.name || 'spreadsheet'} • Version: {reachVersion}</p>
                           </div>
                           <div className="flex gap-4">
-                            <button onClick={() => setIsScanningReach(false)} className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all">Back</button>
+                            <button onClick={() => setIsScanningReach(false)} className={`px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${darkMode ? 'bg-white/10 hover:bg-white/15 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`}>Back</button>
                             {reachBatchJob?.status === 'completed' && (
                               <button
                                 onClick={() => window.open(`${API_BASE}/api/download-result/${reachBatchJob.id}`, '_blank')}
@@ -5192,22 +5739,22 @@ function App() {
                         </div>
 
                         {reachBatchJob && (
-                          <div className="w-full bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-sm space-y-4">
+                          <div className={`w-full border rounded-[2.5rem] p-8 shadow-sm space-y-4 ${darkMode ? 'bg-[#151f32] border-white/5' : 'bg-white border-slate-100'}`}>
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-3">
-                                <div className={`p-2.5 rounded-2xl ${reachBatchJob.status === 'completed' ? 'bg-emerald-50 text-emerald-600' : 'bg-indigo-50 text-indigo-600'}`}>
+                                <div className={`p-2.5 rounded-2xl ${reachBatchJob.status === 'completed' ? 'bg-emerald-50 text-emerald-600' : darkMode ? 'bg-indigo-900/40 text-indigo-400' : 'bg-indigo-50 text-indigo-600'}`}>
                                   <FileText size={20} />
                                 </div>
                                 <div>
                                   <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Batch Job: {reachBatchJob.id.slice(0, 8)}</p>
-                                  <p className="text-sm font-black text-slate-900 capitalize">Status: {reachBatchJob.status}</p>
+                                  <p className={`text-sm font-black capitalize ${darkMode ? 'text-white' : 'text-slate-900'}`}>Status: {reachBatchJob.status}</p>
                                 </div>
                               </div>
-                              <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
                                 {reachBatchJob.processed_urls} / {reachBatchJob.total_urls} URLs Processed
                               </span>
                             </div>
-                            <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                            <div className={`w-full h-2.5 rounded-full overflow-hidden ${darkMode ? 'bg-white/10' : 'bg-slate-100'}`}>
                               <div
                                 className="h-full bg-indigo-600 transition-all duration-500"
                                 style={{ width: `${reachBatchJob.total_urls > 0 ? (reachBatchJob.processed_urls / reachBatchJob.total_urls) * 100 : 0}%` }}
@@ -5219,30 +5766,30 @@ function App() {
                           </div>
                         )}
 
-                        <div className="flex-1 bg-white border border-slate-200 rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col">
+                        <div className={`flex-1 border rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col ${darkMode ? 'bg-[#0d1527] border-white/5' : 'bg-white border-slate-200'}`}>
                           <div className="overflow-auto max-h-[1050px] custom-scrollbar">
                             <table className="w-full text-left border-collapse">
-                              <thead className="sticky top-0 z-10 bg-slate-50">
-                                <tr className="border-b border-slate-100">
-                                  <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-50">ID</th>
-                                  <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-50">Article URL</th>
-                                  <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-50">Sentiment</th>
-                                  <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-50">Mentions</th>
-                                  <th className="px-8 py-6 text-[10px] font-black text-[#219ebc] uppercase tracking-[0.2em] bg-[#219ebc]/5">Estimated Reach</th>
-                                  <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right bg-slate-50">Status</th>
+                              <thead className={`sticky top-0 z-10 ${darkMode ? 'bg-[#0d1527]' : 'bg-slate-50'}`}>
+                                <tr className={`border-b ${darkMode ? 'border-white/5' : 'border-slate-100'}`}>
+                                  <th className={`px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest ${darkMode ? 'bg-[#0d1527]' : 'bg-slate-50'}`}>ID</th>
+                                  <th className={`px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest ${darkMode ? 'bg-[#0d1527]' : 'bg-slate-50'}`}>Article URL</th>
+                                  <th className={`px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest ${darkMode ? 'bg-[#0d1527]' : 'bg-slate-50'}`}>Sentiment</th>
+                                  <th className={`px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest ${darkMode ? 'bg-[#0d1527]' : 'bg-slate-50'}`}>Mentions</th>
+                                  <th className={`px-8 py-6 text-[10px] font-black text-[#219ebc] uppercase tracking-[0.2em] ${darkMode ? 'bg-[#219ebc]/5' : 'bg-[#219ebc]/5'}`}>Estimated Reach</th>
+                                  <th className={`px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right ${darkMode ? 'bg-[#0d1527]' : 'bg-slate-50'}`}>Status</th>
                                 </tr>
                               </thead>
                               <tbody>
                                 {reachBatchJob?.results && reachBatchJob.results.length > 0 ? (
                                   reachBatchJob.results.map((row, idx) => (
-                                    <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors group">
+                                    <tr key={idx} className={`border-b transition-colors group ${darkMode ? 'border-white/5 hover:bg-white/[0.02]' : 'border-slate-50 hover:bg-slate-50/50'}`}>
                                       <td className="px-8 py-5 text-xs font-black text-slate-400">{row.id}</td>
-                                      <td className="px-8 py-5 text-sm font-bold text-slate-900 max-w-xs truncate">
+                                      <td className={`px-8 py-5 text-sm font-bold max-w-xs truncate ${darkMode ? 'text-slate-300' : 'text-slate-900'}`}>
                                         <a
                                           href={row.url}
                                           target="_blank"
                                           rel="noopener noreferrer"
-                                          className="hover:underline hover:text-indigo-600 transition-colors inline-flex items-center gap-1.5"
+                                          className="hover:underline hover:text-indigo-500 transition-colors inline-flex items-center gap-1.5"
                                           title={row.url}
                                         >
                                           {row.url}
@@ -5251,14 +5798,14 @@ function App() {
                                       </td>
                                       <td className="px-8 py-5">
                                         {row.status === 'Pending' ? (
-                                          <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest bg-slate-100 text-slate-400">Pending</span>
+                                          <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${darkMode ? 'bg-white/5 text-slate-500' : 'bg-slate-100 text-slate-400'}`}>Pending</span>
                                         ) : (
                                           <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${row.sentiment === 'Positive' ? 'bg-emerald-50 text-emerald-600' :
-                                            row.sentiment === 'Negative' ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-500'
+                                            row.sentiment === 'Negative' ? 'bg-red-50 text-red-600' : darkMode ? 'bg-white/5 text-slate-400' : 'bg-slate-100 text-slate-500'
                                             }`}>{row.sentiment}</span>
                                         )}
                                       </td>
-                                      <td className="px-8 py-5 text-sm font-black text-slate-700">
+                                      <td className={`px-8 py-5 text-sm font-black ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>
                                         {row.status === 'Pending' ? '-' : (typeof row.mentions === 'number' ? row.mentions.toLocaleString() : row.mentions)}
                                       </td>
                                       <td className="px-8 py-5 text-sm font-black text-[#219ebc] bg-[#219ebc]/[0.02] group-hover:bg-[#219ebc]/5 transition-all">
@@ -5276,7 +5823,7 @@ function App() {
                                           </div>
                                         ) : row.status === 'Failed' ? (
                                           <div className="flex items-center justify-end gap-2 text-red-500">
-                                            <X size={14} className="text-red-500" />
+                                            <X size={14} />
                                             <span className="text-[10px] font-black uppercase tracking-widest">Failed</span>
                                           </div>
                                         ) : (
@@ -5290,7 +5837,7 @@ function App() {
                                   ))
                                 ) : (
                                   <tr>
-                                    <td colSpan="6" className="px-8 py-12 text-center text-slate-400 text-sm font-bold">
+                                    <td colSpan="6" className={`px-8 py-12 text-center text-sm font-bold ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>
                                       No URLs analyzed yet. Please upload a spreadsheet to start batch analysis.
                                     </td>
                                   </tr>
@@ -5308,7 +5855,7 @@ function App() {
                     {/* Welcome Header */}
                     <div className="text-center py-10 space-y-4 max-w-2xl mx-auto animate-in fade-in duration-700">
                       <h1 className={`text-5xl md:text-6xl font-light tracking-tight font-sans ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                        Welcome back <span className={`font-black ${darkMode ? 'text-white' : 'text-slate-950'}`}>{(user?.name || 'Manvi').trim().split(' ')[0]}</span>
+                        Welcome back <span className={`font-black ${darkMode ? 'text-white' : 'text-slate-950'}`}>{(user?.name?.trim() ? user.name.trim().split(' ')[0] : 'Manvi')}</span>
                       </h1>
                     </div>
 
@@ -5337,18 +5884,22 @@ function App() {
                                   : 'bg-white border border-slate-200 text-slate-800 hover:bg-slate-50'
                               }`}
                             >
-                              <option value="All" className={darkMode ? 'bg-[#151f32] text-white' : 'bg-white text-slate-800'}>All Sectors</option>
-                              <option value="AI" className={darkMode ? 'bg-[#151f32] text-white' : 'bg-white text-slate-800'}>AI</option>
-                              <option value="STARTUP" className={darkMode ? 'bg-[#151f32] text-white' : 'bg-white text-slate-800'}>Startup</option>
-                              <option value="CONSULTANCY" className={darkMode ? 'bg-[#151f32] text-white' : 'bg-white text-slate-800'}>Consultancy</option>
-                              <option value="FINANCE" className={darkMode ? 'bg-[#151f32] text-white' : 'bg-white text-slate-800'}>Finance</option>
-                              <option value="TECHNOLOGY" className={darkMode ? 'bg-[#151f32] text-white' : 'bg-white text-slate-800'}>Technology</option>
-                              <option value="HEALTHCARE" className={darkMode ? 'bg-[#151f32] text-white' : 'bg-white text-slate-800'}>Healthcare</option>
-                              <option value="EDUCATION" className={darkMode ? 'bg-[#151f32] text-white' : 'bg-white text-slate-800'}>Education</option>
-                              <option value="ENERGY" className={darkMode ? 'bg-[#151f32] text-white' : 'bg-white text-slate-800'}>Energy</option>
-                              <option value="RETAIL" className={darkMode ? 'bg-[#151f32] text-white' : 'bg-white text-slate-800'}>Retail</option>
-                              <option value="MEDIA" className={darkMode ? 'bg-[#151f32] text-white' : 'bg-white text-slate-800'}>Media</option>
-                              <option value="AUTOMOTIVE" className={darkMode ? 'bg-[#151f32] text-white' : 'bg-white text-slate-800'}>Automotive</option>
+                              {[
+                                { value: 'All',          label: 'All Sectors' },
+                                { value: 'AI',           label: 'AI' },
+                                { value: 'TECH',         label: 'Tech' },
+                                { value: 'FOODS_DRINKS', label: 'Foods & Drinks' },
+                                { value: 'HEALTHCARE',   label: 'Healthcare' },
+                                { value: 'TRAVEL',       label: 'Travel' },
+                                { value: 'CONSULTANCY',  label: 'Consultancies' },
+                                { value: 'STARTUP',      label: 'Startups' },
+                                { value: 'LIFESTYLE',    label: 'Lifestyle' },
+                                { value: 'POLICIES',     label: 'Policies' },
+                                { value: 'STOCK_MARKET', label: 'Stock Market' },
+                                { value: 'REAL_ESTATE',  label: 'Real Estate' },
+                              ].map(({ value, label }) => (
+                                <option key={value} value={value} className={darkMode ? 'bg-[#151f32] text-white' : 'bg-white text-slate-800'}>{label}</option>
+                              ))}
                             </select>
                           </div>
                         </div>
@@ -5394,9 +5945,10 @@ function App() {
                           <textarea
                             rows={3}
                             placeholder="e.g. Qualcomm, MediaTek, Intel, AMD, Nvidia"
-                            className={`w-full py-4 px-6 ${darkMode ? 'bg-white/5 border-white/10 text-white placeholder:text-slate-500' : 'bg-white border-slate-200 text-slate-900 placeholder:text-slate-400'} border rounded-2xl text-xs font-bold outline-none transition-all hover:border-indigo-350 focus:border-indigo-500 shadow-inner resize-none`}
+                            className={`w-full py-4 px-6 ${darkMode ? 'bg-white/5 border-white/10 text-white placeholder:text-slate-500' : 'bg-white border-slate-200 text-slate-900 placeholder:text-slate-400'} border rounded-2xl text-xs font-bold outline-none transition-all hover:border-indigo-500 focus:border-indigo-500 shadow-inner resize-none`}
                             value={targetBrandsInput}
-                            onChange={(e) => setTargetBrandsInput(e.target.value)}
+                            onChange={(e) => { setTargetBrandsInput(e.target.value); setKeywordSearchError(null); }}
+                            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleKeywordSearch(); } }}
                           />
                         </div>
 
@@ -5424,11 +5976,18 @@ function App() {
                         </div>
                       </div>
 
-                      <div className="mt-8 flex justify-center">
+                      {keywordSearchError && (
+                        <div className="mt-6 flex items-center gap-3 px-5 py-4 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-bold">
+                          <AlertCircle size={16} className="shrink-0" />
+                          {keywordSearchError}
+                        </div>
+                      )}
+
+                      <div className="mt-8 flex flex-col items-center gap-3">
                         <button
                           onClick={handleKeywordSearch}
                           disabled={isSearchingKeyword || !targetBrandsInput.trim()}
-                          className="px-16 py-4 bg-[#00F2FE] hover:bg-cyan-400 text-slate-950 font-black uppercase tracking-widest text-[11px] rounded-full shadow-lg shadow-cyan-400/20 transition-all active:scale-95 duration-200 disabled:opacity-50 font-heading"
+                          className="px-16 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest text-[11px] rounded-full shadow-lg shadow-indigo-600/20 transition-all active:scale-95 duration-200 disabled:opacity-40 disabled:cursor-not-allowed font-heading"
                         >
                           {isSearchingKeyword ? 'Analyzing Corpus...' : 'Analyze Exposure'}
                         </button>
@@ -5512,264 +6071,432 @@ function App() {
 
                         {/* Top Publications & Market Share */}
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-                          {/* 2. Top Indian Publications */}
+                          {/* 2. Publication Brand Coverage */}
                           <div className={`${darkMode ? 'bg-[#151f32] border-white/5' : 'bg-white border-slate-200/60'} border rounded-[2.5rem] p-8 shadow-md flex flex-col`}>
-                            <h3 className={`text-lg font-black uppercase tracking-wider mb-6 flex items-center gap-3 font-heading ${darkMode ? 'text-[#00F2FE]' : 'text-indigo-600'}`}>
-                              2. Top Indian Publications
+                            <h3 className={`text-lg font-black uppercase tracking-wider mb-1 flex items-center gap-3 font-heading ${darkMode ? 'text-[#00F2FE]' : 'text-indigo-600'}`}>
+                              2. Publication Brand Coverage
                             </h3>
-                            <div className="flex-1 space-y-3 overflow-y-auto max-h-80 custom-scrollbar pr-2">
+                            <p className={`text-[10px] font-semibold mb-5 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>How each outlet splits coverage across your tracked brands</p>
+                            <div className="flex-1 space-y-4 overflow-y-auto max-h-80 custom-scrollbar pr-2">
                               {(() => {
+                                const brandKeys = Object.keys(curatedAnalysisResults.brands || {});
                                 const sourceMap = {};
                                 Object.entries(curatedAnalysisResults.brands || {}).forEach(([b, d]) => {
                                   Object.entries(d.sources || {}).forEach(([src, count]) => {
                                     if (!sourceMap[src]) sourceMap[src] = { total: 0, brands: {} };
                                     sourceMap[src].total += count;
-                                    sourceMap[src].brands[b] = count;
+                                    sourceMap[src].brands[b] = (sourceMap[src].brands[b] || 0) + count;
                                   });
                                 });
                                 const topSources = Object.entries(sourceMap).sort((a, b) => b[1].total - a[1].total).slice(0, 10);
                                 if (topSources.length === 0) return <div className="text-center py-12 text-slate-400 font-bold text-xs">No publication data.</div>;
 
                                 return topSources.map(([src, d], index) => (
-                                  <div key={src} className={`flex items-center justify-between p-3 rounded-2xl border ${darkMode ? 'bg-white/5 border-white/5' : 'bg-slate-50 border-slate-100'} transition-all`}>
-                                    <div className="flex items-center gap-3 truncate">
-                                      <div className={`w-6 h-6 flex items-center justify-center rounded-lg text-[10px] font-sans font-bold ${
-                                        darkMode ? 'bg-white/10 text-white' : 'bg-indigo-50 text-indigo-600'
-                                      }`}>
-                                        {index + 1}
+                                  <div key={src} className="space-y-2">
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-2 truncate">
+                                        <span className={`w-5 h-5 flex items-center justify-center rounded-md text-[9px] font-black flex-shrink-0 ${darkMode ? 'bg-white/10 text-slate-300' : 'bg-indigo-50 text-indigo-600'}`}>{index + 1}</span>
+                                        <span className={`text-xs font-bold truncate ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>{src}</span>
                                       </div>
-                                      <span className={`text-xs font-bold truncate ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>{src}</span>
+                                      <span className={`text-[9px] font-black flex-shrink-0 ml-2 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{d.total}</span>
                                     </div>
-                                    <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-xl bg-slate-200/50 dark:bg-white/10 text-slate-500 dark:text-slate-300">
-                                      {d.total} mentions
-                                    </span>
+                                    {/* Stacked brand bar */}
+                                    <div className="w-full h-3 rounded-full overflow-hidden flex">
+                                      {brandKeys.map((b, bi) => {
+                                        const count = d.brands[b] || 0;
+                                        const widthPct = d.total > 0 ? (count / d.total) * 100 : 0;
+                                        if (widthPct === 0) return null;
+                                        return (
+                                          <div key={b} title={`${b}: ${count}`}
+                                            className="h-full transition-all duration-500 first:rounded-l-full last:rounded-r-full"
+                                            style={{ width: `${widthPct}%`, backgroundColor: BRAND_COLORS[bi % BRAND_COLORS.length] }} />
+                                        );
+                                      })}
+                                    </div>
+                                    {/* Mini brand legend */}
+                                    <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                                      {brandKeys.filter(b => (d.brands[b] || 0) > 0).map((b, bi) => (
+                                        <span key={b} className="text-[8px] font-bold flex items-center gap-1" style={{ color: BRAND_COLORS[bi % BRAND_COLORS.length] }}>
+                                          ● {b} {d.brands[b]}
+                                        </span>
+                                      ))}
+                                    </div>
                                   </div>
                                 ));
                               })()}
                             </div>
                           </div>
 
-                          {/* 3. Market Share (Pie Chart) */}
-                          <div className={`${darkMode ? 'bg-[#151f32] border-white/5' : 'bg-white border-slate-200/60'} border rounded-[2.5rem] p-8 shadow-md flex flex-col`}>
-                            <div className="flex items-center justify-between mb-6">
-                              <h3 className={`text-lg font-black uppercase tracking-wider flex items-center gap-3 font-heading ${darkMode ? 'text-[#00F2FE]' : 'text-indigo-600'}`}>
-                                3. Market Share
-                              </h3>
-                              <div className="flex bg-slate-100 dark:bg-slate-750 p-1 rounded-xl">
-                                {['Pie Chart', 'Bar Chart'].map((t) => (
-                                  <button
-                                    key={t}
-                                    onClick={() => setCuratedVisualizationType(t)}
-                                    className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
-                                      curatedVisualizationType === t 
-                                        ? 'bg-white dark:bg-[#151f32] text-indigo-600 dark:text-[#00F2FE] shadow-sm' 
-                                        : 'text-slate-400'
-                                    }`}
-                                  >
-                                    {t}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
+                          {/* 3. Market Share (Pie / Bar) */}
+                          {(() => {
+                            const entries = Object.entries(curatedAnalysisResults.brands || {});
+                            const total = entries.reduce((sum, [, d]) => sum + d.mentions, 0);
 
-                            <div className="flex-1 flex flex-col justify-center">
-                              {(() => {
-                                const entries = Object.entries(curatedAnalysisResults.brands || {});
-                                const total = entries.reduce((sum, [, d]) => sum + d.mentions, 0);
-                                if (total === 0) return <div className="text-center py-12 text-slate-400 font-bold text-xs">No mentions found for any brand.</div>;
+                            const renderBarChart = (chartH, chartW, padLeft, fontSize, maxLabelLen) => {
+                              if (total === 0) return <div className="text-center py-12 text-slate-400 font-bold text-xs">No mentions found.</div>;
+                              const maxPct = Math.max(...entries.map(([, d]) => (d.mentions / total) * 100), 1);
+                              const yTop = Math.ceil(maxPct / 10) * 10 + 10;
+                              const yTicks = [];
+                              for (let t = 0; t <= yTop; t += yTop <= 30 ? 5 : yTop <= 60 ? 10 : 20) yTicks.push(t);
+                              const padBottom = 44;
+                              const barAreaW = chartW - padLeft - 12;
+                              const barSpacing = barAreaW / entries.length;
+                              const barW = Math.min(36, barSpacing * 0.55);
+                              const gridColor = darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)';
+                              const axisColor = darkMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.18)';
+                              const labelColor = darkMode ? '#64748b' : '#94a3b8';
+                              return (
+                                <div className="w-full overflow-x-auto">
+                                  <svg viewBox={`0 0 ${chartW} ${chartH + padBottom}`} className="w-full" style={{ minWidth: `${Math.max(180, entries.length * 52)}px` }}>
+                                    {/* Dotted grid lines */}
+                                    {yTicks.filter(t => t > 0).map(tick => {
+                                      const y = chartH - (tick / yTop) * chartH;
+                                      return (
+                                        <line key={tick} x1={padLeft} y1={y} x2={chartW - 8} y2={y}
+                                          stroke={gridColor} strokeDasharray="3 4" strokeWidth="1" />
+                                      );
+                                    })}
+                                    {/* Y-axis line */}
+                                    <line x1={padLeft} y1={0} x2={padLeft} y2={chartH} stroke={axisColor} strokeWidth="1.5" />
+                                    {/* X-axis line */}
+                                    <line x1={padLeft} y1={chartH} x2={chartW - 8} y2={chartH} stroke={axisColor} strokeWidth="1.5" />
+                                    {/* Y-axis tick labels */}
+                                    {yTicks.map(tick => {
+                                      const y = chartH - (tick / yTop) * chartH;
+                                      return (
+                                        <text key={tick} x={padLeft - 4} y={y + 3} textAnchor="end"
+                                          fontSize={fontSize * 0.85} fontWeight="700" fill={labelColor}>
+                                          {tick}%
+                                        </text>
+                                      );
+                                    })}
+                                    {/* Bars */}
+                                    {entries.map(([brand, data], idx) => {
+                                      const pct = (data.mentions / total) * 100;
+                                      const barH = Math.max((pct / yTop) * chartH, 2);
+                                      const x = padLeft + idx * barSpacing + (barSpacing - barW) / 2;
+                                      const y = chartH - barH;
+                                      const color = BRAND_COLORS[idx % BRAND_COLORS.length];
+                                      const isHov = barTooltip?.brand === brand;
+                                      const label = brand.length > maxLabelLen ? brand.slice(0, maxLabelLen - 1) + '…' : brand;
+                                      return (
+                                        <g key={brand} className="cursor-pointer"
+                                          onMouseEnter={(e) => setBarTooltip({ brand, pct: pct.toFixed(1), mentions: data.mentions, color, x: e.clientX, y: e.clientY })}
+                                          onMouseLeave={() => setBarTooltip(null)}>
+                                          {/* Bar */}
+                                          <rect x={x} y={y} width={barW} height={barH} rx="3"
+                                            fill={color} opacity={isHov ? 1 : 0.82}
+                                            style={{ transition: 'opacity 0.15s' }} />
+                                          {/* Value label above bar */}
+                                          <text x={x + barW / 2} y={Math.max(y - 3, 10)} textAnchor="middle"
+                                            fontSize={fontSize} fontWeight="800" fill={color}>
+                                            {pct.toFixed(1)}%
+                                          </text>
+                                          {/* X-axis brand label */}
+                                          <text x={x + barW / 2} y={chartH + 14} textAnchor="middle"
+                                            fontSize={fontSize * 0.88} fontWeight="700" fill={labelColor}>
+                                            {label}
+                                          </text>
+                                        </g>
+                                      );
+                                    })}
+                                  </svg>
+                                </div>
+                              );
+                            };
 
-                                if (curatedVisualizationType === 'Bar Chart') {
-                                  return (
-                                    <div className="flex flex-col sm:flex-row items-center gap-8 py-4">
-                                      {/* Left: Bar Chart */}
-                                      <div className="flex-1 w-full flex flex-col h-44 justify-center">
-                                        {/* Bars area */}
-                                        <div className="flex-1 flex items-end justify-around border-b border-slate-200 dark:border-white/10 pb-2 px-4 gap-4">
-                                          {entries.map(([brand, data], idx) => {
-                                            const pct = ((data.mentions / total) * 100).toFixed(1);
-                                            const color = BRAND_COLORS[idx % BRAND_COLORS.length];
-                                            const heightPct = Math.max(parseFloat(pct), 4);
-                                            return (
-                                              <div key={brand} className="flex-1 flex flex-col items-center h-full justify-end group">
-                                                <span className="text-[9px] font-black mb-1 transition-transform duration-300 group-hover:scale-110" style={{ color }}>
-                                                  {pct}%
-                                                </span>
-                                                <div 
-                                                  className="w-full max-w-[24px] rounded-t-md transition-all duration-700 shadow-sm hover:brightness-110 cursor-pointer"
-                                                  style={{ 
-                                                    height: `${heightPct}%`, 
-                                                    backgroundColor: color 
-                                                  }}
-                                                />
-                                              </div>
-                                            );
-                                          })}
+                            const renderPieChart = (size, legendMaxH) => {
+                              if (total === 0) return <div className="text-center py-12 text-slate-400 font-bold text-xs">No mentions found.</div>;
+                              const CX = 100, CY = 100, R_OUT = 80, R_IN = 48;
+                              let cumAngle = -Math.PI / 2;
+                              const slices = entries.map(([brand, data], idx) => {
+                                if (data.mentions === 0) return null;
+                                const pct = (data.mentions / total) * 100;
+                                const angle = (pct / 100) * 2 * Math.PI;
+                                const startA = cumAngle; cumAngle += angle; const endA = cumAngle;
+                                const midA = (startA + endA) / 2;
+                                const color = BRAND_COLORS[idx % BRAND_COLORS.length];
+                                const gap = 0.025;
+                                const x1 = CX + R_OUT * Math.cos(startA + gap), y1 = CY + R_OUT * Math.sin(startA + gap);
+                                const x2 = CX + R_OUT * Math.cos(endA - gap), y2 = CY + R_OUT * Math.sin(endA - gap);
+                                const xi1 = CX + R_IN * Math.cos(endA - gap), yi1 = CY + R_IN * Math.sin(endA - gap);
+                                const xi2 = CX + R_IN * Math.cos(startA + gap), yi2 = CY + R_IN * Math.sin(startA + gap);
+                                const large = pct > 50 ? 1 : 0;
+                                const d = pct >= 99.9
+                                  ? `M ${CX} ${CY - R_OUT} A ${R_OUT} ${R_OUT} 0 1 1 ${CX - 0.01} ${CY - R_OUT} Z`
+                                  : `M ${x1} ${y1} A ${R_OUT} ${R_OUT} 0 ${large} 1 ${x2} ${y2} L ${xi1} ${yi1} A ${R_IN} ${R_IN} 0 ${large} 0 ${xi2} ${yi2} Z`;
+                                return { brand, pct, color, d, midA };
+                              }).filter(Boolean);
+                              const topBrand = entries.reduce((a, b) => b[1].mentions > a[1].mentions ? b : a, entries[0]);
+                              const topPct = topBrand ? ((topBrand[1].mentions / total) * 100).toFixed(1) : '0';
+                              return (
+                                <div className="flex flex-col sm:flex-row items-center gap-6 py-2">
+                                  <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
+                                    <svg viewBox="0 0 200 200" className="w-full h-full overflow-visible">
+                                      {slices.map(s => (
+                                        <path key={s.brand} d={s.d} fill={s.color}
+                                          onMouseEnter={() => setPieTooltip(s)} onMouseLeave={() => setPieTooltip(null)}
+                                          className="cursor-pointer"
+                                          style={{ filter: pieTooltip?.brand === s.brand ? `drop-shadow(0 0 6px ${s.color}88)` : 'none', opacity: pieTooltip && pieTooltip.brand !== s.brand ? 0.6 : 1, transition: 'opacity 0.2s' }} />
+                                      ))}
+                                      <text x={CX} y={CY - 8} textAnchor="middle" fontSize="18" fontWeight="900" fill={darkMode ? '#fff' : '#0f172a'}>
+                                        {pieTooltip?.brand ? `${pieTooltip.pct.toFixed(1)}%` : `${topPct}%`}
+                                      </text>
+                                      <text x={CX} y={CY + 10} textAnchor="middle" fontSize="8" fontWeight="700" fill={darkMode ? '#64748b' : '#94a3b8'}>
+                                        {(pieTooltip?.brand || topBrand?.[0] || '').slice(0, 12)}
+                                      </text>
+                                      <text x={CX} y={CY + 22} textAnchor="middle" fontSize="7" fontWeight="600" fill={darkMode ? '#475569' : '#cbd5e1'}>
+                                        {pieTooltip?.brand ? 'of mentions' : 'top brand'}
+                                      </text>
+                                      {slices.filter(s => s.pct >= 10).map(s => (
+                                        <text key={s.brand + '-l'} textAnchor="middle" fontSize="8" fontWeight="800" fill="#fff" style={{ pointerEvents: 'none' }}
+                                          x={CX + (R_IN + (R_OUT - R_IN) / 2) * Math.cos(s.midA)}
+                                          y={CY + (R_IN + (R_OUT - R_IN) / 2) * Math.sin(s.midA) + 3}>
+                                          {s.pct.toFixed(0)}%
+                                        </text>
+                                      ))}
+                                    </svg>
+                                    {pieTooltip && (
+                                      <div className="absolute -top-10 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-xl bg-slate-900 border border-white/10 text-white text-[10px] font-bold shadow-2xl whitespace-nowrap z-10 pointer-events-none">
+                                        <span style={{ color: pieTooltip.color }}>{pieTooltip.brand || pieTooltip.src}</span>
+                                        <span className="text-slate-400 ml-1.5">{pieTooltip.pct?.toFixed(1)}%</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div className="space-y-2.5 flex-1 w-full overflow-y-auto custom-scrollbar pr-1" style={{ maxHeight: legendMaxH }}>
+                                    {entries.map(([brand, data], idx) => {
+                                      const pct = ((data.mentions / total) * 100).toFixed(1);
+                                      const color = BRAND_COLORS[idx % BRAND_COLORS.length];
+                                      return (
+                                        <div key={brand} onMouseEnter={() => setPieTooltip({ brand, pct: parseFloat(pct), color })} onMouseLeave={() => setPieTooltip(null)} className="cursor-pointer">
+                                          <div className="flex items-center justify-between text-xs mb-1">
+                                            <div className="flex items-center gap-2 truncate pr-2">
+                                              <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+                                              <span className={`font-bold truncate ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>{brand}</span>
+                                            </div>
+                                            <span className="font-black flex-shrink-0 ml-2" style={{ color }}>{pct}%</span>
+                                          </div>
+                                          <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: darkMode ? 'rgba(255,255,255,0.07)' : '#f1f5f9' }}>
+                                            <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, backgroundColor: color }} />
+                                          </div>
                                         </div>
-                                        {/* Labels area */}
-                                        <div className="flex justify-around pt-2 px-4 gap-4">
-                                          {entries.map(([brand]) => (
-                                            <div key={brand} className="flex-1 text-center truncate">
-                                              <span className={`text-[9px] font-black uppercase tracking-wider truncate block ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-                                                {brand}
-                                              </span>
-                                            </div>
-                                          ))}
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              );
+                            };
+
+                            const isMaximized = maximizedChart === 'market';
+                            return (
+                              <>
+                                {/* Card */}
+                                <div className={`${darkMode ? 'bg-[#151f32] border-white/5' : 'bg-white border-slate-200/60'} border rounded-[2.5rem] p-8 shadow-md flex flex-col`}>
+                                  <div className="flex items-center justify-between mb-6">
+                                    <h3 className={`text-lg font-black uppercase tracking-wider flex items-center gap-3 font-heading ${darkMode ? 'text-[#00F2FE]' : 'text-indigo-600'}`}>
+                                      3. Market Share
+                                    </h3>
+                                    <div className="flex items-center gap-2">
+                                      <div className={`flex p-1 rounded-xl ${darkMode ? 'bg-white/5' : 'bg-slate-100'}`}>
+                                        {['Pie Chart', 'Bar Chart'].map((t) => (
+                                          <button key={t} onClick={() => setCuratedVisualizationType(t)}
+                                            className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${curatedVisualizationType === t ? `bg-white ${darkMode ? 'dark:bg-[#151f32] text-indigo-500' : 'text-indigo-600'} shadow-sm` : 'text-slate-400'}`}>
+                                            {t}
+                                          </button>
+                                        ))}
+                                      </div>
+                                      <button onClick={() => setMaximizedChart('market')}
+                                        className={`p-2 rounded-xl transition-all ${darkMode ? 'hover:bg-white/10 text-slate-400 hover:text-white' : 'hover:bg-slate-100 text-slate-400 hover:text-slate-700'}`}
+                                        title="Maximize">
+                                        <Maximize2 size={14} />
+                                      </button>
+                                    </div>
+                                  </div>
+                                  <div className="flex-1 flex flex-col justify-center">
+                                    {curatedVisualizationType === 'Bar Chart'
+                                      ? renderBarChart(180, 300, 36, 7.5, 8)
+                                      : renderPieChart(208, 220)}
+                                  </div>
+                                  {barTooltip && (
+                                    <div className="fixed z-[300] pointer-events-none px-3 py-2 rounded-xl bg-slate-900 border border-white/10 text-white text-[10px] font-bold shadow-2xl"
+                                      style={{ left: barTooltip.x + 14, top: barTooltip.y - 44 }}>
+                                      <span style={{ color: barTooltip.color }}>{barTooltip.brand}</span>
+                                      <span className="text-slate-400 ml-1.5">{barTooltip.pct}% · {barTooltip.mentions} mentions</span>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Maximize Modal */}
+                                {isMaximized && (
+                                  <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/70 backdrop-blur-sm" onClick={() => setMaximizedChart(null)}>
+                                    <div className={`relative w-full max-w-4xl rounded-[2.5rem] p-10 shadow-2xl border ${darkMode ? 'bg-[#0d1527] border-white/10' : 'bg-white border-slate-200'}`}
+                                      onClick={e => e.stopPropagation()}>
+                                      <div className="flex items-center justify-between mb-6">
+                                        <h3 className={`text-xl font-black uppercase tracking-wider font-heading ${darkMode ? 'text-[#00F2FE]' : 'text-indigo-600'}`}>
+                                          Market Share Analysis
+                                        </h3>
+                                        <div className="flex items-center gap-2">
+                                          <div className={`flex p-1 rounded-xl ${darkMode ? 'bg-white/5' : 'bg-slate-100'}`}>
+                                            {['Pie Chart', 'Bar Chart'].map((t) => (
+                                              <button key={t} onClick={() => setCuratedVisualizationType(t)}
+                                                className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${curatedVisualizationType === t ? `bg-white ${darkMode ? 'dark:bg-slate-800 text-indigo-500' : 'text-indigo-600'} shadow-sm` : 'text-slate-400'}`}>
+                                                {t}
+                                              </button>
+                                            ))}
+                                          </div>
+                                          <button onClick={() => setMaximizedChart(null)}
+                                            className={`p-2 rounded-xl transition-all ${darkMode ? 'hover:bg-white/10 text-slate-400 hover:text-white' : 'hover:bg-slate-100 text-slate-500 hover:text-slate-800'}`}
+                                            title="Minimize">
+                                            <Minimize2 size={16} />
+                                          </button>
                                         </div>
                                       </div>
-
-                                      {/* Right: Legend list */}
-                                      <div className="space-y-3 flex-1 w-full max-h-48 overflow-y-auto custom-scrollbar pr-2">
-                                        {entries.map(([brand, data], idx) => {
-                                          const pct = ((data.mentions / total) * 100).toFixed(1);
-                                          const color = BRAND_COLORS[idx % BRAND_COLORS.length];
-                                          return (
-                                            <div key={brand} className="flex items-center justify-between text-xs">
-                                              <div className="flex items-center gap-2.5 truncate pr-2">
-                                                <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: color }}></div>
-                                                <span className={`font-bold truncate ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>{brand}</span>
-                                              </div>
-                                              <span className="font-black flex-shrink-0" style={{ color }}>{pct}%</span>
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
+                                      {curatedVisualizationType === 'Bar Chart'
+                                        ? renderBarChart(280, 700, 44, 9, 12)
+                                        : renderPieChart(300, 300)}
+                                      {barTooltip && (
+                                        <div className="fixed z-[600] pointer-events-none px-3 py-2 rounded-xl bg-slate-900 border border-white/10 text-white text-[10px] font-bold shadow-2xl"
+                                          style={{ left: barTooltip.x + 14, top: barTooltip.y - 44 }}>
+                                          <span style={{ color: barTooltip.color }}>{barTooltip.brand}</span>
+                                          <span className="text-slate-400 ml-1.5">{barTooltip.pct}% · {barTooltip.mentions} mentions</span>
+                                        </div>
+                                      )}
                                     </div>
-                                  );
-                                } else {
-                                  let cumulativeOffset = 25;
-                                  return (
-                                    <div className="flex flex-col sm:flex-row items-center gap-8 py-4">
-                                      <div className="relative w-40 h-40 flex-shrink-0">
-                                        <svg viewBox="-6 -6 44 44" className="w-full h-full transform -rotate-90 overflow-visible">
-                                          {(() => {
-                                            let cumulativeAngle = -Math.PI / 2;
-                                            const isPolarStyle = entries.length <= 4;
-                                            return entries.map(([brand, data], idx) => {
-                                              if (data.mentions === 0) return null;
-                                              const pct = (data.mentions / total) * 100;
-                                              const color = BRAND_COLORS[idx % BRAND_COLORS.length];
-                                              
-                                              const angleLength = (pct / 100) * 2 * Math.PI;
-                                              const startAngle = cumulativeAngle;
-                                              const endAngle = cumulativeAngle + angleLength;
-                                              cumulativeAngle = endAngle;
-
-                                              const midAngle = (startAngle + endAngle) / 2;
-                                              const explodeDistance = 0.8;
-                                              const dx = Math.cos(midAngle) * explodeDistance;
-                                              const dy = Math.sin(midAngle) * explodeDistance;
-
-                                              const rOut = isPolarStyle ? 12 + (pct / 100) * 12 : 22;
-
-                                              if (pct >= 99.9) {
-                                                return (
-                                                  <circle
-                                                    key={brand}
-                                                    cx="16"
-                                                    cy="16"
-                                                    r={rOut}
-                                                    fill={color}
-                                                    style={{ 
-                                                      transform: `translate(${dx}px, ${dy}px)`,
-                                                      transition: 'transform 0.3s ease'
-                                                    }}
-                                                    className="hover:brightness-110 cursor-pointer"
-                                                  />
-                                                );
-                                              }
-
-                                              const x1 = 16 + rOut * Math.cos(startAngle);
-                                              const y1 = 16 + rOut * Math.sin(startAngle);
-                                              const x2 = 16 + rOut * Math.cos(endAngle);
-                                              const y2 = 16 + rOut * Math.sin(endAngle);
-                                              const largeArcFlag = pct > 50 ? 1 : 0;
-
-                                              const dPath = `M 16 16 L ${x1} ${y1} A ${rOut} ${rOut} 0 ${largeArcFlag} 1 ${x2} ${y2} Z`;
-
-                                              return (
-                                                <path
-                                                  key={brand}
-                                                  d={dPath}
-                                                  fill={color}
-                                                  style={{ 
-                                                    transform: `translate(${dx}px, ${dy}px)`,
-                                                    transition: 'transform 0.3s ease'
-                                                  }}
-                                                  className="hover:brightness-110 cursor-pointer"
-                                                />
-                                              );
-                                            });
-                                          })()}
-                                        </svg>
-                                      </div>
-
-                                      <div className="space-y-3 flex-1 w-full max-h-48 overflow-y-auto custom-scrollbar pr-2">
-                                        {entries.map(([brand, data], idx) => {
-                                          const pct = ((data.mentions / total) * 100).toFixed(1);
-                                          const color = BRAND_COLORS[idx % BRAND_COLORS.length];
-                                          return (
-                                            <div key={brand} className="flex items-center justify-between text-xs">
-                                              <div className="flex items-center gap-2.5 truncate pr-2">
-                                                <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: color }}></div>
-                                                <span className={`font-bold truncate ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>{brand}</span>
-                                              </div>
-                                              <span className="font-black flex-shrink-0" style={{ color }}>{pct}%</span>
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
-                                    </div>
-                                  );
-                                }
-                              })()}
-                            </div>
-                          </div>
+                                  </div>
+                                )}
+                              </>
+                            );
+                          })()}
                         </div>
 
                         {/* Media Source Progress Meters */}
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-                          {/* 4. Media Source Distribution */}
-                          <div className={`${darkMode ? 'bg-[#151f32] border-white/5' : 'bg-white border-slate-200/60'} border rounded-[2.5rem] p-8 shadow-md flex flex-col`}>
-                            <h3 className={`text-lg font-black uppercase tracking-wider mb-6 flex items-center gap-3 font-heading ${darkMode ? 'text-[#00F2FE]' : 'text-indigo-600'}`}>
-                              4. Media Source Distribution
-                            </h3>
-                            <div className="flex-1 space-y-4 overflow-y-auto max-h-80 custom-scrollbar pr-2">
-                              {(() => {
-                                const sourceMap = {};
-                                Object.entries(curatedAnalysisResults.brands || {}).forEach(([b, d]) => {
-                                  Object.entries(d.sources || {}).forEach(([src, count]) => {
-                                    if (!sourceMap[src]) sourceMap[src] = { total: 0, brands: {} };
-                                    sourceMap[src].total += count;
-                                    sourceMap[src].brands[b] = count;
-                                  });
-                                });
-                                const topSources = Object.entries(sourceMap).sort((a, b) => b[1].total - a[1].total).slice(0, 10);
-                                if (topSources.length === 0) return <div className="text-center py-12 text-slate-400 font-bold text-xs">No media source data.</div>;
+                          {/* 4. Media Source Distribution - Pie Chart */}
+                          {(() => {
+                            const SOURCE_COLORS = ['#6366f1','#f43f5e','#10b981','#f59e0b','#3b82f6','#8b5cf6','#ec4899','#14b8a6','#f97316','#84cc16'];
+                            const sourceMap = {};
+                            Object.entries(curatedAnalysisResults.brands || {}).forEach(([, d]) => {
+                              Object.entries(d.sources || {}).forEach(([src, count]) => {
+                                sourceMap[src] = (sourceMap[src] || 0) + count;
+                              });
+                            });
+                            const topSources = Object.entries(sourceMap).sort((a, b) => b[1] - a[1]).slice(0, 8);
 
-                                const maxTotal = Math.max(...topSources.map(([, d]) => d.total), 1);
+                            const buildSlices = (CX, CY, R) => {
+                              if (topSources.length === 0) return [];
+                              const grandTotal = topSources.reduce((s, [, v]) => s + v, 0);
+                              let cumAngle = -Math.PI / 2;
+                              return topSources.map(([src, count], idx) => {
+                                const pct = (count / grandTotal) * 100;
+                                const angle = (pct / 100) * 2 * Math.PI;
+                                const startA = cumAngle; cumAngle += angle; const endA = cumAngle;
+                                const midA = (startA + endA) / 2;
+                                const color = SOURCE_COLORS[idx % SOURCE_COLORS.length];
+                                const large = pct > 50 ? 1 : 0;
+                                const x1 = CX + R * Math.cos(startA), y1 = CY + R * Math.sin(startA);
+                                const x2 = CX + R * Math.cos(endA),   y2 = CY + R * Math.sin(endA);
+                                const dPath = pct >= 99.9
+                                  ? `M ${CX} ${CY - R} A ${R} ${R} 0 1 1 ${CX - 0.01} ${CY - R} Z`
+                                  : `M ${CX} ${CY} L ${x1} ${y1} A ${R} ${R} 0 ${large} 1 ${x2} ${y2} Z`;
+                                const lx1 = CX + (R + 4) * Math.cos(midA),      ly1 = CY + (R + 4) * Math.sin(midA);
+                                const lx2 = CX + (R + 16) * Math.cos(midA),     ly2 = CY + (R + 16) * Math.sin(midA);
+                                const lx3 = CX + (R + 24) * Math.cos(midA),     ly3 = CY + (R + 24) * Math.sin(midA);
+                                const isRight = Math.cos(midA) >= 0;
+                                return { src, count, pct, color, dPath, midA, lx1, ly1, lx2, ly2, lx3, ly3, isRight };
+                              });
+                            };
 
-                                return topSources.map(([src, d]) => {
-                                  const pct = (d.total / maxTotal) * 100;
-                                  return (
-                                    <div key={src} className="space-y-1.5 group">
-                                      <div className="flex justify-between items-center text-xs font-bold">
-                                        <span className={`truncate max-w-[70%] ${darkMode ? 'text-slate-200' : 'text-slate-700'} group-hover:text-indigo-400 transition-colors`}>
-                                          {src || 'Unknown Source'}
-                                        </span>
-                                        <span className="text-[#00F2FE] flex-shrink-0 font-extrabold">{d.total} mentions</span>
+                            const renderSourcePie = (CX, CY, R, vw, vh, fontSize) => {
+                              const slices = buildSlices(CX, CY, R);
+                              if (slices.length === 0) return <div className="text-center py-12 text-slate-400 font-bold text-xs">No media source data.</div>;
+                              const hoveredSrc = pieTooltip?.src;
+                              return (
+                                <svg viewBox={`0 0 ${vw} ${vh}`} className="w-full overflow-visible">
+                                  {slices.map(s => (
+                                    <g key={s.src} style={{ cursor: 'pointer' }}
+                                      onMouseEnter={() => setPieTooltip({ src: s.src, count: s.count, pct: s.pct, color: s.color })}
+                                      onMouseLeave={() => setPieTooltip(null)}>
+                                      <path d={s.dPath} fill={s.color}
+                                        stroke={darkMode ? '#151f32' : '#fff'} strokeWidth="1.5"
+                                        style={{ transform: hoveredSrc === s.src ? `translate(${Math.cos(s.midA)*5}px,${Math.sin(s.midA)*5}px)` : 'none', opacity: hoveredSrc && hoveredSrc !== s.src ? 0.55 : 1, transition: 'transform 0.2s, opacity 0.2s' }} />
+                                      {s.pct >= 4 && (
+                                        <>
+                                          <polyline points={`${s.lx1},${s.ly1} ${s.lx2},${s.ly2} ${s.lx3},${s.ly3}`}
+                                            fill="none" stroke={s.color} strokeWidth="1"
+                                            opacity={hoveredSrc && hoveredSrc !== s.src ? 0.25 : 0.8} />
+                                          <text x={s.lx3 + (s.isRight ? 3 : -3)} y={s.ly3 + 1}
+                                            textAnchor={s.isRight ? 'start' : 'end'}
+                                            fontSize={fontSize} fontWeight="800" fill={s.color}
+                                            style={{ opacity: hoveredSrc && hoveredSrc !== s.src ? 0.25 : 1 }}>
+                                            {(s.src || '').length > 14 ? (s.src || '').slice(0, 13) + '…' : (s.src || '')}, {s.pct.toFixed(1)}%
+                                          </text>
+                                        </>
+                                      )}
+                                    </g>
+                                  ))}
+                                  {hoveredSrc && (() => {
+                                    const s = slices.find(x => x.src === hoveredSrc);
+                                    if (!s) return null;
+                                    const tx = CX + (R * 0.55) * Math.cos(s.midA);
+                                    const ty = CY + (R * 0.55) * Math.sin(s.midA);
+                                    const label = `${(s.src||'').length > 12 ? (s.src||'').slice(0,11)+'…' : (s.src||'')}, ${s.count}`;
+                                    const bw = label.length * 4.8 + 14;
+                                    return (
+                                      <g style={{ pointerEvents: 'none' }}>
+                                        <rect x={tx - bw/2} y={ty - 14} width={bw} height={22} rx="5"
+                                          fill={darkMode ? '#0f172a' : '#ffffff'} stroke={s.color} strokeWidth="1.2"
+                                          style={{ filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.25))' }} />
+                                        <text x={tx} y={ty + 2} textAnchor="middle" fontSize={fontSize} fontWeight="800" fill={s.color}>{label}</text>
+                                      </g>
+                                    );
+                                  })()}
+                                </svg>
+                              );
+                            };
+
+                            const isMaxSrc = maximizedChart === 'source';
+                            return (
+                              <>
+                                <div className={`${darkMode ? 'bg-[#151f32] border-white/5' : 'bg-white border-slate-200/60'} border rounded-[2.5rem] p-8 shadow-md flex flex-col`}>
+                                  <div className="flex items-center justify-between mb-4">
+                                    <h3 className={`text-lg font-black uppercase tracking-wider flex items-center gap-3 font-heading ${darkMode ? 'text-[#00F2FE]' : 'text-indigo-600'}`}>
+                                      4. Media Source Distribution
+                                    </h3>
+                                    <button onClick={() => setMaximizedChart('source')}
+                                      className={`p-2 rounded-xl transition-all ${darkMode ? 'hover:bg-white/10 text-slate-400 hover:text-white' : 'hover:bg-slate-100 text-slate-400 hover:text-slate-700'}`}
+                                      title="Maximize">
+                                      <Maximize2 size={14} />
+                                    </button>
+                                  </div>
+                                  <div className="flex-1 flex items-center justify-center overflow-hidden">
+                                    {topSources.length === 0
+                                      ? <div className="text-center py-12 text-slate-400 font-bold text-xs">No media source data.</div>
+                                      : renderSourcePie(200, 160, 85, 400, 320, 7.5)
+                                    }
+                                  </div>
+                                </div>
+
+                                {isMaxSrc && (
+                                  <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-black/70 backdrop-blur-sm" onClick={() => setMaximizedChart(null)}>
+                                    <div className={`relative w-full max-w-3xl rounded-[2.5rem] p-10 shadow-2xl border ${darkMode ? 'bg-[#0d1527] border-white/10' : 'bg-white border-slate-200'}`}
+                                      onClick={e => e.stopPropagation()}>
+                                      <div className="flex items-center justify-between mb-6">
+                                        <h3 className={`text-xl font-black uppercase tracking-wider font-heading ${darkMode ? 'text-[#00F2FE]' : 'text-indigo-600'}`}>
+                                          Media Source Distribution
+                                        </h3>
+                                        <button onClick={() => setMaximizedChart(null)}
+                                          className={`p-2 rounded-xl transition-all ${darkMode ? 'hover:bg-white/10 text-slate-400 hover:text-white' : 'hover:bg-slate-100 text-slate-500 hover:text-slate-800'}`}
+                                          title="Minimize">
+                                          <Minimize2 size={16} />
+                                        </button>
                                       </div>
-                                      <div className="w-full h-2.5 bg-slate-100 dark:bg-slate-800/80 rounded-full overflow-hidden shadow-inner border border-white/5">
-                                        <div
-                                          style={{ width: `${pct}%` }}
-                                          className="h-full bg-gradient-to-r from-indigo-500 to-[#00F2FE] rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(0,242,254,0.3)]"
-                                        />
-                                      </div>
+                                      {renderSourcePie(330, 260, 160, 660, 520, 9)}
                                     </div>
-                                  );
-                                });
-                              })()}
-                            </div>
-                          </div>
+                                  </div>
+                                )}
+                              </>
+                            );
+                          })()}
 
                           {/* 5. Sentiments Landscape matrix */}
                           <div className={`${darkMode ? 'bg-[#151f32] border-white/5' : 'bg-white border-slate-200/60'} border rounded-[2.5rem] p-8 shadow-md flex flex-col`}>
@@ -5786,7 +6513,7 @@ function App() {
                                 <div>Negative</div>
                               </div>
 
-                              {Object.entries(curatedAnalysisResults.brands || {}).map(([b, d]) => {
+                              {Object.entries(curatedAnalysisResults.brands || {}).filter(([b]) => b.toLowerCase() !== 'others').map(([b, d]) => {
                                 const total = d.sentiment.Positive + d.sentiment.Neutral + d.sentiment.Negative;
                                 if (total === 0) return null;
                                 const posP = ((d.sentiment.Positive / total) * 100).toFixed(0);
@@ -5816,78 +6543,60 @@ function App() {
                           </div>
                         </div>
 
-                        {/* 6. Explore Articles by Sentiment Drill-Down Table */}
-                        <div className={`print:hidden ${darkMode ? 'bg-[#151f32] border-white/5' : 'bg-white border-slate-200/60'} border rounded-[2.5rem] p-8 shadow-md`}>
-                          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
+                        {/* 6. Tracked Brand Articles */}
+                        <div className={`${darkMode ? 'bg-[#151f32] border-white/5' : 'bg-white border-slate-200/60'} border rounded-[2.5rem] p-8 shadow-md`}>
+                          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
                             <div>
                               <h3 className={`text-lg font-black uppercase tracking-wider flex items-center gap-3 font-heading ${darkMode ? 'text-[#00F2FE]' : 'text-indigo-600'}`}>
-                                6. Explore Articles by Sentiments
+                                6. Brand Articles
                               </h3>
-                              <p className="text-xs font-bold text-slate-400 mt-1">Select a brand and sentiment to examine underlying corpus articles</p>
+                              <p className={`text-[10px] font-semibold mt-1 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>Articles from tracked brands only</p>
                             </div>
-
-                            <div className="flex items-center gap-3 w-full sm:w-auto">
-                              <select
-                                value={curatedDrillBrand}
-                                onChange={(e) => setCuratedDrillBrand(e.target.value)}
-                                className={`px-4 py-2.5 rounded-xl text-xs font-bold outline-none border cursor-pointer ${
-                                  darkMode ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-slate-50 border-slate-250 text-slate-800'
-                                }`}
-                              >
-                                {Object.keys(curatedAnalysisResults.brands || {}).map((b) => (
-                                  <option key={b} value={b}>{b}</option>
-                                ))}
+                            <div className="flex items-center gap-3 flex-wrap">
+                              <select value={curatedDrillBrand} onChange={(e) => setCuratedDrillBrand(e.target.value)}
+                                className={`px-4 py-2.5 rounded-xl text-xs font-bold outline-none border cursor-pointer ${darkMode ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-800'}`}>
+                                {Object.keys(curatedAnalysisResults.brands || {}).filter(b => b.toLowerCase() !== 'others').map(b => <option key={b} value={b}>{b}</option>)}
                               </select>
-
-                              <select
-                                value={curatedDrillSentiment}
-                                onChange={(e) => setCuratedDrillSentiment(e.target.value)}
-                                className={`px-4 py-2.5 rounded-xl text-xs font-bold outline-none border cursor-pointer ${
-                                  darkMode ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-slate-50 border-slate-250 text-slate-800'
-                                }`}
-                              >
+                              <select value={curatedDrillSentiment} onChange={(e) => setCuratedDrillSentiment(e.target.value)}
+                                className={`px-4 py-2.5 rounded-xl text-xs font-bold outline-none border cursor-pointer ${darkMode ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-800'}`}>
                                 <option value="Positive">Positive</option>
                                 <option value="Neutral">Neutral</option>
                                 <option value="Negative">Negative</option>
                               </select>
                             </div>
                           </div>
-
                           <div className="overflow-x-auto">
                             {(() => {
                               const articles = curatedAnalysisResults.brands?.[curatedDrillBrand]?.article_samples?.[curatedDrillSentiment] || [];
-                              if (articles.length === 0) return <div className="text-center py-12 text-slate-400 font-bold text-xs">No {curatedDrillSentiment} articles found for {curatedDrillBrand}.</div>;
-
+                              if (articles.length === 0) return (
+                                <div className="text-center py-10 text-slate-400 font-bold text-xs">
+                                  No {curatedDrillSentiment.toLowerCase()} articles found for <span className="text-indigo-400">{curatedDrillBrand}</span>.
+                                </div>
+                              );
                               return (
                                 <table className="w-full text-left border-collapse">
                                   <thead>
-                                    <tr className={`border-b ${darkMode ? 'border-white/5 text-slate-400' : 'border-slate-100 text-slate-400'} text-[9px] font-black uppercase tracking-widest`}>
-                                      <th className="py-4 px-4">Headline</th>
-                                      <th className="py-4 px-4">Publication</th>
-                                      <th className="py-4 px-4">Published Date</th>
-                                      <th className="py-4 px-4 text-right">Action</th>
+                                    <tr className={`border-b text-[9px] font-black uppercase tracking-widest ${darkMode ? 'border-white/5 text-slate-500' : 'border-slate-100 text-slate-400'}`}>
+                                      <th className="py-3 px-4">Headline</th>
+                                      <th className="py-3 px-4">Publication</th>
+                                      <th className="py-3 px-4">Date</th>
+                                      <th className="py-3 px-4 text-right">Link</th>
                                     </tr>
                                   </thead>
-                                  <tbody className="divide-y divide-slate-100 dark:divide-white/5 text-xs font-bold">
+                                  <tbody className={`divide-y text-xs font-semibold ${darkMode ? 'divide-white/5' : 'divide-slate-100'}`}>
                                     {articles.map((art, idx) => (
                                       <tr key={idx} className={`${darkMode ? 'hover:bg-white/5 text-slate-200' : 'hover:bg-slate-50 text-slate-700'} transition-colors`}>
-                                        <td className="py-4 px-4 font-black max-w-md truncate">{art.title}</td>
-                                        <td className="py-4 px-4 text-slate-400">{art.source}</td>
-                                        <td className="py-4 px-4 text-slate-400 whitespace-nowrap">{art.published}</td>
-                                        <td className="py-4 px-4 text-right">
-                                          {art.url && art.url !== 'N/A' ? (
-                                            <a
-                                              href={art.url}
-                                              target="_blank"
-                                              rel="noreferrer"
-                                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/40 dark:hover:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 font-black text-[10px] uppercase tracking-wider transition-colors"
-                                            >
-                                              <Chrome size={12} />
-                                              Read
-                                            </a>
-                                          ) : (
-                                            <span className="text-slate-400 text-[10px] font-black uppercase tracking-wider">No Link</span>
-                                          )}
+                                        <td className="py-3 px-4 font-bold max-w-xs truncate">{art.title}</td>
+                                        <td className="py-3 px-4 text-slate-400 whitespace-nowrap">{art.source}</td>
+                                        <td className="py-3 px-4 text-slate-400 whitespace-nowrap">{art.published}</td>
+                                        <td className="py-3 px-4 text-right">
+                                          {art.url && art.url !== 'N/A'
+                                            ? <a href={art.url} target="_blank" rel="noreferrer"
+                                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 font-black text-[9px] uppercase tracking-wider transition-colors">
+                                                <Chrome size={11} /> Read
+                                              </a>
+                                            : <span className="text-slate-400 text-[9px] font-black uppercase">No Link</span>
+                                          }
                                         </td>
                                       </tr>
                                     ))}
@@ -6464,7 +7173,7 @@ function App() {
                             <div className="space-y-6">
                               <div className="group">
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1 mb-2 block group-focus-within:text-indigo-600 transition-colors">Full Name</label>
-                                <input type="text" defaultValue={user?.name || 'Divyansh Sharma'} className="w-full py-5 px-8 bg-white border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:border-indigo-600 transition-all shadow-sm hover:border-indigo-200" />
+                                <input type="text" defaultValue={user?.name?.trim() || 'Divyansh Sharma'} className="w-full py-5 px-8 bg-white border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:border-indigo-600 transition-all shadow-sm hover:border-indigo-200" />
                               </div>
                               <div className="group">
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1 mb-2 block">Email Address</label>
@@ -6600,7 +7309,7 @@ function App() {
                           <div className="space-y-6">
                             <div className="group">
                               <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1 mb-2 block group-focus-within:text-indigo-600 transition-colors">Full Name</label>
-                              <input type="text" defaultValue={user?.name || 'Divyansh Sharma'} className="w-full py-5 px-8 bg-white border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:border-indigo-600 transition-all shadow-sm hover:border-indigo-200" />
+                              <input type="text" defaultValue={user?.name?.trim() || 'Divyansh Sharma'} className="w-full py-5 px-8 bg-white border border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none focus:border-indigo-600 transition-all shadow-sm hover:border-indigo-200" />
                             </div>
                             <div className="group">
                               <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1 mb-2 block">Email Address</label>
@@ -6844,7 +7553,7 @@ function App() {
                                 : 'bg-white border-slate-200/60 text-slate-600'
                             }`}>
                               <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></span>
-                              Auto Refresh in <span className="text-indigo-550 dark:text-indigo-400 font-black">{Math.floor(refreshTimer / 60)}:{(refreshTimer % 60).toString().padStart(2, '0')}</span>
+                              Auto Refresh in <span className="text-indigo-600 dark:text-indigo-400 font-black">{Math.floor(refreshTimer / 60)}:{(refreshTimer % 60).toString().padStart(2, '0')}</span>
                             </div>
 
                             {/* Refresh Now Button */}
@@ -6854,7 +7563,7 @@ function App() {
                               className={`px-4 py-2 border rounded-xl text-[9px] font-black uppercase tracking-widest transition-all active:scale-95 shadow-sm flex items-center gap-1.5 disabled:opacity-50 ${
                                 darkMode
                                   ? 'bg-[#151f32]/80 border-white/5 text-[#00F2FE] hover:bg-[#151f32]'
-                                  : 'bg-white border-slate-200 text-indigo-650 hover:bg-slate-50'
+                                  : 'bg-white border-slate-200 text-indigo-600 hover:bg-slate-50'
                               }`}
                             >
                               <RotateCcw size={10} className={isRefreshingBrand ? 'animate-spin' : ''} />
@@ -6948,7 +7657,7 @@ function App() {
                                       e.stopPropagation();
                                       handleDeleteBrand(brand.id);
                                     }}
-                                    className="absolute top-6 right-6 opacity-0 group-hover:opacity-100 transition-all duration-200 z-20 w-8 h-8 flex items-center justify-center rounded-xl bg-red-50 text-red-500 hover:bg-red-650 hover:text-white shadow-sm"
+                                    className="absolute top-6 right-6 opacity-0 group-hover:opacity-100 transition-all duration-200 z-20 w-8 h-8 flex items-center justify-center rounded-xl bg-red-50 text-red-500 hover:bg-red-600 hover:text-white shadow-sm"
                                   >
                                     <Trash2 size={14} />
                                   </button>
@@ -6961,7 +7670,7 @@ function App() {
                             darkMode ? 'bg-[#151f32]/20 border-white/10' : 'bg-white border-slate-200'
                           }`}>
                             <div className="w-20 h-20 bg-slate-50 dark:bg-white/5 rounded-full flex items-center justify-center mx-auto mb-6">
-                              <Plus size={32} className="text-slate-300 dark:text-slate-650" />
+                              <Plus size={32} className="text-slate-300 dark:text-slate-600" />
                             </div>
                             <h3 className={`text-xl font-black uppercase tracking-tight mb-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>No Brands Tracked</h3>
                             <p className="text-slate-500 font-bold text-sm max-w-sm mx-auto mb-6">
@@ -7320,7 +8029,7 @@ function App() {
                                   <div className="relative">
                                     <button
                                       onClick={() => setIsThemePickerOpen(!isThemePickerOpen)}
-                                      className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${isThemePickerOpen ? 'bg-indigo-650 text-white shadow shadow-indigo-600/30' : 'bg-slate-800 text-slate-300 hover:bg-slate-755'}`}
+                                      className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${isThemePickerOpen ? 'bg-indigo-600 text-white shadow shadow-indigo-600/30' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
                                     >
                                       <Sparkles size={13} />
                                       <span>Theme & Layout</span>
@@ -8328,7 +9037,7 @@ function App() {
                                                         }));
                                                         document.getElementById(`rule-val-${chart.id}`).value = '';
                                                       }}
-                                                      className="px-3 py-1 bg-indigo-650 hover:bg-indigo-600 text-white rounded font-bold text-[11px]"
+                                                      className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded font-bold text-[11px]"
                                                     >
                                                       Add Rule
                                                     </button>
@@ -9289,8 +9998,8 @@ function App() {
                                                 return (
                                                   <div key={pub.name || idx} className="space-y-1">
                                                     <div className="flex justify-between text-[10px] font-bold">
-                                                      <span className="text-slate-650 truncate max-w-[150px]">{pub.name}</span>
-                                                      <span className="text-slate-900 font-black">{pub.count}</span>
+                                                      <span className={`truncate max-w-[150px] ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>{pub.name}</span>
+                                                      <span className={`font-black ${darkMode ? 'text-white' : 'text-slate-900'}`}>{pub.count}</span>
                                                     </div>
                                                     <div className="h-1.5 w-full bg-slate-250/50 rounded-full overflow-hidden">
                                                       <div style={{ width: `${pct}%`, backgroundColor: BRAND_COLORS[idx % BRAND_COLORS.length] }} className="h-full rounded-full" />
@@ -9489,8 +10198,8 @@ function App() {
                                               return (
                                                 <div key={b} className="space-y-1">
                                                   <div className="flex justify-between text-[9px] font-bold">
-                                                    <span className="text-slate-650 truncate max-w-[180px]">{b}</span>
-                                                    <span className="text-slate-900 font-black">{uniqueOutlets} outlets</span>
+                                                    <span className={`truncate max-w-[180px] ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>{b}</span>
+                                                    <span className={`font-black ${darkMode ? 'text-white' : 'text-slate-900'}`}>{uniqueOutlets} outlets</span>
                                                   </div>
                                                   <div className="h-1.5 w-full bg-slate-200/50 rounded-full overflow-hidden">
                                                     <div style={{ width: `${pct}%`, backgroundColor: BRAND_COLORS[(idx + 4) % BRAND_COLORS.length] }} className="h-full rounded-full" />
@@ -9538,8 +10247,8 @@ function App() {
                                                   <div style={{ width: `${pctOther}%`, backgroundColor: '#e2e8f0' }} className="h-full" title={`Sector General: ${pctOther.toFixed(0)}% (${otherTotal} articles)`} />
                                                 </div>
                                                 <div className="flex justify-between text-[9px] font-bold">
-                                                  <span className="flex items-center gap-1 text-indigo-650 truncate max-w-[150px]"><span className="w-2 h-2 rounded-full bg-indigo-600"></span>Target Keywords ({keyTotal})</span>
-                                                  <span className="flex items-center gap-1 text-slate-450 truncate max-w-[150px]"><span className="w-2 h-2 rounded-full bg-slate-300"></span>Sector Base ({otherTotal})</span>
+                                                  <span className="flex items-center gap-1 text-indigo-600 truncate max-w-[150px]"><span className="w-2 h-2 rounded-full bg-indigo-600"></span>Target Keywords ({keyTotal})</span>
+                                                  <span className="flex items-center gap-1 text-slate-500 truncate max-w-[150px]"><span className="w-2 h-2 rounded-full bg-slate-300"></span>Sector Base ({otherTotal})</span>
                                                 </div>
                                               </div>
                                             );
@@ -9734,7 +10443,7 @@ const spec = JSON.parse(response.text);
                               <Plus size={20} strokeWidth={3} />
                             </div>
                           </div>
-                          
+
                           {/* Filter Card Container */}
                            <div className={`p-4 rounded-[2rem] w-full max-w-[95%] xl:max-w-7xl flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl border ${
                             darkMode ? 'bg-[#151f32]/90 border-white/5 shadow-black/20' : 'bg-white border-slate-100'
@@ -9788,7 +10497,7 @@ const spec = JSON.parse(response.text);
                             .filter(rep => reportFilter === 'all' || rep.type === reportFilter)
                             .filter(rep =>
                               rep.title.toLowerCase().includes(reportSearch.toLowerCase()) ||
-                              rep.tags.some(t => t.toLowerCase().includes(reportSearch.toLowerCase()))
+                              (rep.tags || []).some(t => t.toLowerCase().includes(reportSearch.toLowerCase()))
                             )
                             .map(rep => (
                               <div
@@ -9799,15 +10508,44 @@ const spec = JSON.parse(response.text);
                                 <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
                                 <div>
                                   <div className="flex items-center justify-between gap-3 mb-6">
-                                    <span className={`px-3.5 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 shadow-sm ${rep.status === 'Generated' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' :
-                                      rep.status === 'Reviewed' ? 'bg-blue-50 text-blue-600 border border-blue-200' :
-                                        'bg-amber-50 text-amber-600 border border-amber-200'
-                                      }`}>
-                                      <span className={`w-1.5 h-1.5 rounded-full ${rep.status === 'Generated' ? 'bg-emerald-500 animate-pulse' :
-                                        rep.status === 'Reviewed' ? 'bg-blue-500' : 'bg-amber-500'
-                                        }`}></span>
-                                      {rep.status}
-                                    </span>
+                                    <div className="relative" onClick={(e) => e.stopPropagation()}>
+                                      <span
+                                        onClick={() => setStatusDropdownRepId(statusDropdownRepId === rep.id ? null : rep.id)}
+                                        className={`px-3.5 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 shadow-sm cursor-pointer hover:opacity-80 transition-opacity select-none ${rep.status === 'Generated' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' :
+                                          rep.status === 'Reviewed' ? 'bg-blue-50 text-blue-600 border border-blue-200' :
+                                            'bg-amber-50 text-amber-600 border border-amber-200'
+                                          }`}>
+                                        <span className={`w-1.5 h-1.5 rounded-full ${rep.status === 'Generated' ? 'bg-emerald-500 animate-pulse' :
+                                          rep.status === 'Reviewed' ? 'bg-blue-500' : 'bg-amber-500'
+                                          }`}></span>
+                                        {rep.status}
+                                        <svg className="w-2.5 h-2.5 ml-0.5 opacity-60" fill="none" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                                      </span>
+                                      {statusDropdownRepId === rep.id && (
+                                        <>
+                                          <div className="fixed inset-0 z-[49]" onClick={() => setStatusDropdownRepId(null)} />
+                                          <div className="absolute top-full left-0 mt-1.5 z-50 bg-white border border-slate-100 rounded-2xl shadow-xl overflow-hidden min-w-[130px]">
+                                            {[
+                                              { label: 'Generated', dot: 'bg-emerald-500', text: 'text-emerald-600', bg: 'hover:bg-emerald-50' },
+                                              { label: 'Reviewed',  dot: 'bg-blue-500',    text: 'text-blue-600',    bg: 'hover:bg-blue-50' },
+                                              { label: 'Pending',   dot: 'bg-amber-500',   text: 'text-amber-600',   bg: 'hover:bg-amber-50' },
+                                            ].map(opt => (
+                                              <button
+                                                key={opt.label}
+                                                onClick={() => {
+                                                  setReports(prev => prev.map(r => r.id === rep.id ? { ...r, status: opt.label } : r));
+                                                  setStatusDropdownRepId(null);
+                                                }}
+                                                className={`w-full flex items-center gap-2 px-4 py-2.5 text-[10px] font-black uppercase tracking-widest transition-colors ${opt.text} ${opt.bg} ${rep.status === opt.label ? 'opacity-40 cursor-default' : 'cursor-pointer'}`}
+                                              >
+                                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${opt.dot}`}></span>
+                                                {opt.label}
+                                              </button>
+                                            ))}
+                                          </div>
+                                        </>
+                                      )}
+                                    </div>
                                     <span className="text-[10px] font-black text-slate-400 tracking-widest uppercase bg-slate-50 px-3 py-1 rounded-full border border-slate-100">
                                       {rep.date}
                                     </span>
@@ -9859,9 +10597,7 @@ const spec = JSON.parse(response.text);
                                       <button
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          if (confirm(`Are you sure you want to delete "${rep.title}"?`)) {
-                                            handleDeleteReport(rep.id, rep.title);
-                                          }
+                                          setDeleteConfirmReport(rep);
                                         }}
                                         className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
                                         title="Delete Report"
@@ -10347,6 +11083,7 @@ const spec = JSON.parse(response.text);
                         onChange={(e) => setNewReportForm({ ...newReportForm, brandKeywords: e.target.value })}
                         className="w-full py-3.5 px-5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-all shadow-inner"
                       />
+                      <p className="mt-1.5 text-[10px] text-slate-400 font-medium">Your brand name and variations to track in media coverage</p>
                     </div>
                     <div>
                       <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 block mb-2">Competitor Keywords</label>
@@ -10360,38 +11097,26 @@ const spec = JSON.parse(response.text);
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 block mb-2">Target Sector / Topic</label>
-                      <select
-                        value={newReportForm.topic}
-                        onChange={(e) => setNewReportForm({ ...newReportForm, topic: e.target.value })}
-                        className="w-full py-3.5 px-5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-all shadow-inner"
-                      >
-                        <option value="All">All Sectors</option>
-                        <option value="AI">Artificial Intelligence</option>
-                        <option value="STARTUP">Startup & Venture Capital</option>
-                        <option value="CONSULTANCY">Consultancy & Strategy</option>
-                        <option value="FINANCE">Finance & Markets</option>
-                        <option value="TECHNOLOGY">Technology & Hardware</option>
-                        <option value="HEALTHCARE">Healthcare & Medicine</option>
-                        <option value="EDUCATION">Education & Academia</option>
-                        <option value="ENERGY">Energy & Renewables</option>
-                        <option value="RETAIL">Retail & E-Commerce</option>
-                        <option value="MEDIA">Media & Journalism</option>
-                        <option value="AUTOMOTIVE">Automotive & EV</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 block mb-2">Target Keywords</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Nvidia, OpenAI, ChatGPT"
-                        value={newReportForm.keywords || ''}
-                        onChange={(e) => setNewReportForm({ ...newReportForm, keywords: e.target.value })}
-                        className="w-full py-3.5 px-5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-all shadow-inner"
-                      />
-                    </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 block mb-2">Target Sector / Topic</label>
+                    <select
+                      value={newReportForm.topic}
+                      onChange={(e) => setNewReportForm({ ...newReportForm, topic: e.target.value })}
+                      className="w-full py-3.5 px-5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-all shadow-inner"
+                    >
+                      <option value="All">All Sectors</option>
+                      <option value="AI">Artificial Intelligence</option>
+                      <option value="STARTUP">Startup & Venture Capital</option>
+                      <option value="CONSULTANCY">Consultancy & Strategy</option>
+                      <option value="FINANCE">Finance & Markets</option>
+                      <option value="TECHNOLOGY">Technology & Hardware</option>
+                      <option value="HEALTHCARE">Healthcare & Medicine</option>
+                      <option value="EDUCATION">Education & Academia</option>
+                      <option value="ENERGY">Energy & Renewables</option>
+                      <option value="RETAIL">Retail & E-Commerce</option>
+                      <option value="MEDIA">Media & Journalism</option>
+                      <option value="AUTOMOTIVE">Automotive & EV</option>
+                    </select>
                   </div>
 
                   <div>
@@ -10421,6 +11146,43 @@ const spec = JSON.parse(response.text);
                     </button>
                   </div>
                 </form>
+              </div>
+            </div>
+          )}
+
+          {/* Delete Report Confirmation Modal */}
+          {deleteConfirmReport && (
+            <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-[60] flex items-center justify-center p-6 animate-in fade-in duration-200">
+              <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 flex flex-col gap-6">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-red-50 border border-red-100 flex items-center justify-center text-red-500 shrink-0">
+                    <Trash2 size={22} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black text-slate-900 tracking-tight">Delete Report</h3>
+                    <p className="text-xs text-slate-500 font-medium mt-0.5">This action cannot be undone</p>
+                  </div>
+                </div>
+                <p className="text-sm text-slate-600 font-semibold leading-relaxed">
+                  Are you sure you want to delete <span className="font-black text-slate-900">"{deleteConfirmReport.title}"</span>? This report will be permanently removed.
+                </p>
+                <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
+                  <button
+                    onClick={() => setDeleteConfirmReport(null)}
+                    className="px-6 py-2.5 bg-slate-100 text-slate-600 rounded-full font-black uppercase tracking-widest text-xs hover:bg-slate-200 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleDeleteReport(deleteConfirmReport.id, deleteConfirmReport.title);
+                      setDeleteConfirmReport(null);
+                    }}
+                    className="px-6 py-2.5 bg-red-500 text-white rounded-full font-black uppercase tracking-widest text-xs hover:bg-red-600 shadow-lg shadow-red-200 active:scale-95 transition-all flex items-center gap-2"
+                  >
+                    <Trash2 size={14} /> Delete
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -10587,6 +11349,144 @@ const spec = JSON.parse(response.text);
             </div>
           )}
 
+          {/* Floating Cleo AI Chatbot Widget & Toggle Bubble */}
+          <div className="print:hidden">
+            {showCleoAi ? (
+              <div 
+                id="cleo-chat-widget" 
+                className={`fixed bottom-6 right-6 z-[200] w-[380px] h-[520px] rounded-[2rem] border transition-all duration-300 shadow-2xl flex flex-col backdrop-blur-xl animate-in slide-in-from-bottom-5 duration-300 ${
+                  darkMode ? 'bg-[#0f172a]/95 border-white/10 shadow-black/40 text-white' : 'bg-white/95 border-slate-200 shadow-slate-200 text-slate-800'
+                }`}
+              >
+                {/* Chat Header */}
+                <div className={`flex items-center justify-between p-5 border-b shrink-0 ${darkMode ? 'border-white/10' : 'border-slate-200'}`}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full overflow-hidden shrink-0 border border-indigo-500/20 bg-slate-950/20 flex items-center justify-center shadow-md">
+                      <img
+                        src="/cleo_avatar.png"
+                        alt="Cleo Mascot"
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          e.target.style.display = 'none';
+                          e.target.nextSibling.style.display = 'inline';
+                        }}
+                      />
+                      <span style={{ display: 'none' }} className="text-xl">🐶</span>
+                    </div>
+                    <div className="text-left">
+                      <h3 className="text-sm font-black tracking-tight font-heading">Cleo AI</h3>
+                      <p className="text-[9px] text-emerald-400 font-bold uppercase tracking-wider flex items-center gap-1 mt-0.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                        Copilot Active
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {/* Close Chat Button */}
+                  <button
+                    type="button"
+                    onClick={() => setShowCleoAi(false)}
+                    className={`p-2 rounded-xl transition-all cursor-pointer ${
+                      darkMode ? 'hover:bg-white/10 text-slate-400 hover:text-white' : 'hover:bg-slate-100 text-slate-500 hover:text-slate-950'
+                    }`}
+                    title="Close Chat"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+
+                {/* Chat Messages Body */}
+                <div 
+                  id="cleo-messages-container" 
+                  className="flex-1 p-5 space-y-4 overflow-y-auto custom-scrollbar flex flex-col"
+                >
+                  {cleoMessages.map((msg, i) => (
+                    <div
+                      key={i}
+                      className={`flex gap-3 max-w-[85%] items-end ${msg.sender === 'user' ? 'self-end flex-row-reverse' : 'self-start'}`}
+                    >
+                      {msg.sender === 'cleo' && (
+                        <div className="w-6 h-6 rounded-full overflow-hidden shrink-0 border border-indigo-500/10 bg-slate-950/10 flex items-center justify-center shadow-inner">
+                          <img
+                            src="/cleo_avatar.png"
+                            alt="Cleo"
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              e.target.style.display = 'none';
+                              e.target.nextSibling.style.display = 'inline';
+                            }}
+                          />
+                          <span style={{ display: 'none' }} className="text-[10px]">🐶</span>
+                        </div>
+                      )}
+                      <div
+                        className={`rounded-2xl p-3 text-xs font-semibold leading-relaxed animate-in fade-in duration-300 shadow-sm text-left ${
+                          msg.sender === 'user'
+                            ? 'bg-indigo-600 text-white rounded-tr-none'
+                            : (darkMode 
+                                ? 'bg-slate-800 text-white rounded-tl-none border border-white/5' 
+                                : 'bg-slate-50 text-slate-800 rounded-tl-none border border-slate-100')
+                        }`}
+                      >
+                        <p className="whitespace-pre-wrap">{msg.text}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Input Form */}
+                <form 
+                  onSubmit={handleSendCleoMessage} 
+                  className={`p-4 border-t shrink-0 flex gap-3 ${darkMode ? 'border-white/10 bg-slate-950/20' : 'border-slate-200 bg-slate-50/50'}`}
+                >
+                  <div className="relative flex-1 flex items-center">
+                    <Sparkles size={14} className={`absolute left-3.5 ${darkMode ? 'text-indigo-400' : 'text-indigo-600'}`} />
+                    <input
+                      id="cleo-chat-input"
+                      type="text"
+                      placeholder="Ask Cleo: e.g. how do I create a report?"
+                      value={cleoInput}
+                      onChange={(e) => setCleoInput(e.target.value)}
+                      className={`w-full py-3.5 pl-9 pr-4 rounded-xl text-xs font-bold outline-none transition-all ${
+                        darkMode
+                          ? 'bg-white/5 border border-white/10 text-white placeholder:text-slate-500 focus:bg-white/10 focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50'
+                          : 'bg-white border border-slate-200 text-slate-950 placeholder:text-slate-400 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500'
+                      }`}
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    className="bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-3.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md active:scale-95 flex items-center justify-center font-heading cursor-pointer"
+                  >
+                    Send
+                  </button>
+                </form>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowCleoAi(true)}
+                className="fixed bottom-6 right-6 z-[200] w-14 h-14 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full flex items-center justify-center shadow-lg shadow-indigo-600/30 hover:scale-105 active:scale-95 transition-all cursor-pointer group"
+                title="Open Cleo AI"
+              >
+                <div className="relative w-9 h-9 rounded-full overflow-hidden border border-white/20 shadow-inner bg-slate-950/20 flex items-center justify-center shrink-0">
+                  <img
+                    src="/cleo_avatar.png"
+                    alt="Cleo Mascot"
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      e.target.style.display = 'none';
+                      e.target.nextSibling.style.display = 'inline';
+                    }}
+                  />
+                  <span style={{ display: 'none' }} className="text-lg">🐶</span>
+                </div>
+                <span className="absolute bottom-full mb-2 right-0 bg-slate-950 text-white text-[9px] font-black uppercase tracking-wider px-3 py-1.5 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-lg border border-white/10 pointer-events-none">
+                  Chat with Cleo
+                </span>
+              </button>
+            )}
+          </div>
+
         </div>
       </div>
     );
@@ -10636,7 +11536,7 @@ const spec = JSON.parse(response.text);
       >
         <div className="glass-card w-full max-w-md p-8 md:p-10 rounded-[2.5rem] relative text-white max-h-[85vh] overflow-y-auto custom-scrollbar" style={{ background: '#4f46e5', border: '1px solid rgba(255,255,255,0.15)' }}>
           <button 
-            onClick={() => setView(view === 'signup' ? 'login' : 'landing')} 
+            onClick={() => setView(view === 'signup' || view === 'forgot' || view === 'reset' ? 'login' : 'landing')} 
             className="absolute top-6 left-6 text-white/50 hover:text-white transition-all flex items-center gap-1.5 text-xs font-bold"
           >
             <ArrowLeft size={14} /> Back
@@ -10665,7 +11565,7 @@ const spec = JSON.parse(response.text);
                     <button
                       key={role}
                       type="button"
-                      onClick={() => setAuthRole(role)}
+                      onClick={() => { setAuthRole(role); clearFormFields(); }}
                       className={`flex-1 py-2 px-2 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all ${
                         isActive
                           ? 'bg-indigo-600 text-white shadow-md font-bold'
@@ -10684,8 +11584,10 @@ const spec = JSON.parse(response.text);
                   <div className="relative">
                     <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400 group-focus-within:text-indigo-700 transition-colors" size={18} />
                     <input
+                      key={`login-email-${authRole}`}
                       type="email"
                       required
+                      autoComplete="off"
                       placeholder={authRole === 'individual' ? "you@example.com" : authRole === 'admin' ? "admin@example.com" : "user@themavericksindia.com"}
                       className="w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold outline-none transition-all placeholder-indigo-300"
                       style={{ background: 'rgba(255,255,255,0.92)', border: '1px solid rgba(255,255,255,0.6)', color: '#1e1b4b' }}
@@ -10700,8 +11602,10 @@ const spec = JSON.parse(response.text);
                     <div className="relative">
                       <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400 group-focus-within:text-indigo-700 transition-colors" size={18} />
                       <input
+                        key={`login-adminkey-${authRole}`}
                         type="text"
                         required
+                        autoComplete="off"
                         placeholder="Enter Admin Key"
                         className="w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold outline-none transition-all placeholder-indigo-300"
                         style={{ background: 'rgba(255,255,255,0.92)', border: '1px solid rgba(255,255,255,0.6)', color: '#1e1b4b' }}
@@ -10719,8 +11623,10 @@ const spec = JSON.parse(response.text);
                   <div className="relative">
                     <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400 group-focus-within:text-indigo-700 transition-colors" size={18} />
                     <input 
+                      key={`login-password-${authRole}`}
                       type={showPassword ? "text" : "password"} 
                       required 
+                      autoComplete="off"
                       placeholder="••••••••" 
                       className="w-full py-4 pl-12 pr-12 rounded-2xl text-sm font-semibold outline-none transition-all placeholder-indigo-300"
                       style={{ background: 'rgba(255,255,255,0.92)', border: '1px solid rgba(255,255,255,0.6)', color: '#1e1b4b' }}
@@ -10767,7 +11673,7 @@ const spec = JSON.parse(response.text);
                     <button
                       key={role}
                       type="button"
-                      onClick={() => setAuthRole(role)}
+                      onClick={() => { setAuthRole(role); clearFormFields(); }}
                       className={`flex-1 py-2 px-2 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all ${
                         isActive
                           ? 'bg-indigo-600 text-white shadow-md font-bold'
@@ -10785,14 +11691,14 @@ const spec = JSON.parse(response.text);
                   <label className="text-[10px] font-black text-white/70 uppercase tracking-[0.2em] ml-1">Full Name</label>
                   <div className="relative">
                     <User className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400 group-focus-within:text-indigo-700 transition-colors" size={18} />
-                    <input type="text" required placeholder="Your Full Name" className="w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold outline-none transition-all placeholder-indigo-300" style={{ background: 'rgba(255,255,255,0.92)', border: '1px solid rgba(255,255,255,0.6)', color: '#1e1b4b' }} value={name} onChange={(e) => setName(e.target.value)} />
+                    <input key={`signup-name-${authRole}`} type="text" required autoComplete="off" placeholder="Your Full Name" className="w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold outline-none transition-all placeholder-indigo-300" style={{ background: 'rgba(255,255,255,0.92)', border: '1px solid rgba(255,255,255,0.6)', color: '#1e1b4b' }} value={name} onChange={(e) => setName(e.target.value)} />
                   </div>
                 </div>
                 <div className="space-y-1.5 group">
                   <label className="text-[10px] font-black text-white/70 uppercase tracking-[0.2em] ml-1">Email Address</label>
                   <div className="relative">
                     <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400 group-focus-within:text-indigo-700 transition-colors" size={18} />
-                    <input type="email" required placeholder={authRole === 'individual' ? "you@example.com" : authRole === 'admin' ? "admin@example.com" : "user@themavericksindia.com"} className="w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold outline-none transition-all placeholder-indigo-300" style={{ background: 'rgba(255,255,255,0.92)', border: '1px solid rgba(255,255,255,0.6)', color: '#1e1b4b' }} value={email} onChange={(e) => setEmail(e.target.value)} />
+                    <input key={`signup-email-${authRole}`} type="email" required autoComplete="off" placeholder={authRole === 'individual' ? "you@example.com" : authRole === 'admin' ? "admin@example.com" : "user@themavericksindia.com"} className="w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold outline-none transition-all placeholder-indigo-300" style={{ background: 'rgba(255,255,255,0.92)', border: '1px solid rgba(255,255,255,0.6)', color: '#1e1b4b' }} value={email} onChange={(e) => setEmail(e.target.value)} />
                   </div>
                 </div>
                 {authRole === 'admin' && (
@@ -10801,8 +11707,10 @@ const spec = JSON.parse(response.text);
                     <div className="relative">
                       <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400 group-focus-within:text-indigo-700 transition-colors" size={18} />
                       <input
+                        key={`signup-adminkey-${authRole}`}
                         type="text"
                         required
+                        autoComplete="off"
                         placeholder="Enter Admin Key"
                         className="w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold outline-none transition-all placeholder-indigo-300"
                         style={{ background: 'rgba(255,255,255,0.92)', border: '1px solid rgba(255,255,255,0.6)', color: '#1e1b4b' }}
@@ -10818,8 +11726,10 @@ const spec = JSON.parse(response.text);
                     <div className="relative">
                       <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400 group-focus-within:text-indigo-700 transition-colors" size={18} />
                       <input
+                        key={`signup-license-${authRole}`}
                         type="text"
                         required
+                        autoComplete="off"
                         placeholder="MAV-XXXX-XXXX (e.g., MAV-DEMO-KEY)"
                         className="w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold outline-none transition-all placeholder-indigo-300"
                         style={{ background: 'rgba(255,255,255,0.92)', border: '1px solid rgba(255,255,255,0.6)', color: '#1e1b4b' }}
@@ -10833,7 +11743,7 @@ const spec = JSON.parse(response.text);
                   <label className="text-[10px] font-black text-white/70 uppercase tracking-[0.2em] ml-1">Create Password</label>
                   <div className="relative">
                     <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400 group-focus-within:text-indigo-700 transition-colors" size={18} />
-                    <input type={showPassword ? "text" : "password"} required placeholder="••••••••" className="w-full py-4 pl-12 pr-12 rounded-2xl text-sm font-semibold outline-none transition-all placeholder-indigo-300" style={{ background: 'rgba(255,255,255,0.92)', border: '1px solid rgba(255,255,255,0.6)', color: '#1e1b4b' }} value={password} onChange={(e) => setPassword(e.target.value)} />
+                    <input key={`signup-password-${authRole}`} type={showPassword ? "text" : "password"} required autoComplete="off" placeholder="••••••••" className="w-full py-4 pl-12 pr-12 rounded-2xl text-sm font-semibold outline-none transition-all placeholder-indigo-300" style={{ background: 'rgba(255,255,255,0.92)', border: '1px solid rgba(255,255,255,0.6)', color: '#1e1b4b' }} value={password} onChange={(e) => setPassword(e.target.value)} />
                     <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-indigo-400 hover:text-indigo-700 transition-colors">
                       {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                     </button>
@@ -10843,7 +11753,7 @@ const spec = JSON.parse(response.text);
                   <label className="text-[10px] font-black text-white/70 uppercase tracking-[0.2em] ml-1">Confirm Password</label>
                   <div className="relative">
                     <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400 group-focus-within:text-indigo-700 transition-colors" size={18} />
-                    <input type={showPassword ? "text" : "password"} required placeholder="••••••••" className="w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold outline-none transition-all placeholder-indigo-300" style={{ background: 'rgba(255,255,255,0.92)', border: '1px solid rgba(255,255,255,0.6)', color: '#1e1b4b' }} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+                    <input key={`signup-confirmpassword-${authRole}`} type={showPassword ? "text" : "password"} required autoComplete="off" placeholder="••••••••" className="w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold outline-none transition-all placeholder-indigo-300" style={{ background: 'rgba(255,255,255,0.92)', border: '1px solid rgba(255,255,255,0.6)', color: '#1e1b4b' }} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
                   </div>
                 </div>
                 <div className="flex items-center gap-3 px-1 py-2">
@@ -10870,80 +11780,117 @@ const spec = JSON.parse(response.text);
                   <img src="/cerebro_white.png" alt="Cerebro" className="w-12 h-12 object-contain" />
                 </div>
                 <h1 className="text-3xl font-black tracking-tighter text-white mb-0.5" style={{ fontFamily: 'var(--font-heading)' }}>Cerebro</h1>
-                <p className="text-cyan-300 text-[10px] font-black uppercase tracking-widest">{successMessage ? 'Check your inbox' : 'Recover Access'}</p>
+                <p className="text-cyan-300 text-[10px] font-black uppercase tracking-widest">
+                  {forgotStep === 'email' ? 'Recover Access' : forgotStep === 'otp' ? 'Verify OTP Code' : 'Set New Password'}
+                </p>
               </div>
 
               {error && <div className="mb-6 p-4 bg-red-500/20 border border-red-500/30 rounded-2xl text-red-200 text-xs font-bold">{error}</div>}
-              {successMessage ? (
-                <div className="space-y-6">
-                  <div className="p-6 bg-white/5 border border-white/10 rounded-[2rem] text-center">
-                    <div className="w-12 h-12 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-4 text-green-300"><CheckCircle2 size={24} /></div>
-                    <p className="text-sm font-bold text-white">{successMessage}</p>
-                    <p className="text-xs text-white/50 mt-2 italic">Note: Use "admin@themavericksindia.com" to simulate success.</p>
-                  </div>
-                  <button onClick={() => setView('reset')} className="bg-[#00f2fe] hover:bg-cyan-400 text-slate-900 font-black tracking-wider py-4 rounded-2xl w-full transition-all duration-300 shadow-lg shadow-cyan-400/20 uppercase text-xs flex items-center justify-center gap-2">Simulate: Go to Reset Page <ArrowRight size={16} /></button>
-                  <button onClick={() => setView('login')} className="w-full text-center text-xs font-bold text-cyan-300 hover:text-cyan-200 transition-colors flex items-center justify-center gap-2"><ArrowLeft size={14} /> Back to Login</button>
-                </div>
-              ) : (
-                <form onSubmit={handleSubmit} className="space-y-6">
-                  <div className="space-y-1.5 group">
-                    <label className="text-[10px] font-black text-white/70 uppercase tracking-[0.2em] ml-1">Email Address</label>
-                    <div className="relative">
-                      <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400 group-focus-within:text-indigo-700 transition-colors" size={18} />
-                      <input 
-                        type="email" 
-                        required 
-                        placeholder="user@themavericksindia.com" 
-                        className="glass-input w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold text-white placeholder-white/30" 
-                        value={email} 
-                        onChange={(e) => setEmail(e.target.value)} 
-                      />
-                    </div>
-                  </div>
-                  <button type="submit" disabled={loading} className="glass-button-primary w-full py-4 flex items-center justify-center gap-3 mt-6">
-                    {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <>Send Reset Link <ArrowRight size={18} /></>}
-                  </button>
-                  <button onClick={() => setView('login')} className="w-full text-center text-xs font-bold text-cyan-300 hover:text-cyan-200 transition-colors flex items-center justify-center gap-2 mt-4">
-                    <ArrowLeft size={14} /> Back to Login
-                  </button>
-                </form>
-              )}
-            </>
-          )}
+              {successMessage && <div className="mb-6 p-4 bg-emerald-500/20 border border-emerald-500/30 rounded-2xl text-emerald-200 text-xs font-bold">{successMessage}</div>}
 
-          {view === 'reset' && (
-            <>
-              {/* Custom High-Fidelity Header */}
-              <div className="flex flex-col items-center mb-8">
-                <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center mb-3 border border-white/10 shadow-inner">
-                  <img src="/cerebro_white.png" alt="Cerebro" className="w-12 h-12 object-contain" />
-                </div>
-                <h1 className="text-3xl font-black tracking-tighter text-white mb-0.5" style={{ fontFamily: 'var(--font-heading)' }}>Cerebro</h1>
-                <p className="text-cyan-300 text-[10px] font-black uppercase tracking-widest">Reset Password</p>
-              </div>
-
-              {error && <div className="mb-6 p-4 bg-red-500/20 border border-red-500/30 rounded-2xl text-red-200 text-xs font-bold">{error}</div>}
-              
               <form onSubmit={handleSubmit} className="space-y-6">
-                <div className="space-y-1.5 group">
-                  <label className="text-[10px] font-black text-white/70 uppercase tracking-[0.2em] ml-1">New Password</label>
-                  <div className="relative">
-                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400 group-focus-within:text-indigo-700 transition-colors" size={18} />
-                    <input type={showPassword ? "text" : "password"} required placeholder="••••••••" className="glass-input w-full py-4 pl-12 pr-12 rounded-2xl text-sm font-semibold text-white placeholder-white/30" value={password} onChange={(e) => setPassword(e.target.value)} />
-                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-indigo-400 hover:text-indigo-700 transition-colors">
-                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                {forgotStep === 'email' && (
+                  <div className="space-y-4">
+                    <div className="space-y-1.5 group">
+                      <label className="text-[10px] font-black text-white/70 uppercase tracking-[0.2em] ml-1">Email Address</label>
+                      <div className="relative">
+                        <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400 group-focus-within:text-indigo-700 transition-colors" size={18} />
+                        <input 
+                          type="email" 
+                          required 
+                          autoComplete="off"
+                          placeholder="user@themavericksindia.com" 
+                          className="glass-input w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold text-white placeholder-white/30" 
+                          value={email} 
+                          onChange={(e) => setEmail(e.target.value)} 
+                        />
+                      </div>
+                    </div>
+                    <button type="submit" disabled={loading} className="glass-button-primary w-full py-4 flex items-center justify-center gap-3 mt-6">
+                      {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <>Send Verification Code <ArrowRight size={18} /></>}
                     </button>
                   </div>
-                </div>
-                <div className="space-y-1.5 group">
-                  <label className="text-[10px] font-black text-white/70 uppercase tracking-[0.2em] ml-1">Confirm New Password</label>
-                  <div className="relative">
-                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400 group-focus-within:text-indigo-700 transition-colors" size={18} />
-                    <input type={showPassword ? "text" : "password"} required placeholder="••••••••" className="glass-input w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold text-white placeholder-white/30" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+                )}
+
+                {forgotStep === 'otp' && (
+                  <div className="space-y-4">
+                    <div className="space-y-1.5 group">
+                      <label className="text-[10px] font-black text-white/70 uppercase tracking-[0.2em] ml-1">6-Digit Verification OTP</label>
+                      <div className="relative">
+                        <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400 group-focus-within:text-indigo-700 transition-colors" size={18} />
+                        <input 
+                          type="text" 
+                          required 
+                          maxLength={6}
+                          pattern="\d{6}"
+                          autoComplete="off"
+                          placeholder="Enter 6-digit code" 
+                          className="glass-input w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold text-white tracking-widest placeholder-white/30" 
+                          value={otpInput} 
+                          onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, ''))} 
+                        />
+                      </div>
+                    </div>
+                    <button type="submit" disabled={loading} className="glass-button-primary w-full py-4 flex items-center justify-center gap-3 mt-6">
+                      {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <>Verify OTP Code <ArrowRight size={18} /></>}
+                    </button>
+                    <button 
+                      type="button" 
+                      onClick={() => {
+                        setForgotStep('email');
+                        setSuccessMessage('');
+                        setError('');
+                      }} 
+                      className="w-full text-center text-xs font-bold text-slate-400 hover:text-white transition-colors"
+                    >
+                      Back to Email Step
+                    </button>
                   </div>
-                </div>
-                <button type="submit" disabled={loading} className="glass-button-primary w-full py-4 flex items-center justify-center gap-3 mt-6">
-                  {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <>Reset Password <CheckCircle2 size={18} /></>}
+                )}
+
+                {forgotStep === 'reset' && (
+                  <div className="space-y-4">
+                    <div className="space-y-1.5 group">
+                      <label className="text-[10px] font-black text-white/70 uppercase tracking-[0.2em] ml-1">New Password</label>
+                      <div className="relative">
+                        <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400 group-focus-within:text-indigo-700 transition-colors" size={18} />
+                        <input 
+                          type={showPassword ? "text" : "password"} 
+                          required 
+                          autoComplete="off"
+                          placeholder="New Password" 
+                          className="glass-input w-full py-4 pl-12 pr-12 rounded-2xl text-sm font-semibold text-white placeholder-white/30" 
+                          value={password} 
+                          onChange={(e) => setPassword(e.target.value)} 
+                        />
+                        <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-indigo-400 hover:text-indigo-700 transition-colors">
+                          {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="space-y-1.5 group">
+                      <label className="text-[10px] font-black text-white/70 uppercase tracking-[0.2em] ml-1">Confirm New Password</label>
+                      <div className="relative">
+                        <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400 group-focus-within:text-indigo-700 transition-colors" size={18} />
+                        <input 
+                          type={showPassword ? "text" : "password"} 
+                          required 
+                          autoComplete="off"
+                          placeholder="Confirm New Password" 
+                          className="glass-input w-full py-4 pl-12 pr-4 rounded-2xl text-sm font-semibold text-white placeholder-white/30" 
+                          value={confirmPassword} 
+                          onChange={(e) => setConfirmPassword(e.target.value)} 
+                        />
+                      </div>
+                    </div>
+                    <button type="submit" disabled={loading} className="glass-button-primary w-full py-4 flex items-center justify-center gap-3 mt-6">
+                      {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <>Reset Password <CheckCircle2 size={18} /></>}
+                    </button>
+                  </div>
+                )}
+
+                <button onClick={() => setView('login')} className="w-full text-center text-xs font-bold text-cyan-300 hover:text-cyan-200 transition-colors flex items-center justify-center gap-2 mt-4">
+                  <ArrowLeft size={14} /> Back to Login
                 </button>
               </form>
             </>
@@ -10964,6 +11911,30 @@ const spec = JSON.parse(response.text);
 
         </div>
       </div>
+
+      {/* Duplicate Session Modal */}
+      {showDuplicateSessionModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-300 text-white font-sans">
+          <div className="bg-slate-900 border-2 border-amber-500/20 rounded-[2rem] max-w-md w-full overflow-hidden shadow-2xl relative p-8 text-center">
+            <div className="w-16 h-16 bg-amber-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-amber-500/20">
+              <AlertTriangle size={32} className="text-amber-500" />
+            </div>
+            <h3 className="text-xl font-black text-white tracking-tight mb-2">Active Session Detected</h3>
+            <p className="text-xs text-slate-300 leading-relaxed mb-6">
+              You already have an active session running in another browser tab. For security and stability, only one active tab is permitted per account. This session has been terminated.
+            </p>
+            <button 
+              onClick={() => {
+                setShowDuplicateSessionModal(false);
+                setView('login');
+              }}
+              className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-black tracking-wider py-4 rounded-2xl w-full transition-all duration-300 shadow-lg shadow-amber-500/20 uppercase text-xs cursor-pointer active:scale-95"
+            >
+              Understand & Log In
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

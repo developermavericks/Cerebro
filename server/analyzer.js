@@ -137,19 +137,38 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
   let articles = [];
 
   try {
-    const result = await db.query(`
-      SELECT 
-        title as "Title", 
-        link as "Resolved URL", 
-        published_at as "Published At", 
-        source as "Publisher/Agency", 
-        summary as "Summary", 
-        summary as "Full Body"
-      FROM articles
+    const nexus = await db.query(`
+      SELECT
+        title                                       AS "Title",
+        url                                         AS "Resolved URL",
+        published_at                                AS "Published At",
+        agency                                      AS "Publisher/Agency",
+        COALESCE(full_body, summary, '')            AS "Summary",
+        COALESCE(full_body, summary, '')            AS "Full Body"
+      FROM nexus_articles
+      ORDER BY published_at DESC
     `);
-    articles = result.rows;
-  } catch (err) {
-    console.error('Error fetching articles from database for analysis:', err.message);
+    if (nexus.rows.length > 0) articles = nexus.rows;
+  } catch (_) {
+    // nexus_articles table may not exist yet on first deploy
+  }
+
+  if (articles.length === 0) {
+    try {
+      const rss = await db.query(`
+        SELECT
+          title        AS "Title",
+          link         AS "Resolved URL",
+          published_at AS "Published At",
+          source       AS "Publisher/Agency",
+          summary      AS "Summary",
+          summary      AS "Full Body"
+        FROM articles
+      `);
+      articles = rss.rows;
+    } catch (err) {
+      console.error('Error fetching articles from database for analysis:', err.message);
+    }
   }
 
   const targetBrands = (targetKeywords || []).map(b => b.trim()).filter(Boolean);

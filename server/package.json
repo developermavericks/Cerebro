@@ -26,6 +26,7 @@
     "puppeteer-extra-plugin-stealth": "^2.11.2",
     "rss-parser": "^3.13.0",
     "sentiment": "^5.0.2",
+    "nodemailer": "^6.9.13",
     "user-agents": "^2.1.65",
     "uuid": "^14.0.0",
     "xlsx": "^0.18.5"
