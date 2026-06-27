@@ -2852,6 +2852,7 @@ function App() {
   const [isRefreshingDashboard, setIsRefreshingDashboard] = useState(false);
   const [showAddBrandModal, setShowAddBrandModal] = useState(false);
   const [trackedBrands, setTrackedBrands] = useState([]);
+  const [nexusStats, setNexusStats] = useState({ total: null, latest: null });
   const [newBrandName, setNewBrandName] = useState('');
   const [newBrandRegion, setNewBrandRegion] = useState('Global');
   const [refreshTimer, setRefreshTimer] = useState(() => {
@@ -3323,6 +3324,19 @@ function App() {
     }
   };
 
+  const fetchNexusStats = async () => {
+    if (!user || !user.id) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/nexus/status`, {
+        headers: { 'X-User-Id': user.id }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setNexusStats({ total: data.total, latest: data.latest });
+      }
+    } catch (_) {}
+  };
+
   const handleRefreshDashboard = async () => {
     if (isRefreshingDashboard) return;
     setIsRefreshingDashboard(true);
@@ -3423,6 +3437,9 @@ function App() {
     }
     if (activeTab === 'report-analysis' && user && user.id) {
       fetchReports();
+    }
+    if (activeTab === 'dashboard' && user && user.id) {
+      fetchNexusStats();
     }
   }, [activeTab, user]);
 
@@ -5351,7 +5368,7 @@ function App() {
                     </div>
 
                     {/* Stats Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 w-full">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 w-full">
                       {[
                         {
                           title: 'Total Keyword Tracked',
@@ -5373,6 +5390,13 @@ function App() {
                           value: trackedBrands.length,
                           video: '/tracker.mp4',
                           action: () => setActiveTab('brand-tracker')
+                        },
+                        {
+                          title: 'News Articles in DB',
+                          subtitle: nexusStats.latest ? `Last synced: ${new Date(nexusStats.latest).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}` : 'Synced daily at 10:30 AM',
+                          value: nexusStats.total !== null ? nexusStats.total.toLocaleString('en-IN') : '—',
+                          video: '/search.mp4',
+                          action: () => setActiveTab('keyword-search')
                         }
                       ].map((card, idx) => (
                         <button
