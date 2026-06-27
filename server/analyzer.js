@@ -132,9 +132,43 @@ function normalizeText(text) {
   return text.toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 
-async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [], topic = 'All' }) {
+async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [], topic = 'All', dateRange = '7days' }) {
   const db = require('./db');
+
+  const intervalMap = { '7days': '7 days', '30days': '30 days', '90days': '90 days' };
+  const interval = intervalMap[dateRange] || '7 days';
+
+  const targetBrands = (targetKeywords || []).map(b => b.trim()).filter(Boolean);
+  if (!targetBrands.length) return {};
+
+  const excludedTerms = (excludedKeywords || []).map(b => b.trim()).filter(Boolean);
+
+  // Build alias map early (needed for SQL pre-filter)
+  const normalizedTargetMap = {};
+  for (const b of targetBrands) {
+    const bLower = b.toLowerCase();
+    let familyMatch = null;
+    for (const [displayName, aliases] of Object.entries(BRAND_FAMILIES)) {
+      if (bLower === displayName.toLowerCase()) { familyMatch = aliases; break; }
+    }
+    if (familyMatch) {
+      for (const alias of familyMatch) normalizedTargetMap[alias.toLowerCase().trim()] = b;
+    } else {
+      normalizedTargetMap[bLower] = b;
+    }
+  }
+
+  const targetTerms = Object.keys(normalizedTargetMap);
+
+  // SQL pre-filter: only fetch articles containing at least one target keyword
+  const sqlParams = targetTerms.map(t => `%${t}%`);
+  const ilikeConds = targetTerms.map((_, i) => {
+    const p = i + 1;
+    return `(title ILIKE $${p} OR summary ILIKE $${p} OR LEFT(full_body, 2000) ILIKE $${p})`;
+  }).join(' OR ');
+
   let articles = [];
+  let othersCount = 0;
 
   try {
     const nexus = await db.query(`
@@ -146,16 +180,21 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
         COALESCE(LEFT(full_body, 2000), summary, '')      AS "Summary",
         COALESCE(LEFT(full_body, 2000), summary, '')      AS "Full Body"
       FROM nexus_articles
-      WHERE published_at >= NOW() - INTERVAL '7 days'
+      WHERE published_at >= NOW() - INTERVAL '${interval}'
+        AND (${ilikeConds})
       ORDER BY published_at DESC
-      LIMIT 3000
-    `);
-    if (nexus.rows.length > 0) articles = nexus.rows;
-  } catch (_) {
-    // nexus_articles table may not exist yet on first deploy
-  }
+    `, sqlParams);
 
-  if (articles.length === 0) {
+    if (nexus.rows.length > 0) articles = nexus.rows;
+
+    const countRes = await db.query(`
+      SELECT COUNT(*) AS count FROM nexus_articles
+      WHERE published_at >= NOW() - INTERVAL '${interval}'
+        AND NOT (${ilikeConds})
+    `, sqlParams);
+    othersCount = parseInt(countRes.rows[0]?.count || 0, 10);
+
+  } catch (_) {
     try {
       const rss = await db.query(`
         SELECT
@@ -173,13 +212,7 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
     }
   }
 
-  const targetBrands = (targetKeywords || []).map(b => b.trim()).filter(Boolean);
-  if (!targetBrands.length) return {};
-
-  const excludedTerms = (excludedKeywords || []).map(b => b.trim()).filter(Boolean);
-
   const displayBrands = [...targetBrands, "Others"];
-
   const results = {};
   for (const brand of displayBrands) {
     results[brand] = {
@@ -192,32 +225,9 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
     };
   }
 
-  let totalSectorArticles = 0;
   let totalKeywordArticles = 0;
 
-  // Target aliases map: search term lowercase -> Brand display name
-  const normalizedTargetMap = {};
-  for (const b of targetBrands) {
-    const bLower = b.toLowerCase();
-    let familyMatch = null;
-    for (const [displayName, aliases] of Object.entries(BRAND_FAMILIES)) {
-      if (bLower === displayName.toLowerCase()) {
-        familyMatch = aliases;
-        break;
-      }
-    }
-    if (familyMatch) {
-      for (const alias of familyMatch) {
-        normalizedTargetMap[alias.toLowerCase().trim()] = b;
-      }
-    } else {
-      normalizedTargetMap[bLower] = b;
-    }
-  }
-
-  const targetTerms = Object.keys(normalizedTargetMap);
-
-  // Compile regex patterns for target, excluded, and topic keywords
+  // Compile regex patterns
   const compiledPatterns = {};
   for (const term of targetTerms) {
     const normTerm = normalizeText(term);
@@ -231,7 +241,6 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
     return new RegExp('\\b' + escapedParts.join('\\s+') + '\\b', 'i');
   });
 
-  // Compile topic regex if not 'All'
   let topicRegex = null;
   if (topic && topic !== 'All') {
     const keywords = TOPIC_KEYWORDS[topic.toUpperCase()] || [topic];
@@ -248,44 +257,32 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
 
     if (!content.trim()) continue;
 
-    // Filter by topic if active
     if (topicRegex) {
       topicRegex.lastIndex = 0;
-      if (!topicRegex.test(content)) {
-        continue;
-      }
+      if (!topicRegex.test(content)) continue;
     }
 
     let isExcluded = false;
     for (const regex of compiledExcluded) {
       regex.lastIndex = 0;
-      if (regex.test(content)) {
-        isExcluded = true;
-        break;
-      }
+      if (regex.test(content)) { isExcluded = true; break; }
     }
     if (isExcluded) continue;
-
-    totalSectorArticles++;
 
     const sourceRaw = article['Publisher/Agency'] || article['Publisher'] || article['Source Feed'] || 'Unknown';
     const source = normalizePublicationName(sourceRaw);
 
-    let dateKey = '2026-05-18';
+    let dateKey = '2026-06-01';
     const pubRaw = article['Published At'] || article['Timestamp'];
     if (pubRaw) {
       try {
         const dateObj = new Date(pubRaw);
-        if (!isNaN(dateObj.getTime())) {
-          dateKey = dateObj.toISOString().split('T')[0];
-        }
+        if (!isNaN(dateObj.getTime())) dateKey = dateObj.toISOString().split('T')[0];
       } catch (e) {}
     }
 
-    const articleMatches = new Set();
     let hasKeywordMatch = false;
 
-    // 1. Target Brands
     for (const term of targetTerms) {
       const regex = compiledPatterns[term];
       regex.lastIndex = 0;
@@ -293,35 +290,26 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
       if (matches && matches.length > 0) {
         hasKeywordMatch = true;
         const brandName = normalizedTargetMap[term];
-        articleMatches.add(brandName);
 
         results[brandName].mentions += matches.length;
         results[brandName].articles += 1;
         results[brandName].sources[source] = (results[brandName].sources[source] || 0) + matches.length;
         results[brandName].timeline[dateKey] = (results[brandName].timeline[dateKey] || 0) + matches.length;
 
-        // Sentiment analysis on matching sentences
         const sentences = rawContent.split(/[.!?]+\s+/);
         for (const sentence of sentences) {
           const sentNorm = normalizeText(sentence);
           const sRegex = new RegExp('\\b' + escapeRegExp(term) + '\\b', 'i');
           if (sRegex.test(sentNorm)) {
             const res = sentiment.analyze(sentence);
-            let sentCat = "Neutral";
-            if (res.score > 1) sentCat = "Positive";
-            else if (res.score < -1) sentCat = "Negative";
+            let sentCat = res.score > 1 ? "Positive" : res.score < -1 ? "Negative" : "Neutral";
 
             results[brandName].sentiment[sentCat] += 1;
             if (results[brandName].article_samples[sentCat].length < 20) {
               const url = article['Resolved URL'] || article['URL'] || article['link'] || '';
               const titleToCheck = title || 'No Title';
               if (!results[brandName].article_samples[sentCat].some(s => s.title === titleToCheck || (url && s.url === url))) {
-                results[brandName].article_samples[sentCat].push({
-                  title: titleToCheck,
-                  source: source,
-                  url: url,
-                  published: dateKey
-                });
+                results[brandName].article_samples[sentCat].push({ title: titleToCheck, source, url, published: dateKey });
               }
             }
           }
@@ -329,42 +317,14 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
       }
     }
 
-    // 2. All remaining articles go into "Others"
-    if (!hasKeywordMatch) {
-      const brandName = "Others";
-      results[brandName].articles += 1;
-
-      const mentionsCount = 1;
-
-      results[brandName].mentions += mentionsCount;
-      results[brandName].sources[source] = (results[brandName].sources[source] || 0) + mentionsCount;
-      results[brandName].timeline[dateKey] = (results[brandName].timeline[dateKey] || 0) + mentionsCount;
-
-      // Sentiment analysis on title/summary of this other article
-      const resS = sentiment.analyze(title + " " + summary);
-      let sentCat = "Neutral";
-      if (resS.score > 1) sentCat = "Positive";
-      else if (resS.score < -1) sentCat = "Negative";
-
-      results[brandName].sentiment[sentCat] += 1;
-      if (results[brandName].article_samples[sentCat].length < 20) {
-        const url = article['Resolved URL'] || article['URL'] || article['link'] || '';
-        const titleToCheck = title || 'No Title';
-        if (!results[brandName].article_samples[sentCat].some(s => s.title === titleToCheck || (url && s.url === url))) {
-          results[brandName].article_samples[sentCat].push({
-            title: titleToCheck,
-            source: source,
-            url: url,
-            published: dateKey
-          });
-        }
-      }
-    }
-
-    if (hasKeywordMatch) {
-      totalKeywordArticles++;
-    }
+    if (hasKeywordMatch) totalKeywordArticles++;
   }
+
+  // Populate Others from SQL COUNT (no JS loop needed)
+  results["Others"].articles = othersCount;
+  results["Others"].mentions = othersCount;
+
+  const totalSectorArticles = totalKeywordArticles + othersCount;
 
   const indianSourceCounts = {};
   for (const [brand, data] of Object.entries(results)) {

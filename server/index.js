@@ -1291,10 +1291,10 @@ app.get('/api/brands/:id/report', async (req, res) => {
 // Curated Query Search & Brand Analysis endpoint
 app.post('/api/curated-search', async (req, res) => {
   console.log('POST /api/curated-search hit with body:', req.body);
-  const { targetKeywords, excludedKeywords, topic } = req.body;
+  const { targetKeywords, excludedKeywords, topic, dateRange } = req.body;
   try {
     const analyzer = require('./analyzer');
-    const results = await analyzer.analyzeSpecificBrands({ targetKeywords, excludedKeywords, topic });
+    const results = await analyzer.analyzeSpecificBrands({ targetKeywords, excludedKeywords, topic, dateRange });
     console.log('Analysis results keys:', Object.keys(results.brands || {}));
     res.status(200).json(results);
   } catch (err) {
