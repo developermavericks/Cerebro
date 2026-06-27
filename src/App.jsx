@@ -314,7 +314,7 @@ const COMPETITORS = [
   "General", "2380 Capital", "AIP", "AVPN", "Acquaviva", "Adda Education", "Alt DRX", "Ameliya Ventures", "Anand Sweets", "Angara Jewelry", "Anu Rathninde", "Asha Ventures", "AssetPlus", "Astra Security", "AstraZeneca", "Aurobindo Pharma", "Avaamo", "AxiTrust", "BCG", "Battery Smart", "Bayone", "Blue Tokai", "Bolna.ai", "BotLab Dynamics", "Brand Alpha", "Bright Money", "CHOSEN", "CSF", "Capgemini", "Caterpillar Inc", "Chai Bisket", "Chalet Hotels", "Chupps", "Circuit House", "Clinikally", "College Vidya", "Competitor Beta", "ComputaCenter", "Coupang", "D2C Insider", "DailyObjects", "Decentro", "Demandbase", "Edenred", "Emeritus", "Engie", "Enkash", "Eume", "FRND", "Falcon FS", "Folk Frequency", "Fujifilm", "GNFZ", "GPS Renewables", "Global Markets", "GoHighLevel", "Goldi Solar", "Good Bug", "Google", "GradRight (SUNY Buffalo)", "Great Learning", "Guardian Health", "GullyLabs", "Hasbro", "Healthkois", "Hexagon", "HiSense", "IBDIC", "IHG", "IIMA Ventures", "Illumine", "Inc.5 Shoes", "Indian Oil", "Ingram Micro", "Jar", "JoshTalks", "JumpCloud", "JustJobs", "KFC", "Kaizen Analytix", "KisanKfraft", "Kissht", "Loreal", "Mahina", "Masin", "Maybelline New York", "Mehta Family Foundation", "MetaShop AI", "Milliken", "Milliken - Flooring", "Mitigata", "Modi Illva", "Montra Electric", "Murf AI", "Musashi", "Namma Yatri", "National Law School (NLS)", "Netflix", "Nicobar", "Novo Camps", "Nuuk", "Observe.ai", "Omnicom Global Solutions", "Optimeus", "Origin Fresh", "Paasa", "Paasa (2)", "Panasonic", "PayGlocal", "Pearl Academy", "PetG", "Pixxel", "Playbook Partners", "Plum", "Prime Ventures", "Pronto", "Qualcomm", "Qure.ai", "Rakuten Symphony - Crisis", "Rakuten Symphony - Prajaka Profiling", "Rakuten Symphony - brand", "Red Pen", "Reddit", "Room to Read", "SCALE", "SVP", "Sattva Consulting", "Scale AKA TCF", "Scaler", "Scapia", "Seekho", "SenseAI", "Shubhanshu Shukla", "Simple Energy", "SleepyCat", "Smallest", "Smile Group", "Snabbit", "South Park Commons", "Squadstack", "Straive", "Suez India", "SunSiyam", "Swiggy", "Synergy Capital", "TWC", "Tech Innovations", "TrueBlue", "UPES", "Udaiti", "Udhyam Learning", "Ugaao", "University of San Diego", "University of Surrey (UPES IBC)", "University of Western Australia", "Upliance.ai", "Urban Degh", "VMS Group", "Walmart Global Tech", "Way2News", "Weaver Finance", "Windsor House", "YuWaah", "Zappfresh", "Zeno Health", "Zeta", "iLead", "iTel", "mPokket", "slice", "v-Titan", "vivo"
 ].sort();
 
-const SearchableDropdown = ({ value, onChange, placeholder, items, label, theme = 'indigo', exclude }) => {
+const SearchableDropdown = ({ value, onChange, placeholder, items, label, theme = 'indigo', exclude, onEnter, darkMode = false }) => {
   const [isOpen, setIsOpen] = React.useState(false);
   const [search, setSearch] = React.useState(value || '');
 
@@ -326,35 +326,38 @@ const SearchableDropdown = ({ value, onChange, placeholder, items, label, theme 
     item.toLowerCase().includes(search.toLowerCase()) && item !== exclude
   );
 
-
   const colors = {
     indigo: {
-      bg: 'bg-indigo-50',
-      border: 'border-indigo-100',
-      text: 'text-indigo-600',
+      bg: darkMode ? 'bg-indigo-900/20' : 'bg-indigo-50',
+      border: 'border-indigo-500',
+      text: 'text-indigo-400',
       hover: 'hover:bg-indigo-600',
-      focus: 'focus:border-indigo-600 focus:ring-indigo-50',
-      accent: 'text-indigo-900'
+      focus: 'focus:border-indigo-500',
+      accent: darkMode ? 'text-indigo-300' : 'text-indigo-900'
     },
     slate: {
-      bg: 'bg-slate-50',
-      border: 'border-slate-200',
-      text: 'text-slate-600',
-      hover: 'hover:bg-slate-900',
-      focus: 'focus:border-slate-900 focus:ring-slate-50',
-      accent: 'text-slate-900'
+      bg: darkMode ? 'bg-slate-700/20' : 'bg-slate-50',
+      border: darkMode ? 'border-slate-500' : 'border-slate-200',
+      text: darkMode ? 'text-slate-300' : 'text-slate-600',
+      hover: 'hover:bg-slate-700',
+      focus: darkMode ? 'focus:border-slate-400' : 'focus:border-slate-900',
+      accent: darkMode ? 'text-slate-300' : 'text-slate-900'
     }
   }[theme];
 
   return (
     <div className="relative group w-full">
-      <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2 block ml-1">{label}</label>
+      <label className={`text-[10px] font-black uppercase tracking-[0.2em] mb-2 block ml-1 ${darkMode ? 'text-slate-400' : 'text-slate-400'}`}>{label}</label>
       <div className="relative z-50">
         <Search className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors duration-300 ${isOpen ? colors.text : 'text-slate-400'}`} size={18} />
         <input
           type="text"
           placeholder={placeholder}
-          className={`w-full py-4 pl-12 pr-10 bg-white border-2 border-slate-100 rounded-2xl text-sm font-bold text-slate-900 outline-none transition-all shadow-sm ${isOpen ? colors.border + ' ring-4 ' + colors.focus : 'hover:border-slate-200'}`}
+          className={`w-full py-4 pl-12 pr-10 border-2 rounded-2xl text-sm font-bold outline-none transition-all shadow-sm ${
+            darkMode
+              ? 'bg-white/5 border-white/10 text-white placeholder:text-slate-500 hover:border-white/20'
+              : 'bg-white border-slate-100 text-slate-900 hover:border-slate-200'
+          } ${isOpen ? colors.border : ''}`}
           value={search}
           onChange={(e) => {
             const val = e.target.value;
@@ -365,8 +368,14 @@ const SearchableDropdown = ({ value, onChange, placeholder, items, label, theme 
           onFocus={() => setIsOpen(true)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
+              if (filteredItems.length > 0) {
+                onChange(filteredItems[0]);
+                setSearch(filteredItems[0]);
+              }
               setIsOpen(false);
+              if (onEnter) onEnter();
             }
+            if (e.key === 'Escape') setIsOpen(false);
           }}
         />
         <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
@@ -379,31 +388,36 @@ const SearchableDropdown = ({ value, onChange, placeholder, items, label, theme 
                 onChange('');
                 setIsOpen(false);
               }}
-              className="text-slate-300 hover:text-red-500 transition-colors p-1"
+              className="text-slate-400 hover:text-red-500 transition-colors p-1"
             >
               <X size={16} />
             </button>
           )}
-          <div className="w-px h-4 bg-slate-200 mx-1"></div>
-          <ChevronDown size={18} className={`transition-transform duration-500 text-slate-300 ${isOpen ? 'rotate-180 ' + colors.text : ''}`} />
+          <div className={`w-px h-4 mx-1 ${darkMode ? 'bg-white/10' : 'bg-slate-200'}`}></div>
+          <ChevronDown size={18} className={`transition-transform duration-500 ${darkMode ? 'text-slate-500' : 'text-slate-300'} ${isOpen ? 'rotate-180 ' + colors.text : ''}`} />
         </div>
       </div>
 
-
       {isOpen && filteredItems.length > 0 && (
         <>
-          <div className="absolute z-[60] w-full mt-3 bg-white border border-slate-200 rounded-[2rem] shadow-2xl max-h-72 overflow-y-auto animate-in fade-in zoom-in-95 duration-300 custom-scrollbar p-2">
+          <div className={`absolute z-[60] w-full mt-3 border rounded-[2rem] shadow-2xl max-h-72 overflow-y-auto animate-in fade-in zoom-in-95 duration-300 custom-scrollbar p-2 ${
+            darkMode ? 'bg-[#0d1527] border-white/10' : 'bg-white border-slate-200'
+          }`}>
             {filteredItems.map((item, idx) => (
               <button
                 key={idx}
-                className={`w-full text-left px-5 py-3 rounded-xl text-sm font-bold text-slate-700 ${colors.hover} hover:text-white transition-all flex items-center gap-3 group/item mb-1 last:mb-0`}
+                className={`w-full text-left px-5 py-3 rounded-xl text-sm font-bold transition-all flex items-center gap-3 group/item mb-1 last:mb-0 ${
+                  darkMode
+                    ? 'text-slate-300 hover:bg-white/10 hover:text-white'
+                    : `text-slate-700 ${colors.hover} hover:text-white`
+                }`}
                 onClick={() => {
                   onChange(item);
                   setSearch(item);
                   setIsOpen(false);
                 }}
               >
-                <div className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center group-hover/item:bg-white/20 transition-colors">
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center group-hover/item:bg-white/20 transition-colors ${darkMode ? 'bg-white/5' : 'bg-slate-100'}`}>
                   <span className="text-[10px] font-black">{item[0]}</span>
                 </div>
                 <span className="truncate">{item}</span>
@@ -417,7 +431,7 @@ const SearchableDropdown = ({ value, onChange, placeholder, items, label, theme 
       {search && items.includes(search) && (
         <div className={`mt-4 p-4 ${colors.bg} border ${colors.border} rounded-2xl animate-in fade-in slide-in-from-top-2 duration-500`}>
           <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm border ${colors.border}`}>
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-sm border ${colors.border} ${darkMode ? 'bg-white/5' : 'bg-white'}`}>
               <span className={`${colors.text} font-black text-lg`}>{search[0]}</span>
             </div>
             <div className="min-w-0">
@@ -2852,6 +2866,7 @@ function App() {
   const [isRefreshingDashboard, setIsRefreshingDashboard] = useState(false);
   const [showAddBrandModal, setShowAddBrandModal] = useState(false);
   const [trackedBrands, setTrackedBrands] = useState([]);
+  const [lastBrandFetchTime, setLastBrandFetchTime] = useState(null);
   const [nexusStats, setNexusStats] = useState({ total: null, latest: null });
   const [newBrandName, setNewBrandName] = useState('');
   const [newBrandRegion, setNewBrandRegion] = useState('Global');
@@ -3289,6 +3304,7 @@ function App() {
       if (res.ok) {
         const data = await res.json();
         setTrackedBrands(data);
+        setLastBrandFetchTime(new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false }));
       }
     } catch (err) {
       console.error('Error fetching brands:', err);
@@ -3632,6 +3648,19 @@ function App() {
         await fetchTrackedBrands();
         setNewBrandName('');
         setShowAddBrandModal(false);
+        // Trigger immediate fetch for new brand, then refresh brand data
+        try {
+          setIsRefreshingBrand(true);
+          await fetch(`${API_BASE}/api/brands/fetch-now`, {
+            method: 'POST',
+            headers: { 'X-User-Id': user.id }
+          });
+          await fetchTrackedBrands();
+          const newTarget = Date.now() + 300 * 1000;
+          localStorage.setItem('cerebro_refresh_target', newTarget.toString());
+          setRefreshTimer(300);
+        } catch (_) {}
+        finally { setIsRefreshingBrand(false); }
       } else {
         const errData = await res.json();
         alert(errData.error || 'Failed to add brand');
@@ -5280,19 +5309,7 @@ function App() {
               {activeTab !== 'competitor-analysis' && activeTab !== 'dashboard' && activeTab !== 'report-analysis' && activeTab !== 'article-reach' && (
                 <div className="px-8 pt-8 mb-10 flex items-center justify-between">
                   <div className="flex items-center gap-6">
-                    {activeTab === 'brand-tracker' && !selectedBrandForDetail ? (
-                        <button
-                          onClick={() => setShowAddBrandModal(true)}
-                          className="group flex items-center bg-white border border-slate-200 p-2 rounded-full hover:border-indigo-600 hover:bg-indigo-50 transition-all duration-500 ease-in-out shadow-sm overflow-hidden whitespace-nowrap max-w-[56px] hover:max-w-[200px] z-50"
-                        >
-                          <div className="w-10 h-10 bg-indigo-600 rounded-full flex items-center justify-center text-white shadow-lg shadow-indigo-100 group-hover:rotate-180 transition-transform duration-700 ease-in-out shrink-0">
-                            <Plus size={24} />
-                          </div>
-                          <span className="ml-3 pr-4 text-sm font-black text-black opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                            Add Brand
-                          </span>
-                        </button>
-                    ) : activeTab === 'report-analysis' ? (
+                    {activeTab === 'report-analysis' ? (
                       <div />
                     ) : (
                       <div>
@@ -6747,15 +6764,15 @@ function App() {
                       </p>
                     </div>
 
-                    <div className="w-full max-w-4xl mx-auto bg-white/50 backdrop-blur-xl border border-slate-200 rounded-[3rem] p-12 shadow-2xl shadow-slate-200/50">
+                    <div className={`w-full max-w-4xl mx-auto backdrop-blur-xl border rounded-[3rem] p-12 shadow-2xl ${darkMode ? 'bg-white/3 border-white/10 shadow-black/30' : 'bg-white/50 border-slate-200 shadow-slate-200/50'}`}>
                       {showHistory ? (
                         <div className="relative z-10 animate-in fade-in zoom-in-95 duration-500">
                           <div className="flex items-center justify-between mb-8">
                             <div>
-                              <h3 className="text-xl font-black text-black uppercase tracking-tight">Comparison History</h3>
+                              <h3 className={`text-xl font-black uppercase tracking-tight ${darkMode ? 'text-white' : 'text-black'}`}>Comparison History</h3>
                               <p className="text-slate-400 text-xs font-bold mt-1">Review your recent intelligence sessions</p>
                             </div>
-                            <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600">
+                            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-indigo-500 ${darkMode ? 'bg-indigo-500/10' : 'bg-indigo-50'}`}>
                               <History size={24} />
                             </div>
                           </div>
@@ -6791,17 +6808,17 @@ function App() {
                                     setIsLoadingAnalysis(false);
                                   }
                                 }}
-                                className="p-5 bg-white border border-slate-100 rounded-2xl hover:border-indigo-200 hover:shadow-lg transition-all group cursor-pointer flex justify-between items-center"
+                                className={`p-5 border rounded-2xl hover:border-indigo-500/50 hover:shadow-lg transition-all group cursor-pointer flex justify-between items-center ${darkMode ? 'bg-white/5 border-white/10' : 'bg-white border-slate-100'}`}
                               >
                                 <div className="flex items-center gap-6">
                                   <div className="flex items-center gap-3">
                                     <div className="w-8 h-8 bg-indigo-600 text-white rounded-lg flex items-center justify-center font-black text-xs">{item.comp1[0]}</div>
-                                    <span className="text-sm font-black text-slate-900">{item.comp1}</span>
+                                    <span className={`text-sm font-black ${darkMode ? 'text-white' : 'text-slate-900'}`}>{item.comp1}</span>
                                   </div>
-                                  <div className="text-slate-300 font-black">VS</div>
+                                  <div className="text-slate-500 font-black">VS</div>
                                   <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 bg-slate-900 text-white rounded-lg flex items-center justify-center font-black text-xs">{item.comp2[0]}</div>
-                                    <span className="text-sm font-black text-slate-900">{item.comp2}</span>
+                                    <div className={`w-8 h-8 text-white rounded-lg flex items-center justify-center font-black text-xs ${darkMode ? 'bg-slate-600' : 'bg-slate-900'}`}>{item.comp2[0]}</div>
+                                    <span className={`text-sm font-black ${darkMode ? 'text-white' : 'text-slate-900'}`}>{item.comp2}</span>
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-4">
@@ -6828,12 +6845,11 @@ function App() {
                               placeholder="Search entity..."
                               items={suggestionItems}
                               value={search1}
-                              onChange={(val) => {
-                                setSearch1(val);
-                                setComp1(val);
-                              }}
+                              onChange={(val) => { setSearch1(val); setComp1(val); }}
+                              onEnter={() => { if (comp2) handleAnalyse(); }}
                               theme="indigo"
                               exclude={comp2}
+                              darkMode={darkMode}
                             />
 
                             <div className="flex flex-col items-center py-8 md:py-0">
@@ -6848,12 +6864,11 @@ function App() {
                               placeholder="Search entity..."
                               items={suggestionItems}
                               value={search2}
-                              onChange={(val) => {
-                                setSearch2(val);
-                                setComp2(val);
-                              }}
+                              onChange={(val) => { setSearch2(val); setComp2(val); }}
+                              onEnter={() => { if (comp1) handleAnalyse(); }}
                               theme="slate"
                               exclude={comp1}
+                              darkMode={darkMode}
                             />
                           </div>
                         );
@@ -6869,7 +6884,7 @@ function App() {
                             <Activity size={24} className="text-indigo-600 animate-pulse" />
                           </div>
                         </div>
-                        <h4 className="text-lg font-black text-slate-800 uppercase tracking-tighter mb-1">Synthesizing Comparative Intelligence...</h4>
+                        <h4 className={`text-lg font-black uppercase tracking-tighter mb-1 ${darkMode ? 'text-white' : 'text-slate-800'}`}>Synthesizing Comparative Intelligence...</h4>
                         <p className="text-slate-400 text-xs font-bold">Parsing articles, mapping domains, and computing estimated reach trends</p>
                       </div>
                     )}
@@ -7427,7 +7442,25 @@ function App() {
                         </div>
 
                         <div className="space-y-3">
-                          {brandArticles.length > 0 ? brandArticles.map((article, idx) => {
+                          {(() => {
+                            const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+                            const recentArticles = brandArticles.filter(a => {
+                              const t = new Date(a.published_at).getTime();
+                              return !isNaN(t) && t >= cutoff;
+                            });
+                            const articlesToShow = recentArticles.length > 0 ? recentArticles : brandArticles;
+                            if (articlesToShow.length === 0) return (
+                              <div className="bg-white border-2 border-dashed border-slate-200 rounded-[3rem] p-20 text-center">
+                                <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6 text-slate-300">
+                                  <Activity size={32} />
+                                </div>
+                                <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight mb-2">No Articles Found</h3>
+                                <p className="text-slate-500 font-bold text-sm max-w-sm mx-auto">
+                                  Articles are being fetched in the background. Click 'Refresh Now' above or check back in a few minutes.
+                                </p>
+                              </div>
+                            );
+                            return articlesToShow.map((article, idx) => {
                             const sentiment = article.sentiment || 'Neutral';
                             const sentColor = sentiment === 'Positive' ? '#00D166' : sentiment === 'Negative' ? '#FF4B4B' : '#94A3B8';
                             const sentBg = sentiment === 'Positive' ? 'bg-teal-50/50 border-teal-100 text-teal-600' : sentiment === 'Negative' ? 'bg-red-50/50 border-red-100 text-red-600' : 'bg-slate-50/50 border-slate-100 text-slate-600';
@@ -7552,17 +7585,8 @@ function App() {
                                 )}
                               </div>
                             );
-                          }) : (
-                            <div className="bg-white border-2 border-dashed border-slate-200 rounded-[3rem] p-20 text-center">
-                              <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6 text-slate-300">
-                                <Activity size={32} />
-                              </div>
-                              <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight mb-2">No Articles Found</h3>
-                              <p className="text-slate-500 font-bold text-sm max-w-sm mx-auto">
-                                Articles are being fetched in the background. Click 'Refresh Now' above or check back in a few minutes.
-                              </p>
-                            </div>
-                          )}
+                          });
+                          })()}
                         </div>
                       </div>
                     ) : (
@@ -7627,9 +7651,7 @@ function App() {
                         {trackedBrands.length > 0 ? (
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             {trackedBrands.map((brand) => {
-                              const formattedTime = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-                              const roleLetter = user?.role === 'employee' || user?.role === 'admin' ? 'E' : 'B';
-                              const mockNewCount = brand.new_mentions || Math.floor((brand.mentions || 516) * 0.05) || 27;
+                              const newCount = brand.new_mentions || 0;
 
                               return (
                                 <div
@@ -7656,22 +7678,15 @@ function App() {
                                       </div>
                                     </div>
                                     
-                                    <div className="flex items-center gap-2">
-                                      <span className={`text-[9px] font-black uppercase tracking-widest ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                                        {brand.region}
-                                      </span>
-                                      <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-black text-white ${
-                                        roleLetter === 'E' ? 'bg-red-500/80 shadow-sm shadow-red-500/10' : 'bg-indigo-500/80 shadow-sm shadow-indigo-500/10'
-                                      }`}>
-                                        {roleLetter}
-                                      </div>
-                                    </div>
+                                    <span className={`text-[9px] font-black uppercase tracking-widest ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                                      {brand.region}
+                                    </span>
                                   </div>
 
                                   {/* Middle Row (Mentions count) */}
                                   <div className="mt-8 relative z-10 flex flex-col">
                                     <span className={`text-5xl font-black tracking-tight ${darkMode ? 'text-white' : 'text-slate-900'}`}>
-                                      {brand.mentions || 516}
+                                      {brand.mentions ?? 0}
                                     </span>
                                     <span className={`text-[9px] font-black tracking-widest uppercase mt-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
                                       Mentions
@@ -7680,16 +7695,22 @@ function App() {
 
                                   {/* Bottom Row */}
                                   <div className="mt-8 pt-4 border-t border-slate-200/20 dark:border-white/5 flex items-center justify-between relative z-10">
-                                    {/* New badge */}
-                                    <div className="flex items-center gap-1 text-[9px] font-black text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full">
-                                      <TrendingUp size={10} />
-                                      +{mockNewCount} NEW <span className={`text-[8px] font-bold ${darkMode ? 'text-slate-450' : 'text-slate-500'}`}>TODAY</span>
-                                    </div>
+                                    {/* New badge — only show when there are genuinely new mentions */}
+                                    {newCount > 0 ? (
+                                      <div className="flex items-center gap-1 text-[9px] font-black text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full">
+                                        <TrendingUp size={10} />
+                                        +{newCount} NEW <span className={`text-[8px] font-bold ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>TODAY</span>
+                                      </div>
+                                    ) : (
+                                      <div className={`text-[9px] font-black px-2.5 py-1 rounded-full ${darkMode ? 'text-slate-500 bg-white/5' : 'text-slate-400 bg-slate-100'}`}>
+                                        No new today
+                                      </div>
+                                    )}
 
-                                    {/* Last Checked */}
+                                    {/* Last Checked — fixed at last fetch time, not current time */}
                                     <div className="flex items-center gap-1.5 text-[8px] font-black text-slate-400 uppercase tracking-wider">
-                                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                                      Checked {formattedTime}
+                                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                                      {lastBrandFetchTime ? `Checked ${lastBrandFetchTime}` : 'Not yet checked'}
                                     </div>
                                   </div>
 
