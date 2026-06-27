@@ -65,7 +65,6 @@ import {
   PanelRightClose,
   PanelRightOpen,
   PlusCircle,
-  Layers,
   Image,
   Highlighter,
   Bold,
@@ -3370,7 +3369,8 @@ function App() {
       await Promise.all([
         fetchTrackedBrands(),
         fetchGlobalCompanies(),
-        fetchReports()
+        fetchReports(),
+        fetchNexusStats()
       ]);
     } catch (err) {
       console.error('Error during dashboard refresh:', err);
@@ -5134,7 +5134,6 @@ function App() {
               <div className="space-y-1">
                 {[
                   { id: 'settings', label: 'Settings', icon: Settings },
-                  { id: 'system-flow', label: 'System Flow', icon: Layers },
                   { id: 'help', label: 'Help & Support', icon: HelpCircle },
                 ].map(item => (
                   <button
@@ -10677,8 +10676,6 @@ const spec = JSON.parse(response.text);
                       </div>
                     )}
                   </div>
-                ) : activeTab === 'system-flow' ? (
-                  <SystemFlowComponent sidebarCollapsed={sidebarCollapsed} darkMode={darkMode} />
                 ) : activeTab === 'help' ? (
                   <div className={`w-full ${sidebarCollapsed ? 'max-w-[1850px]' : 'max-w-[1700px]'} mx-auto h-full flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-700 pb-12 transition-all duration-500`}>
                     <div className="text-center max-w-2xl mx-auto mb-12">

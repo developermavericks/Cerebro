@@ -1516,18 +1516,22 @@ app.delete('/api/reports/:id', getUserId, async (req, res) => {
 });
 
 // NEXUS cron endpoint — called by Cloud Scheduler at 10:30 AM IST daily
+let nexusSyncRunning = false;
+
 app.post('/api/nexus/cron', async (req, res) => {
   const secret = req.headers['x-cron-secret'] || req.body.secret;
   if (!secret || secret !== process.env.CRON_SECRET) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
-  // Respond immediately so Cloud Run doesn't timeout
+  if (nexusSyncRunning) {
+    return res.json({ success: false, message: 'Sync already running, skipped' });
+  }
   res.json({ success: true, message: 'Sync started in background' });
-  // Run sync after response
+  nexusSyncRunning = true;
   const nexusClient = require('./nexus_client');
-  nexusClient.syncDateRange(2).catch(err =>
-    console.error('[NEXUS] Cron sync error:', err.message)
-  );
+  nexusClient.syncDateRange(2)
+    .catch(err => console.error('[NEXUS] Cron sync error:', err.message))
+    .finally(() => { nexusSyncRunning = false; });
 });
 
 // NEXUS sync — manually trigger article import
