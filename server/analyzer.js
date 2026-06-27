@@ -169,7 +169,9 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
 
   let articles = [];
   let othersCount = 0;
+  let usedNexus = false;
 
+  // Fetch matching articles from nexus
   try {
     const nexus = await db.query(`
       SELECT
@@ -184,17 +186,27 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
         AND (${ilikeConds})
       ORDER BY published_at DESC
     `, sqlParams);
+    if (nexus.rows.length > 0) { articles = nexus.rows; usedNexus = true; }
+  } catch (err) {
+    console.error('[Analyzer] nexus SELECT failed:', err.message);
+  }
 
-    if (nexus.rows.length > 0) articles = nexus.rows;
+  // Count non-matching articles separately (independent of SELECT)
+  if (usedNexus) {
+    try {
+      const countRes = await db.query(`
+        SELECT COUNT(*) AS count FROM nexus_articles
+        WHERE published_at >= NOW() - INTERVAL '${interval}'
+          AND NOT (${ilikeConds})
+      `, sqlParams);
+      othersCount = parseInt(countRes.rows[0]?.count || 0, 10);
+    } catch (err) {
+      console.error('[Analyzer] others COUNT failed:', err.message);
+    }
+  }
 
-    const countRes = await db.query(`
-      SELECT COUNT(*) AS count FROM nexus_articles
-      WHERE published_at >= NOW() - INTERVAL '${interval}'
-        AND NOT (${ilikeConds})
-    `, sqlParams);
-    othersCount = parseInt(countRes.rows[0]?.count || 0, 10);
-
-  } catch (_) {
+  // Fallback to RSS articles table if nexus unavailable
+  if (!usedNexus) {
     try {
       const rss = await db.query(`
         SELECT
@@ -208,7 +220,7 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
       `);
       articles = rss.rows;
     } catch (err) {
-      console.error('Error fetching articles from database for analysis:', err.message);
+      console.error('[Analyzer] RSS fallback failed:', err.message);
     }
   }
 
