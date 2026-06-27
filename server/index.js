@@ -1558,6 +1558,24 @@ app.get('/api/nexus/status', getUserId, async (req, res) => {
   }
 });
 
+app.get('/api/nexus/dates', async (req, res) => {
+  const secret = req.headers['x-cron-secret'] || req.query.secret;
+  if (!secret || secret !== process.env.CRON_SECRET) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const result = await db.query(`
+      SELECT DATE(published_at) AS date, COUNT(*) AS count
+      FROM nexus_articles
+      WHERE published_at IS NOT NULL
+      GROUP BY DATE(published_at)
+      ORDER BY date DESC
+      LIMIT 90
+    `);
+    res.json(result.rows.map(r => ({ date: r.date.toISOString().split('T')[0], count: parseInt(r.count) })));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Serve static assets in production
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, '../dist')));
