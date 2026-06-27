@@ -1515,6 +1515,22 @@ app.delete('/api/reports/:id', getUserId, async (req, res) => {
   }
 });
 
+// NEXUS cron endpoint — called by Cloud Scheduler at 10:30 AM IST daily
+app.post('/api/nexus/cron', async (req, res) => {
+  const secret = req.headers['x-cron-secret'] || req.body.secret;
+  if (!secret || secret !== process.env.CRON_SECRET) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  try {
+    const nexusClient = require('./nexus_client');
+    const result = await nexusClient.syncDateRange(2); // sync yesterday + today
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('[NEXUS] Cron sync error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // NEXUS sync — manually trigger article import
 app.post('/api/nexus/sync', getUserId, async (req, res) => {
   try {
