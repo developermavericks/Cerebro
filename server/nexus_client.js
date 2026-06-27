@@ -72,7 +72,7 @@ async function syncDate(dateStr) {
   let totalPages = 1;
   let inserted = 0;
   do {
-    const data = await fetchPage({ date: dateStr, has_body: 'true', page, page_size: 100 });
+    const data = await fetchPage({ date: dateStr, page, page_size: 50 });
     totalPages = Math.ceil((data.total_pages || 1));
     inserted += await insertArticles(data.articles || []);
     page++;
