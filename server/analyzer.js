@@ -164,7 +164,7 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
   const sqlParams = targetTerms.map(t => `%${t}%`);
   const ilikeConds = targetTerms.map((_, i) => {
     const p = i + 1;
-    return `(title ILIKE $${p} OR summary ILIKE $${p} OR LEFT(full_body, 2000) ILIKE $${p})`;
+    return `(COALESCE(title,'') ILIKE $${p} OR COALESCE(summary,'') ILIKE $${p} OR LEFT(COALESCE(full_body,''),2000) ILIKE $${p})`;
   }).join(' OR ');
 
   let articles = [];
