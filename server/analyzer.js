@@ -143,11 +143,12 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
         url                                               AS "Resolved URL",
         published_at                                      AS "Published At",
         agency                                            AS "Publisher/Agency",
-        COALESCE(LEFT(full_body, 1000), summary, '')      AS "Summary",
-        COALESCE(LEFT(full_body, 1000), summary, '')      AS "Full Body"
+        COALESCE(LEFT(full_body, 800), summary, '')       AS "Summary",
+        COALESCE(LEFT(full_body, 800), summary, '')       AS "Full Body"
       FROM nexus_articles
-      WHERE published_at >= NOW() - INTERVAL '30 days'
+      WHERE published_at >= NOW() - INTERVAL '7 days'
       ORDER BY published_at DESC
+      LIMIT 3000
     `);
     if (nexus.rows.length > 0) articles = nexus.rows;
   } catch (_) {
@@ -237,9 +238,6 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
     const escaped = keywords.map(k => escapeRegExp(normalizeText(k)));
     topicRegex = new RegExp('\\b(' + escaped.join('|') + ')\\b', 'i');
   }
-
-  // Pre-compiled regex for others pool to speed up matching
-  const otherBrandsRegex = new RegExp('\\b(' + OTHER_BRANDS_POOL.map(escapeRegExp).join('|') + ')\\b', 'gi');
 
   for (const article of articles) {
     const title = article['Title'] || '';
@@ -336,15 +334,7 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
       const brandName = "Others";
       results[brandName].articles += 1;
 
-      // Count mentions of other brands from the pool, or default to 1 exposure mention
-      let mentionsCount = 0;
-      otherBrandsRegex.lastIndex = 0;
-      const otherMatches = content.match(otherBrandsRegex);
-      if (otherMatches && otherMatches.length > 0) {
-        mentionsCount = otherMatches.length;
-      } else {
-        mentionsCount = 1;
-      }
+      const mentionsCount = 1;
 
       results[brandName].mentions += mentionsCount;
       results[brandName].sources[source] = (results[brandName].sources[source] || 0) + mentionsCount;
