@@ -1521,14 +1521,13 @@ app.post('/api/nexus/cron', async (req, res) => {
   if (!secret || secret !== process.env.CRON_SECRET) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
-  try {
-    const nexusClient = require('./nexus_client');
-    const result = await nexusClient.syncDateRange(2); // sync yesterday + today
-    res.json({ success: true, ...result });
-  } catch (err) {
-    console.error('[NEXUS] Cron sync error:', err);
-    res.status(500).json({ error: err.message });
-  }
+  // Respond immediately so Cloud Run doesn't timeout
+  res.json({ success: true, message: 'Sync started in background' });
+  // Run sync after response
+  const nexusClient = require('./nexus_client');
+  nexusClient.syncDateRange(2).catch(err =>
+    console.error('[NEXUS] Cron sync error:', err.message)
+  );
 });
 
 // NEXUS sync — manually trigger article import
