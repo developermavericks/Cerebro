@@ -143,8 +143,8 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
         url                                               AS "Resolved URL",
         published_at                                      AS "Published At",
         agency                                            AS "Publisher/Agency",
-        COALESCE(LEFT(full_body, 800), summary, '')       AS "Summary",
-        COALESCE(LEFT(full_body, 800), summary, '')       AS "Full Body"
+        COALESCE(LEFT(full_body, 2000), summary, '')      AS "Summary",
+        COALESCE(LEFT(full_body, 2000), summary, '')      AS "Full Body"
       FROM nexus_articles
       WHERE published_at >= NOW() - INTERVAL '7 days'
       ORDER BY published_at DESC
