@@ -217,6 +217,59 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
+// Google OAuth Sign-In
+app.post('/api/auth/google', async (req, res) => {
+  const { credential } = req.body;
+  if (!credential) return res.status(400).json({ error: 'No credential provided' });
+
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  if (!clientId) return res.status(500).json({ error: 'Google auth not configured on server' });
+
+  try {
+    const { OAuth2Client } = require('google-auth-library');
+    const googleClient = new OAuth2Client(clientId);
+    const ticket = await googleClient.verifyIdToken({ idToken: credential, audience: clientId });
+    const payload = ticket.getPayload();
+    const { email, name } = payload;
+
+    // Find existing user or create new one
+    let userResult = await db.query('SELECT * FROM users WHERE email = $1', [email]);
+    let isNew = false;
+
+    if (userResult.rows.length === 0) {
+      const placeholderPassword = require('crypto').randomBytes(32).toString('hex');
+      userResult = await db.query(
+        'INSERT INTO users (name, email, password) VALUES ($1, $2, $3) RETURNING *',
+        [name, email, placeholderPassword]
+      );
+      isNew = true;
+    }
+
+    const user = userResult.rows[0];
+    const sessionToken = require('crypto').randomBytes(32).toString('hex');
+    const ip = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress || '127.0.0.1';
+
+    await db.query(
+      `INSERT INTO user_sessions (user_id, session_token, ip_address, last_activity)
+       VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+       ON CONFLICT (user_id)
+       DO UPDATE SET session_token = EXCLUDED.session_token, ip_address = EXCLUDED.ip_address, last_activity = CURRENT_TIMESTAMP`,
+      [user.id, sessionToken, ip]
+    );
+
+    const isMavericksEmail = email.toLowerCase().endsWith('@themavericksindia.com');
+    const role = user.role || (isMavericksEmail ? 'employee' : 'individual');
+
+    res.json({
+      message: isNew ? 'Account created via Google' : 'Google login successful',
+      user: { id: user.id, name: user.name, email: user.email, role, sessionToken }
+    });
+  } catch (err) {
+    console.error('[Google Auth]', err.message);
+    res.status(401).json({ error: 'Google authentication failed. Please try again.' });
+  }
+});
+
 // Middleware to verify Admin Key
 async function verifyAdminKey(req, res, next) {
   const adminKeyHeader = req.headers['x-admin-key'];

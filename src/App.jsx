@@ -4432,6 +4432,57 @@ function App() {
     setComp2Mentions(0);
   };
 
+  const handleGoogleSignIn = () => {
+    setError('');
+    const clientId = window.GOOGLE_CLIENT_ID;
+    if (!clientId || clientId === 'YOUR_GOOGLE_CLIENT_ID_HERE') {
+      setError('Google Sign-In is not configured yet. Please contact support.');
+      return;
+    }
+    if (!window.google?.accounts?.id) {
+      setError('Google Sign-In failed to load. Please refresh and try again.');
+      return;
+    }
+    window.google.accounts.id.initialize({
+      client_id: clientId,
+      callback: async (response) => {
+        try {
+          setLoading(true);
+          const res = await fetch(`${API_BASE}/api/auth/google`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ credential: response.credential })
+          });
+          const data = await res.json();
+          setLoading(false);
+          if (!res.ok) {
+            setError(data.error || 'Google sign-in failed. Please try again.');
+            return;
+          }
+          setUser(data.user);
+          localStorage.setItem('cerebro_user', JSON.stringify(data.user));
+          const tabId = sessionStorage.getItem('cerebro_tab_id') || Math.random().toString(36).substring(2);
+          localStorage.setItem('cerebro_active_tab_id', tabId);
+          const claimChannel = new BroadcastChannel('cerebro_session_channel');
+          claimChannel.postMessage({ type: 'session_claimed', tabId });
+          claimChannel.close();
+          setTimeout(() => setView('landing'), 500);
+        } catch (err) {
+          setLoading(false);
+          setError('Google sign-in failed. Please try again.');
+        }
+      }
+    });
+    window.google.accounts.id.prompt((notification) => {
+      if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+        window.google.accounts.id.renderButton(
+          document.getElementById('google-signin-button'),
+          { theme: 'outline', size: 'large', width: '100%' }
+        );
+      }
+    });
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -11828,7 +11879,15 @@ const spec = JSON.parse(response.text);
                 <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-white/10"></div></div>
                 <div className="relative flex justify-center text-[10px] uppercase tracking-widest font-black"><span className="px-4 text-white/70" style={{ background: '#4f46e5' }}>Or continue with</span></div>
               </div>
-              <button className="text-white rounded-2xl py-3.5 w-full font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all hover:opacity-90" style={{ background: 'rgba(255,255,255,0.92)', border: '1px solid rgba(255,255,255,0.6)', color: '#1e1b4b' }}><Chrome size={16} /> Sign in with Google</button>
+              <button
+                id="google-signin-button"
+                onClick={handleGoogleSignIn}
+                disabled={loading}
+                className="text-white rounded-2xl py-3.5 w-full font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ background: 'rgba(255,255,255,0.92)', border: '1px solid rgba(255,255,255,0.6)', color: '#1e1b4b' }}
+              >
+                {loading ? <div className="w-4 h-4 border-2 border-indigo-300 border-t-indigo-700 rounded-full animate-spin"></div> : <><Chrome size={16} /> Sign in with Google</>}
+              </button>
               <p className="text-center text-xs font-bold text-white/60 mt-6">Don't have an account? <button onClick={() => setView('signup')} className="text-[#00f2fe] font-black hover:underline transition-all">Create Account</button></p>
             </>
           )}
