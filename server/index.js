@@ -65,7 +65,7 @@ try {
 
 // Signup Endpoint
 app.post('/api/signup', async (req, res) => {
-  const { name, email, password, isEmployee, role, licenseKey, adminKey } = req.body;
+  const { name, email, password, phone, isEmployee, role, licenseKey, adminKey } = req.body;
   const effectiveRole = role || (isEmployee ? 'employee' : 'individual');
 
   if (!name || !email || !password) {
@@ -110,8 +110,8 @@ app.post('/api/signup', async (req, res) => {
 
     // Insert user
     const result = await db.query(
-      'INSERT INTO users (name, email, password) VALUES ($1, $2, $3) RETURNING id, name, email',
-      [name, email, password]
+      'INSERT INTO users (name, email, password, phone) VALUES ($1, $2, $3, $4) RETURNING id, name, email, phone',
+      [name, email, password, phone?.trim() || null]
     );
 
     // If it's an individual user, mark the key as used (unless it's the demo key)
@@ -358,6 +358,20 @@ async function sendOtpEmail(email, otp) {
     return { loggedToConsole: true };
   }
 
+  return mailTransporter.sendMail(mailOptions);
+}
+
+async function sendSupportEmail(ticket) {
+  const mailOptions = {
+    from: process.env.SMTP_FROM || '"Cerebro Support" <support@themavericksindia.com>',
+    to: process.env.SUPPORT_EMAIL || 'developerteam@themavericksindia.com',
+    subject: `[${ticket.category}] ${ticket.subject} — ${ticket.ticket_id}`,
+    html: `<div style="font-family:Arial,sans-serif;padding:20px;color:#1e1b4b"><h2 style="color:#4f46e5">New Support Ticket: ${ticket.ticket_id}</h2><p><strong>Category:</strong> ${ticket.category}</p><p><strong>Subject:</strong> ${ticket.subject}</p><p><strong>From:</strong> ${ticket.user_email}</p><p><strong>Description:</strong></p><div style="background:#f8fafc;padding:16px;border-radius:8px;border-left:4px solid #4f46e5">${ticket.description}</div></div>`,
+  };
+  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+    console.log(`[Support Ticket] ${ticket.ticket_id}: ${ticket.subject} from ${ticket.user_email}`);
+    return;
+  }
   return mailTransporter.sendMail(mailOptions);
 }
 
@@ -1526,12 +1540,17 @@ app.post('/api/nexus/cron', async (req, res) => {
   if (nexusSyncRunning) {
     return res.json({ success: false, message: 'Sync already running, skipped' });
   }
-  res.json({ success: true, message: 'Sync started in background' });
   nexusSyncRunning = true;
   const nexusClient = require('./nexus_client');
-  nexusClient.syncDateRange(2)
-    .catch(err => console.error('[NEXUS] Cron sync error:', err.message))
-    .finally(() => { nexusSyncRunning = false; });
+  try {
+    const result = await nexusClient.syncDateRange(2);
+    res.json({ success: true, synced: result.synced });
+  } catch (err) {
+    console.error('[NEXUS] Cron sync error:', err.message);
+    res.status(500).json({ error: err.message });
+  } finally {
+    nexusSyncRunning = false;
+  }
 });
 
 // NEXUS sync — manually trigger article import
@@ -1580,6 +1599,91 @@ app.get('/api/nexus/dates', async (req, res) => {
   }
 });
 
+// User profile update
+app.put('/api/users/profile', getUserId, async (req, res) => {
+  const { name, phone } = req.body;
+  try {
+    const result = await db.query(
+      'UPDATE users SET name = COALESCE($1, name), phone = COALESCE($2, phone) WHERE id = $3 RETURNING id, name, email, phone, role',
+      [name?.trim() || null, phone?.trim() || null, req.userId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    res.json({ user: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Support tickets — create
+app.post('/api/support/tickets', getUserId, async (req, res) => {
+  const { category, subject, email, description } = req.body;
+  if (!subject?.trim() || !description?.trim() || !email?.trim()) {
+    return res.status(400).json({ error: 'All fields are required.' });
+  }
+  const ticketId = `TKT-${Math.floor(1000 + Math.random() * 9000)}`;
+  try {
+    const result = await db.query(
+      `INSERT INTO support_tickets (ticket_id, user_id, category, subject, user_email, description)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [ticketId, req.userId, category || 'General Inquiry', subject.trim(), email.trim(), description.trim()]
+    );
+    const ticket = result.rows[0];
+    sendSupportEmail(ticket).catch(e => console.error('[Support] Email failed:', e.message));
+    res.json({ ticket: { ...ticket, id: ticket.ticket_id } });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Support tickets — user's own
+app.get('/api/support/tickets', getUserId, async (req, res) => {
+  try {
+    const result = await db.query(
+      `SELECT ticket_id as id, category, subject, user_email as email, description, status, admin_reply, replied_at, created_at
+       FROM support_tickets WHERE user_id = $1 ORDER BY created_at DESC`,
+      [req.userId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Support tickets — admin: all tickets
+app.get('/api/support/tickets/all', getUserId, async (req, res) => {
+  const userRes = await db.query('SELECT role FROM users WHERE id = $1', [req.userId]);
+  if (!userRes.rows[0] || userRes.rows[0].role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  try {
+    const result = await db.query(
+      `SELECT st.ticket_id as id, st.category, st.subject, st.user_email as email, st.description,
+              st.status, st.admin_reply, st.replied_at, st.created_at, u.name as user_name
+       FROM support_tickets st LEFT JOIN users u ON st.user_id = u.id
+       ORDER BY st.created_at DESC`
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Support tickets — admin: reply
+app.put('/api/support/tickets/:id/reply', getUserId, async (req, res) => {
+  const userRes = await db.query('SELECT role FROM users WHERE id = $1', [req.userId]);
+  if (!userRes.rows[0] || userRes.rows[0].role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  const { reply, status } = req.body;
+  try {
+    const result = await db.query(
+      `UPDATE support_tickets SET admin_reply = $1, status = $2, replied_at = NOW()
+       WHERE ticket_id = $3 RETURNING *`,
+      [reply, status || 'Resolved', req.params.id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Ticket not found' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Serve static assets in production
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, '../dist')));
@@ -1587,6 +1691,31 @@ if (process.env.NODE_ENV === 'production') {
     res.sendFile(path.join(__dirname, '../dist/index.html'));
   });
 }
+
+// DB migrations — run at startup
+(async () => {
+  try {
+    await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(20)`);
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS support_tickets (
+        id SERIAL PRIMARY KEY,
+        ticket_id VARCHAR(20) UNIQUE NOT NULL,
+        user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        category VARCHAR(100) DEFAULT 'General Inquiry',
+        subject TEXT NOT NULL,
+        user_email VARCHAR(255),
+        description TEXT,
+        status VARCHAR(50) DEFAULT 'Open',
+        admin_reply TEXT,
+        replied_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    console.log('[DB] Migrations applied');
+  } catch (err) {
+    console.error('[DB] Migration error:', err.message);
+  }
+})();
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
