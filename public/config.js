@@ -1,7 +1,7 @@
 // ✰ Cerebro App Config ✰
 // Replace the value below with your Google OAuth 2.0 Client ID from Google Cloud Console
 // (APIs & Services → Credentials → OAuth 2.0 Client IDs)
-window.GOOGLE_CLIENT_ID = 'YOUR_GOOGLE_CLIENT_ID_HERE';
+window.GOOGLE_CLIENT_ID = '358839170188-c5ml1t2v1h8sod4mnot6v6pthm4gsg1r.apps.googleusercontent.com';
 
 // ✰ webmeji config ✰
 window.SPAWNING = [
