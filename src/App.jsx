@@ -5365,7 +5365,7 @@ function App() {
           <main className="flex-1 overflow-hidden flex flex-col relative">
             <div className="flex-1 flex flex-col overflow-hidden">
               {/* Header with Create Report Button for Report Analysis */}
-              {activeTab !== 'competitor-analysis' && activeTab !== 'dashboard' && activeTab !== 'report-analysis' && activeTab !== 'article-reach' && (
+              {activeTab !== 'competitor-analysis' && activeTab !== 'dashboard' && activeTab !== 'report-analysis' && activeTab !== 'article-reach' && activeTab !== 'settings' && activeTab !== 'help' && (
                 <div className="px-8 pt-8 mb-10 flex items-center justify-between">
                   <div className="flex items-center gap-6">
                     {activeTab === 'report-analysis' ? (
@@ -10887,7 +10887,7 @@ const spec = JSON.parse(response.text);
                             </div>
                             <div>
                               <h4 className="text-xl font-black text-slate-900 uppercase tracking-tighter">Mail Us an Issue</h4>
-                              <p className="text-xs font-bold text-slate-400">Submit a support request directly to our team</p>
+                              <p className="text-xs font-bold text-slate-400">Submit a support request directly to our team at <span className="text-indigo-500">developerteam@themavericksindia.com</span></p>
                             </div>
                           </div>
 
