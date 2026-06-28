@@ -7877,7 +7877,7 @@ function App() {
                       <div className="fixed inset-0 z-[100] bg-slate-100 flex overflow-hidden animate-in fade-in duration-500 font-sans print:relative print:inset-auto print:z-0 print:bg-white print:block print:overflow-visible print:h-auto">
                         {/* Left Sidebar Wrapper with Floating Border Button */}
                         {!isPresentView && (
-                          <div className="relative z-50 flex shrink-0 font-sans h-full print:hidden">
+                          <div className={`relative z-50 flex shrink-0 font-sans h-full print:hidden ${isLeftSidebarOpen ? '' : 'w-3'}`}>
                             <div className={`bg-slate-900 text-white flex flex-col shadow-2xl h-full transition-all duration-300 ${isLeftSidebarOpen ? 'w-80 border-r border-slate-800 opacity-100' : 'w-0 overflow-hidden border-none opacity-0'}`}>
                               <div className="p-6 border-b border-slate-800 flex items-center justify-between shrink-0">
                                 <div className="flex items-center gap-3">
@@ -7886,15 +7886,11 @@ function App() {
                                   </div>
                                   <div>
                                     <h2 className="text-sm font-black uppercase tracking-widest text-slate-100">Cerebro</h2>
-                                    <p className="text-[10px] font-medium text-slate-400">Autonomous Intelligence Studio</p>
                                   </div>
                                 </div>
                               </div>
 
-                              <div className="p-4 border-b border-slate-800/60 bg-slate-900/50 flex items-center justify-between text-[11px] font-bold text-slate-300 shrink-0">
-                                <span className="flex items-center gap-2">
-                                  <Book size={14} className="text-indigo-400" /> Assessment Document
-                                </span>
+                              <div className="p-4 border-b border-slate-800/60 bg-slate-900/50 flex items-center justify-end text-[11px] font-bold text-slate-300 shrink-0">
                                 <span className="px-2.5 py-1 bg-indigo-500/20 text-indigo-300 rounded-md border border-indigo-500/30 font-mono text-[10px] font-black uppercase tracking-wider">
                                   {selectedReport.type}
                                 </span>
@@ -8125,7 +8121,7 @@ function App() {
                                             setSelectedReport(updated);
                                             setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
                                           }}
-                                          className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-red-405 transition-opacity"
+                                          className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-red-500 transition-opacity"
                                           title="Delete Bookmark"
                                         >
                                           <Trash2 size={11} />
