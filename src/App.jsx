@@ -4466,6 +4466,7 @@ function App() {
           const claimChannel = new BroadcastChannel('cerebro_session_channel');
           claimChannel.postMessage({ type: 'session_claimed', tabId });
           claimChannel.close();
+          try { window.google.accounts.id.cancel(); } catch (_) {}
           setTimeout(() => setView('landing'), 500);
         } catch (err) {
           setLoading(false);
@@ -4473,14 +4474,7 @@ function App() {
         }
       }
     });
-    window.google.accounts.id.prompt((notification) => {
-      if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-        window.google.accounts.id.renderButton(
-          document.getElementById('google-signin-button'),
-          { theme: 'outline', size: 'large', width: '100%' }
-        );
-      }
-    });
+    window.google.accounts.id.prompt();
   };
 
   const handleSubmit = async (e) => {
