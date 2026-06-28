@@ -102,7 +102,8 @@ import {
   Pause,
   Volume2,
   CreditCard,
-  AlertCircle
+  AlertCircle,
+  ExternalLink
 } from 'lucide-react';
 
 import { useEditor, EditorContent, ReactNodeViewRenderer, Extension } from '@tiptap/react';
@@ -516,6 +517,8 @@ const CerebroBrandLogo = ({ collapsed, darkMode, className }) => {
 
 const SectionRichEditor = ({ id, content, onUpdate, style, className, savedRangeRef, recordHistory, sectionTitle, isActiveEditor, onEditorStateChange, onFocus }) => {
   const contentRef = React.useRef(content);
+  const didChangeRef = React.useRef(false);
+  const historyTimerRef = React.useRef(null);
 
   const editor = useEditor({
     extensions: [
@@ -544,7 +547,7 @@ const SectionRichEditor = ({ id, content, onUpdate, style, className, savedRange
         height: 315,
       }),
       TiptapUnderline,
-      TiptapHighlight.configure({ mark: true }),
+      TiptapHighlight.configure({ multicolor: true }),
       TiptapTextStyle,
       TiptapFontFamily,
       TiptapTextAlign.configure({ types: ['heading', 'paragraph'] }),
@@ -579,6 +582,14 @@ const SectionRichEditor = ({ id, content, onUpdate, style, className, savedRange
       if (onUpdate && html !== contentRef.current) {
         contentRef.current = html;
         onUpdate(html);
+        didChangeRef.current = true;
+        if (historyTimerRef.current) clearTimeout(historyTimerRef.current);
+        historyTimerRef.current = setTimeout(() => {
+          if (didChangeRef.current && recordHistory) {
+            recordHistory(`Edited content in ${sectionTitle || 'Section'}`, sectionTitle || 'Section');
+            didChangeRef.current = false;
+          }
+        }, 3000);
       }
     },
     onSelectionUpdate: ({ editor }) => {
@@ -617,6 +628,7 @@ const SectionRichEditor = ({ id, content, onUpdate, style, className, savedRange
       if (onEditorStateChange) {
         onEditorStateChange(prev => prev === editor ? null : prev);
       }
+      if (historyTimerRef.current) clearTimeout(historyTimerRef.current);
     };
   }, [editor, onEditorStateChange]);
 
@@ -3263,6 +3275,7 @@ function App() {
       setReportTelemetryData(null);
       return;
     }
+    setReportTelemetryData(null);
     setIsFetchingTelemetry(true);
     fetch(`${API_BASE}/api/curated-search`, {
       method: 'POST',
@@ -5365,7 +5378,7 @@ function App() {
           <main className="flex-1 overflow-hidden flex flex-col relative">
             <div className="flex-1 flex flex-col overflow-hidden">
               {/* Header with Create Report Button for Report Analysis */}
-              {activeTab !== 'competitor-analysis' && activeTab !== 'dashboard' && activeTab !== 'report-analysis' && activeTab !== 'article-reach' && activeTab !== 'settings' && activeTab !== 'help' && (
+              {activeTab !== 'competitor-analysis' && activeTab !== 'dashboard' && activeTab !== 'report-analysis' && activeTab !== 'article-reach' && activeTab !== 'settings' && activeTab !== 'help' && activeTab !== 'brand-tracker' && (
                 <div className="px-8 pt-8 mb-10 flex items-center justify-between">
                   <div className="flex items-center gap-6">
                     {activeTab === 'report-analysis' ? (
@@ -5518,7 +5531,7 @@ function App() {
                     {!isScanningReach ? (
                       <div className="space-y-8">
                         {/* Top layout with Header */}
-                        <div className="flex flex-col pt-4">
+                        <div className="flex flex-col pt-10">
                           <div className="text-center max-w-2xl mx-auto mb-12">
                             <h1 className={`text-5xl tracking-tight mb-3 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
                               <span className="font-light">Article</span> <span className="font-black">Reach</span>
@@ -7263,7 +7276,7 @@ function App() {
                     </div>
                   </div>
                 ) : activeTab === 'settings' ? (
-                  <div className={`flex flex-col ${sidebarCollapsed ? 'max-w-[1850px]' : 'max-w-[1700px]'} mx-auto w-full animate-in fade-in duration-700 pr-2 transition-all duration-500`}>
+                  <div className={`flex flex-col ${sidebarCollapsed ? 'max-w-[1850px]' : 'max-w-[1700px]'} mx-auto w-full animate-in fade-in duration-700 pr-2 transition-all duration-500 pt-10`}>
                     <div className="text-center max-w-2xl mx-auto mb-12">
                       <h1 className={`text-5xl tracking-tight mb-3 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
                         <span className="font-light">Platform</span> <span className="font-black">Settings</span>
@@ -8581,6 +8594,16 @@ function App() {
                                             }}
                                             className={`p-2 rounded-lg transition-all ${isLink ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-300 hover:bg-slate-700'}`} title="Insert / Remove Hyperlink"
                                           ><Link size={15} /></button>
+                                          {isLink && (
+                                            <button
+                                              onMouseDown={e => e.preventDefault()}
+                                              onClick={() => {
+                                                const url = activeEditor?.getAttributes('link')?.href;
+                                                if (url) window.open(url, '_blank', 'noopener noreferrer');
+                                              }}
+                                              className="p-2 rounded-lg text-emerald-400 hover:bg-slate-700 transition-all" title="Open Link in New Tab"
+                                            ><ExternalLink size={15} /></button>
+                                          )}
                                         </div>
 
                                         {/* Tables */}
@@ -8638,7 +8661,7 @@ function App() {
                                               if (activeEditor) {
                                                 const tag = window.prompt('Enter Entity Mention / Source Tag (e.g. Chief Analyst, Cerebro AI):');
                                                 if (tag) {
-                                                  activeEditor.chain().focus().insertContent({ type: 'mention', attrs: { id: tag } }).run();
+                                                  activeEditor.chain().focus().insertContent({ type: 'mention', attrs: { id: tag, label: tag } }).run();
                                                 }
                                               }
                                             }}
@@ -8648,17 +8671,6 @@ function App() {
                                             onClick={() => activeEditor ? activeEditor.chain().focus().setHorizontalRule().run() : null}
                                             className="p-2 rounded-lg text-slate-300 hover:bg-slate-700 hover:text-white transition-all font-bold flex items-center gap-1 text-xs" title="Insert Horizontal Rule Divider (-)"
                                           ><Minus size={15} /> Divider</button>
-                                          <button
-                                            onClick={() => {
-                                              if (activeEditor) {
-                                                const url = window.prompt('Enter YouTube Video URL (e.g. https://www.youtube.com/watch?v=dQw4w9WgXcQ):');
-                                                if (url) {
-                                                  activeEditor.chain().focus().setYoutubeVideo({ src: url }).run();
-                                                }
-                                              }
-                                            }}
-                                            className="p-2 rounded-lg text-red-400 hover:bg-slate-700 hover:text-red-300 transition-all font-bold flex items-center gap-1 text-xs" title="Embed YouTube Video Widget"
-                                          ><Video size={15} /> Video</button>
                                         </div>
 
                                         {/* History & Clear */}
@@ -9047,7 +9059,7 @@ function App() {
                                                         setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
                                                       }
                                                     }}
-                                                    className="p-1.5 rounded hover:bg-red-650 hover:text-white ml-2 text-red-400 transition-colors" title="Delete Chart"
+                                                    className="p-1.5 rounded hover:bg-red-600 hover:text-white ml-2 text-red-400 transition-colors" title="Delete Chart"
                                                   >
                                                     <Trash2 size={13} />
                                                   </button>
@@ -9902,42 +9914,65 @@ function App() {
                                   <div className="bg-slate-50 border border-slate-150 rounded-2xl p-4 text-[11px] text-slate-600 shadow-sm">
                                     <div className="flex justify-between items-center mb-2.5 border-b border-slate-200/60 pb-1.5">
                                       <span className="font-black uppercase tracking-wider block text-[9px] text-indigo-600">Active Telemetry Context</span>
-                                      {isEditingReportContext ? (
-                                        <div className="flex gap-2">
-                                          <button
-                                            onClick={() => {
-                                              const updated = {
-                                                ...selectedReport,
-                                                topic: editReportTopic,
-                                                keywords: editReportKeywords
-                                              };
-                                              setSelectedReport(updated);
-                                              setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
-                                              setIsEditingReportContext(false);
-                                            }}
-                                            className="px-2 py-0.5 bg-indigo-600 text-white rounded text-[9px] font-black uppercase hover:bg-indigo-700 transition-all shadow-sm"
-                                          >
-                                            Save
-                                          </button>
-                                          <button
-                                            onClick={() => setIsEditingReportContext(false)}
-                                            className="px-2 py-0.5 bg-slate-200 text-slate-600 rounded text-[9px] font-black uppercase hover:bg-slate-300 transition-all shadow-sm"
-                                          >
-                                            Cancel
-                                          </button>
-                                        </div>
-                                      ) : (
+                                      <div className="flex items-center gap-2">
                                         <button
                                           onClick={() => {
-                                            setEditReportTopic(selectedReport?.topic || 'All');
-                                            setEditReportKeywords(selectedReport?.keywords || '');
-                                            setIsEditingReportContext(true);
+                                            const bKeys = (selectedReport.brandKeywords || '').split(',').map(k => k.trim()).filter(Boolean);
+                                            const cKeys = (selectedReport.competitorKeywords || '').split(',').map(k => k.trim()).filter(Boolean);
+                                            const rKeys = (selectedReport.keywords || '').split(',').map(k => k.trim()).filter(Boolean);
+                                            const combinedKeywords = [...new Set([...bKeys, ...cKeys, ...rKeys])];
+                                            if (combinedKeywords.length === 0) return;
+                                            setReportTelemetryData(null);
+                                            setIsFetchingTelemetry(true);
+                                            fetch(`${API_BASE}/api/curated-search`, {
+                                              method: 'POST',
+                                              headers: { 'Content-Type': 'application/json' },
+                                              body: JSON.stringify({ targetKeywords: combinedKeywords, excludedKeywords: [], topic: selectedReport.topic || 'All' })
+                                            }).then(r => r.json()).then(data => setReportTelemetryData(data)).catch(err => console.error(err)).finally(() => setIsFetchingTelemetry(false));
                                           }}
-                                          className="text-indigo-600 hover:text-indigo-800 text-[9px] font-black uppercase transition-colors"
+                                          disabled={isFetchingTelemetry}
+                                          className="text-slate-500 hover:text-indigo-600 text-[9px] font-black uppercase transition-colors disabled:opacity-40 flex items-center gap-1"
+                                          title="Refresh telemetry data"
                                         >
-                                          Edit Settings
+                                          <RotateCcw size={9} className={isFetchingTelemetry ? 'animate-spin' : ''} /> Refresh
                                         </button>
-                                      )}
+                                        {isEditingReportContext ? (
+                                          <div className="flex gap-2">
+                                            <button
+                                              onClick={() => {
+                                                const updated = {
+                                                  ...selectedReport,
+                                                  topic: editReportTopic,
+                                                  keywords: editReportKeywords
+                                                };
+                                                setSelectedReport(updated);
+                                                setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
+                                                setIsEditingReportContext(false);
+                                              }}
+                                              className="px-2 py-0.5 bg-indigo-600 text-white rounded text-[9px] font-black uppercase hover:bg-indigo-700 transition-all shadow-sm"
+                                            >
+                                              Save
+                                            </button>
+                                            <button
+                                              onClick={() => setIsEditingReportContext(false)}
+                                              className="px-2 py-0.5 bg-slate-200 text-slate-600 rounded text-[9px] font-black uppercase hover:bg-slate-300 transition-all shadow-sm"
+                                            >
+                                              Cancel
+                                            </button>
+                                          </div>
+                                        ) : (
+                                          <button
+                                            onClick={() => {
+                                              setEditReportTopic(selectedReport?.topic || 'All');
+                                              setEditReportKeywords(selectedReport?.keywords || '');
+                                              setIsEditingReportContext(true);
+                                            }}
+                                            className="text-indigo-600 hover:text-indigo-800 text-[9px] font-black uppercase transition-colors"
+                                          >
+                                            Edit Settings
+                                          </button>
+                                        )}
+                                      </div>
                                     </div>
 
                                     {isEditingReportContext ? (
@@ -10037,7 +10072,6 @@ function App() {
                                       const updated = { ...selectedReport, sections: updatedSecs };
                                       setSelectedReport(updated);
                                       setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
-                                      alert(`Successfully embedded ${defaultType} (${field}) into Section ${activeSectionIndex + 1}.`);
                                     };
 
                                     return (
@@ -10548,7 +10582,6 @@ function App() {
                                             const updated = { ...selectedReport, sections: updatedSecs };
                                             setSelectedReport(updated);
                                             setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
-                                            alert(`Successfully embedded AI Suggested ${generatedAiChart.type} into Section ${activeSectionIndex + 1}.`);
                                           }}
                                           className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-black uppercase transition-all shadow-sm"
                                         >
@@ -10600,7 +10633,6 @@ const spec = JSON.parse(response.text);
                                     const updated = { ...selectedReport, sections: updatedSecs };
                                     setSelectedReport(updated);
                                     setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
-                                    alert(`Successfully inserted ${selectedChartType} (${selectedDataField}) into Section ${activeSectionIndex + 1}.`);
                                   }}
                                   className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-xl shadow-indigo-200 active:scale-95 transition-all flex items-center justify-center gap-2"
                                 >
@@ -10794,7 +10826,7 @@ const spec = JSON.parse(response.text);
                     )}
                   </div>
                 ) : activeTab === 'help' ? (
-                  <div className={`w-full ${sidebarCollapsed ? 'max-w-[1850px]' : 'max-w-[1700px]'} mx-auto h-full flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-700 pb-12 transition-all duration-500`}>
+                  <div className={`w-full ${sidebarCollapsed ? 'max-w-[1850px]' : 'max-w-[1700px]'} mx-auto h-full flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-700 pb-12 transition-all duration-500 pt-10`}>
                     <div className="text-center max-w-2xl mx-auto mb-12">
                       <h1 className={`text-5xl tracking-tight mb-3 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
                         <span className="font-light">Help &</span> <span className="font-black">Support</span>
@@ -11342,7 +11374,13 @@ const spec = JSON.parse(response.text);
                 </div>
 
                 <div className="p-6 overflow-y-auto space-y-3 custom-scrollbar bg-slate-950/40 flex-1">
-                  {changeHistory.map((item) => (
+                  {changeHistory.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-slate-500">
+                      <History size={28} className="mb-3 opacity-30" />
+                      <p className="text-sm font-semibold">No changes recorded yet</p>
+                      <p className="text-xs mt-1 text-slate-600">Edit document content to start building the audit trail</p>
+                    </div>
+                  ) : changeHistory.map((item) => (
                     <div key={item.id} className="p-4 bg-slate-900/80 border border-slate-800/80 rounded-2xl flex items-start justify-between gap-4 transition-all hover:border-slate-700">
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
@@ -11371,11 +11409,21 @@ const spec = JSON.parse(response.text);
                   </div>
                   <button
                     onClick={() => {
-                      alert(`Synchronizing ${changeHistory.length} audit records to PostgreSQL database...`);
+                      if (changeHistory.length === 0) return;
+                      const blob = new Blob([JSON.stringify(changeHistory, null, 2)], { type: 'application/json' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = 'cerebro-audit-log.json';
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      URL.revokeObjectURL(url);
                     }}
-                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold text-xs shadow-lg transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+                    disabled={changeHistory.length === 0}
+                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl font-bold text-xs shadow-lg transition-all flex items-center gap-2 cursor-pointer active:scale-95"
                   >
-                    <Database size={15} /> Save to Database
+                    <Database size={15} /> Export Log
                   </button>
                 </div>
               </div>

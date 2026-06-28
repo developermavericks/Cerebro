@@ -164,7 +164,7 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
   const sqlParams = targetTerms.map(t => `%${t}%`);
   const ilikeConds = targetTerms.map((_, i) => {
     const p = i + 1;
-    return `(COALESCE(title,'') ILIKE $${p} OR COALESCE(summary,'') ILIKE $${p} OR LEFT(COALESCE(full_body,''),2000) ILIKE $${p})`;
+    return `(COALESCE(title,'') ILIKE $${p} OR COALESCE(summary,'') ILIKE $${p})`;
   }).join(' OR ');
 
   let articles = [];
@@ -179,8 +179,8 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
         url                                               AS "Resolved URL",
         published_at                                      AS "Published At",
         agency                                            AS "Publisher/Agency",
-        COALESCE(LEFT(full_body, 2000), summary, '')      AS "Summary",
-        COALESCE(LEFT(full_body, 2000), summary, '')      AS "Full Body"
+        COALESCE(summary, '')                             AS "Summary",
+        COALESCE(summary, '')                             AS "Full Body"
       FROM nexus_articles
       WHERE published_at >= NOW() - INTERVAL '${interval}'
         AND (${ilikeConds})
