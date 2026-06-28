@@ -1739,6 +1739,10 @@ app.put('/api/support/tickets/:id/reply', getUserId, async (req, res) => {
 
 // Serve static assets in production
 if (process.env.NODE_ENV === 'production') {
+  app.get('/config.js', (_req, res) => {
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.sendFile(path.join(__dirname, '../dist/config.js'));
+  });
   app.use(express.static(path.join(__dirname, '../dist')));
   app.get(/(.*)/, (req, res) => {
     res.sendFile(path.join(__dirname, '../dist/index.html'));
