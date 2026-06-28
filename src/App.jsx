@@ -2791,7 +2791,7 @@ function App() {
   const [curatedVisualizationType, setCuratedVisualizationType] = useState('Pie Chart');
   const [curatedTimelineType, setCuratedTimelineType] = useState('Line Chart');
   const [curatedDrillBrand, setCuratedDrillBrand] = useState('');
-  const [curatedDrillSentiment, setCuratedDrillSentiment] = useState('Positive');
+  const [curatedDrillSentiment, setCuratedDrillSentiment] = useState('All');
   const [keywordSearchError, setKeywordSearchError] = useState(null);
   const [keywordSearchCount, setKeywordSearchCount] = useState(() => {
     try {
@@ -6675,6 +6675,7 @@ function App() {
                               </select>
                               <select value={curatedDrillSentiment} onChange={(e) => setCuratedDrillSentiment(e.target.value)}
                                 className={`px-4 py-2.5 rounded-xl text-xs font-bold outline-none border cursor-pointer ${darkMode ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-800'}`}>
+                                <option value="All">All</option>
                                 <option value="Positive">Positive</option>
                                 <option value="Neutral">Neutral</option>
                                 <option value="Negative">Negative</option>
@@ -6683,7 +6684,10 @@ function App() {
                           </div>
                           <div className="overflow-x-auto">
                             {(() => {
-                              const articles = curatedAnalysisResults.brands?.[curatedDrillBrand]?.article_samples?.[curatedDrillSentiment] || [];
+                              const samples = curatedAnalysisResults.brands?.[curatedDrillBrand]?.article_samples || {};
+                              const articles = curatedDrillSentiment === 'All'
+                                ? [...(samples.Positive || []), ...(samples.Neutral || []), ...(samples.Negative || [])]
+                                : samples[curatedDrillSentiment] || [];
                               if (articles.length === 0) return (
                                 <div className="text-center py-10 text-slate-400 font-bold text-xs">
                                   No {curatedDrillSentiment.toLowerCase()} articles found for <span className="text-indigo-400">{curatedDrillBrand}</span>.
