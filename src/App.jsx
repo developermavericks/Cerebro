@@ -484,10 +484,10 @@ const SentimentPieChart = ({ positive, neutral, negative }) => {
 
 
 const CerebroLogo = ({ className }) => (
-  <img 
-    src="/cerebro_white.png" 
-    alt="Cerebro Logo" 
-    className={`${className} invert object-cover object-right`} 
+  <img
+    src="/cerebro.svg"
+    alt="Cerebro Logo"
+    className={`${className} object-cover object-left`}
   />
 );
 
@@ -495,22 +495,20 @@ const CerebroBrandLogo = ({ collapsed, darkMode, className }) => {
   if (collapsed) {
     return (
       <div className="w-12 h-12 overflow-hidden relative flex items-center justify-center">
-        <img 
-          src="/cerebro_white.png" 
-          alt="Cerebro Logo" 
-          className={`absolute h-full w-auto max-w-none right-0 top-0 transition-all duration-300 ${darkMode ? '' : 'invert'}`} 
-          style={{
-            transform: 'translateX(2.5%)' // Fine-tune horizontal placement of the brain icon to crop out all text letters
-          }}
+        <img
+          src="/cerebro.svg"
+          alt="Cerebro Logo"
+          className={`absolute h-8 w-auto max-w-none left-0 top-1/2 -translate-y-1/2 transition-all duration-300 ${darkMode ? '' : 'brightness-0'}`}
+          style={{ objectPosition: 'left center', objectFit: 'contain' }}
         />
       </div>
     );
   }
   return (
-    <img 
-      src="/cerebro_white.png" 
-      alt="Cerebro Logo" 
-      className={`h-11 w-auto object-contain transition-all duration-300 ${darkMode ? '' : 'invert'}`} 
+    <img
+      src="/cerebro.svg"
+      alt="Cerebro Logo"
+      className={`h-11 w-auto object-contain transition-all duration-300 ${darkMode ? '' : 'brightness-0'}`}
     />
   );
 };
@@ -4616,7 +4614,7 @@ function App() {
   const renderHeader = (title, subtitle) => (
     <div className="flex flex-col items-center mb-8 ">
       <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mb-4 border border-slate-200 shadow-inner group overflow-hidden">
-        <CerebroLogo className="w-10 h-10 text-black group-hover:scale-110 transition-transform duration-500" />
+        <CerebroLogo className="w-10 h-10 brightness-0 group-hover:scale-110 transition-transform duration-500" />
       </div>
       <h1 className="text-4xl font-black text-black tracking-tighter mb-1" style={{ fontFamily: 'var(--font-heading)' }}>Cerebro</h1>
       <p className="text-[#334155] text-sm font-medium">{subtitle}</p>
