@@ -7725,7 +7725,7 @@ function App() {
                     ) : (
                       <>
                         {/* Centered Heading */}
-                        <div className="text-center max-w-2xl mx-auto mb-12">
+                        <div className="text-center max-w-2xl mx-auto mb-12 pt-10">
                           <h1 className={`text-5xl tracking-tight mb-3 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
                             <span className="font-light">Brand</span> <span className="font-black">Tracking</span>
                           </h1>
@@ -8875,6 +8875,8 @@ function App() {
                                         if (reportTheme === 'Branded') {
                                           currentBrandColors[0] = brandedPrimaryColor;
                                         }
+                                        const labelColor = reportTheme === 'Corporate Dark' ? 'text-slate-300' : 'text-slate-700';
+                                        const textMuted = 'text-slate-400';
 
                                         return (
                                           <div
@@ -8917,7 +8919,7 @@ function App() {
                                                           setSelectedReport(updated);
                                                           setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
                                                         }}
-                                                        className="px-1.5 py-0.5 bg-red-650 hover:bg-red-500 rounded text-[9px] font-black uppercase text-white tracking-widest active:scale-95 transition-all ml-1.5 cursor-pointer shrink-0"
+                                                        className="px-1.5 py-0.5 bg-red-600 hover:bg-red-500 rounded text-[9px] font-black uppercase text-white tracking-widest active:scale-95 transition-all ml-1.5 cursor-pointer shrink-0"
                                                         title="Reset custom coordinates"
                                                       >
                                                         Reset
