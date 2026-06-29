@@ -3528,6 +3528,31 @@ ${bodyHtml}
       });
   };
 
+  const handleGoogleDocsExport = () => {
+    if (!selectedReport) return;
+    const sections = selectedReport.sections || [];
+    const bodyHtml = sections.map((sec, i) =>
+      `<h2>${sec.title || `Section ${i + 1}`}</h2>${sec.content || '<p></p>'}`
+    ).join('<hr>');
+    const fullHtml = `<h1>${selectedReport.title}</h1><p><em>${selectedReport.type || ''} | ${selectedReport.date || ''} | ${selectedReport.author || ''}</em></p><hr>${bodyHtml}`;
+    try {
+      const blob = new Blob([fullHtml], { type: 'text/html' });
+      const item = new ClipboardItem({ 'text/html': blob });
+      navigator.clipboard.write([item]).then(() => {
+        showToast('Report copied! Opening Google Docs — paste with Ctrl+V', 'success');
+        window.open('https://docs.new', '_blank', 'noopener noreferrer');
+        recordHistory('Exported report to Google Docs', 'General');
+      }).catch(() => {
+        navigator.clipboard.writeText(fullHtml).then(() => {
+          showToast('HTML copied. Open docs.new and paste to import', 'info');
+          window.open('https://docs.new', '_blank', 'noopener noreferrer');
+        });
+      });
+    } catch {
+      showToast('Could not copy to clipboard. Try downloading as HTML instead.', 'error');
+    }
+  };
+
   React.useEffect(() => {
     if ((activeTab === 'brand-tracker' || activeTab === 'competitor-analysis') && user && user.id) {
       fetchTrackedBrands();
@@ -3989,6 +4014,25 @@ ${bodyHtml}
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isPresentView]);
 
+  // Reset chart overlay state and reload chart configs when switching reports
+  React.useEffect(() => {
+    setActiveConfigChartId(null);
+    setFocusedTitleIdx(null);
+    if (selectedReport) {
+      const configs = {};
+      (selectedReport.sections || []).forEach(sec => {
+        (sec.charts || []).forEach(chart => {
+          if (chart.config && Object.keys(chart.config).length > 0) {
+            configs[chart.id] = chart.config;
+          }
+        });
+      });
+      setChartConfigs(configs);
+    } else {
+      setChartConfigs({});
+    }
+  }, [selectedReport?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const savedRangeRef = React.useRef(null);
   const [activeEditor, setActiveEditor] = useState(null);
   const [textColor, setTextColor] = useState('#000000');
@@ -4025,6 +4069,13 @@ ${bodyHtml}
   // ── Section / chart delete confirmation state ──────────────────────────────
   const [sectionDeleteConfirm, setSectionDeleteConfirm] = useState(null);
   const [chartRemoveConfirm, setChartRemoveConfirm] = useState(null);
+
+  // ── Section title focus tracking (for Bold on section titles) ──────────────
+  const [focusedTitleIdx, setFocusedTitleIdx] = useState(null);
+
+  // ── Tags management modal ──────────────────────────────────────────────────
+  const [showTagsModal, setShowTagsModal] = useState(false);
+  const [tagInput, setTagInput] = useState('');
 
   React.useEffect(() => {
     const handleGlobalMouseMove = (e) => {
@@ -4140,76 +4191,7 @@ ${bodyHtml}
   const [rulerIndent, setRulerIndent] = useState(48);
   const [reportFilter, setReportFilter] = useState('all');
   const [reportSearch, setReportSearch] = useState('');
-  const [reports, setReports] = useState([
-    {
-      id: 'rep-1',
-      title: 'Q2 Competitor Trajectory & Market Share Shift',
-      type: 'VS Analysis',
-      status: 'Generated',
-      date: 'May 18, 2026',
-      author: 'Cerebro Autonomous AI',
-      priority: 'High',
-      brandKeywords: 'Syndication, Pricing Strategy, Market Dynamics',
-      competitorKeywords: 'Alpha Inc, Beta Copilot, APAC OpenSource',
-      summary: 'Comprehensive evaluation of top 3 tier-1 rivals indicating an aggressive pivot towards automated data syndication and pricing optimization.',
-      tags: ['Market Share', 'Pricing Strategy', 'Syndication'],
-      metrics: { accuracy: '99.4%', confidence: 'High', sourcesCount: 142 },
-      sections: [
-        { id: 'sec-1', title: '1. Document Title', content: '', charts: [], images: [] }
-      ]
-    },
-    {
-      id: 'rep-2',
-      title: 'Global Sentiment & Viral Reach Index Analysis',
-      type: 'Brand Analysis',
-      status: 'Reviewed',
-      date: 'May 16, 2026',
-      author: 'Chief Intelligence Analyst',
-      priority: 'Urgent',
-      brandKeywords: 'Sentiment, Viral Reach, Compliance',
-      competitorKeywords: 'None (Pure Brand Audit)',
-      summary: 'Deep-dive into cross-platform amplification vectors across LinkedIn, Reddit, and X following the recent generative AI compliance rollout.',
-      tags: ['Sentiment', 'Compliance', 'Viral Reach'],
-      metrics: { accuracy: '98.1%', confidence: 'Very High', sourcesCount: 89 },
-      sections: [
-        { id: 'sec-1', title: '1. Document Title', content: '', charts: [], images: [] }
-      ]
-    },
-    {
-      id: 'rep-3',
-      title: 'APAC Expansion Risk & Opportunity Landscape',
-      type: 'VS Analysis',
-      status: 'Pending',
-      date: 'May 12, 2026',
-      author: 'Cerebro Autonomous AI',
-      priority: 'Medium',
-      brandKeywords: 'APAC, Expansion, Market Entry',
-      competitorKeywords: 'LocalEdge Asia, BridgePoint Ventures',
-      summary: 'Structured evaluation of competitive threats and market entry opportunities across Southeast Asian markets with emphasis on regulatory and cultural risk vectors.',
-      tags: ['APAC', 'Risk Assessment', 'Market Entry'],
-      metrics: { accuracy: '97.2%', confidence: 'High', sourcesCount: 64 },
-      sections: [
-        { id: 'sec-1', title: '1. Document Title', content: '', charts: [], images: [] }
-      ]
-    },
-    {
-      id: 'rep-4',
-      title: 'Brand Health & Executive Perception Index — Q2',
-      type: 'Brand Analysis',
-      status: 'Generated',
-      date: 'May 8, 2026',
-      author: 'Chief Intelligence Analyst',
-      priority: 'High',
-      brandKeywords: 'Brand Health, Executive Perception, Trust Score',
-      competitorKeywords: 'None (Internal Audit)',
-      summary: 'Quarterly brand health pulse tracking executive-level media mentions, trust indices, and perception drift across tier-1 financial and technology publications.',
-      tags: ['Brand Health', 'Trust Index', 'Executive PR'],
-      metrics: { accuracy: '96.8%', confidence: 'High', sourcesCount: 117 },
-      sections: [
-        { id: 'sec-1', title: '1. Document Title', content: '', charts: [], images: [] }
-      ]
-    }
-  ]);
+  const [reports, setReports] = useState([]);
   const [newReportForm, setNewReportForm] = useState({
     title: '',
     type: 'Brand Analysis',
@@ -8438,7 +8420,9 @@ ${bodyHtml}
                                 {/* Text Formatting Toolbar */}
                                 <div className="flex flex-wrap items-center gap-2 w-full pb-1 overflow-visible">
                                   {(() => {
-                                    const isBold = activeEditor?.isActive?.('bold') ?? textBold;
+                                    const isBold = focusedTitleIdx !== null
+                                      ? !!(selectedReport?.sections?.[focusedTitleIdx]?.titleBold)
+                                      : (activeEditor?.isActive?.('bold') ?? textBold);
                                     const isItalic = activeEditor?.isActive?.('italic') ?? textItalic;
                                     const isUnderline = activeEditor?.isActive?.('underline') ?? textUnderline;
                                     const isStrike = activeEditor?.isActive?.('strike') ?? false;
@@ -8581,22 +8565,22 @@ ${bodyHtml}
                                         {/* Headings */}
                                         <div className="flex items-center gap-0.5 bg-slate-800/80 p-1 rounded-xl border border-slate-700 text-xs shadow-md">
                                           <button
-                                            onClick={() => activeEditor ? activeEditor.chain().focus().toggleHeading({ level: 1 }).run() : null}
+                                            onClick={() => { if (activeEditor) { activeEditor.chain().focus().toggleHeading({ level: 1 }).run(); recordHistory('Applied Heading 1', `Section ${activeSectionIndex + 1}`); } }}
                                             className={`px-2 py-1 font-black rounded ${isH1 ? 'bg-indigo-600 text-white shadow' : 'text-slate-300 hover:bg-slate-700'}`}
                                             title="Heading 1"
                                           >H1</button>
                                           <button
-                                            onClick={() => activeEditor ? activeEditor.chain().focus().toggleHeading({ level: 2 }).run() : null}
+                                            onClick={() => { if (activeEditor) { activeEditor.chain().focus().toggleHeading({ level: 2 }).run(); recordHistory('Applied Heading 2', `Section ${activeSectionIndex + 1}`); } }}
                                             className={`px-2 py-1 font-bold rounded ${isH2 ? 'bg-indigo-600 text-white shadow' : 'text-slate-300 hover:bg-slate-700'}`}
                                             title="Heading 2"
                                           >H2</button>
                                           <button
-                                            onClick={() => activeEditor ? activeEditor.chain().focus().toggleHeading({ level: 3 }).run() : null}
+                                            onClick={() => { if (activeEditor) { activeEditor.chain().focus().toggleHeading({ level: 3 }).run(); recordHistory('Applied Heading 3', `Section ${activeSectionIndex + 1}`); } }}
                                             className={`px-2 py-1 font-semibold rounded ${isH3 ? 'bg-indigo-600 text-white shadow' : 'text-slate-300 hover:bg-slate-700'}`}
                                             title="Heading 3"
                                           >H3</button>
                                           <button
-                                            onClick={() => activeEditor ? activeEditor.chain().focus().setParagraph().run() : null}
+                                            onClick={() => { if (activeEditor) { activeEditor.chain().focus().setParagraph().run(); recordHistory('Cleared heading → Paragraph', `Section ${activeSectionIndex + 1}`); } }}
                                             className={`px-2 py-1 rounded ${!isH1 && !isH2 && !isH3 ? 'bg-indigo-600 text-white shadow' : 'text-slate-300 hover:bg-slate-700'}`}
                                             title="Normal Paragraph"
                                           >P</button>
@@ -8607,11 +8591,21 @@ ${bodyHtml}
                                           <button
                                             onMouseDown={e => e.preventDefault()}
                                             onClick={() => {
-                                              if (activeEditor) {
+                                              if (focusedTitleIdx !== null && selectedReport?.sections?.[focusedTitleIdx]) {
+                                                const updatedSecs = [...selectedReport.sections];
+                                                const newTitleBold = !updatedSecs[focusedTitleIdx].titleBold;
+                                                updatedSecs[focusedTitleIdx] = { ...updatedSecs[focusedTitleIdx], titleBold: newTitleBold };
+                                                const updated = { ...selectedReport, sections: updatedSecs };
+                                                setSelectedReport(updated);
+                                                setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
+                                                recordHistory(`${newTitleBold ? 'Applied' : 'Removed'} bold on Section ${focusedTitleIdx + 1} title`, `Section ${focusedTitleIdx + 1}`);
+                                              } else if (activeEditor) {
                                                 activeEditor.chain().focus().toggleBold().run();
+                                                recordHistory(`Toggled bold formatting`, `Section ${activeSectionIndex + 1}`);
                                               } else {
                                                 setTextBold(!textBold);
                                                 applyInlineStyle('fontWeight', !textBold ? 'bold' : 'normal');
+                                                recordHistory(`Toggled bold formatting`, `Section ${activeSectionIndex + 1}`);
                                               }
                                             }}
                                             className={`p-2 rounded-lg transition-all ${isBold ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-300 hover:bg-slate-700'}`} title="Bold (Ctrl+B)"
@@ -8621,9 +8615,11 @@ ${bodyHtml}
                                             onClick={() => {
                                               if (activeEditor) {
                                                 activeEditor.chain().focus().toggleItalic().run();
+                                                recordHistory(`Toggled italic formatting`, `Section ${activeSectionIndex + 1}`);
                                               } else {
                                                 setTextItalic(!textItalic);
                                                 applyInlineStyle('fontStyle', !textItalic ? 'italic' : 'normal');
+                                                recordHistory(`Toggled italic formatting`, `Section ${activeSectionIndex + 1}`);
                                               }
                                             }}
                                             className={`p-2 rounded-lg transition-all ${isItalic ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-300 hover:bg-slate-700'}`} title="Italic (Ctrl+I)"
@@ -8633,9 +8629,11 @@ ${bodyHtml}
                                             onClick={() => {
                                               if (activeEditor) {
                                                 activeEditor.chain().focus().toggleUnderline().run();
+                                                recordHistory(`Toggled underline formatting`, `Section ${activeSectionIndex + 1}`);
                                               } else {
                                                 setTextUnderline(!textUnderline);
                                                 applyInlineStyle('textDecoration', !textUnderline ? 'underline' : 'none');
+                                                recordHistory(`Toggled underline formatting`, `Section ${activeSectionIndex + 1}`);
                                               }
                                             }}
                                             className={`p-2 rounded-lg transition-all ${isUnderline ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-300 hover:bg-slate-700'}`} title="Underline (Ctrl+U)"
@@ -8645,6 +8643,7 @@ ${bodyHtml}
                                             onClick={() => {
                                               if (activeEditor) {
                                                 activeEditor.chain().focus().toggleStrike().run();
+                                                recordHistory(`Toggled strikethrough formatting`, `Section ${activeSectionIndex + 1}`);
                                               }
                                             }}
                                             className={`p-2 rounded-lg transition-all ${isStrike ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-300 hover:bg-slate-700'}`} title="Strikethrough"
@@ -8654,8 +8653,10 @@ ${bodyHtml}
                                             onClick={() => {
                                               if (activeEditor) {
                                                 activeEditor.chain().focus().toggleHighlight({ color: '#fef08a' }).run();
+                                                recordHistory(`Toggled highlight formatting`, `Section ${activeSectionIndex + 1}`);
                                               } else {
                                                 applyInlineStyle('backgroundColor', '#fef08a');
+                                                recordHistory(`Toggled highlight formatting`, `Section ${activeSectionIndex + 1}`);
                                               }
                                             }}
                                             className={`p-2 rounded-lg transition-all ${isHighlight ? 'bg-yellow-300 text-slate-900 shadow-md font-bold' : 'text-slate-300 hover:bg-slate-700 hover:text-yellow-300'}`} title="Highlight Selected Text"
@@ -8779,13 +8780,20 @@ ${bodyHtml}
                                         <div className="flex items-center gap-1 bg-slate-800/80 p-1 rounded-xl border border-slate-700 shadow-md">
                                           <button
                                             onClick={() => {
+                                              setTagInput('');
+                                              setShowTagsModal(true);
+                                            }}
+                                            className="p-2 rounded-lg text-indigo-300 hover:bg-slate-700 hover:text-white transition-all font-bold flex items-center gap-1 text-xs" title="Manage Document Tags"
+                                          ><Tag size={15} /> Tags {selectedReport?.tags?.length > 0 && <span className="ml-0.5 px-1.5 py-0.5 bg-indigo-600 text-white rounded-full text-[9px]">{selectedReport.tags.length}</span>}</button>
+                                          <button
+                                            onClick={() => {
                                               if (activeEditor) {
                                                 pendingMentionEditorRef.current = activeEditor;
                                                 setShowMentionModal(true);
                                               }
                                             }}
-                                            className="p-2 rounded-lg text-indigo-300 hover:bg-slate-700 hover:text-white transition-all font-bold flex items-center gap-1 text-xs" title="Insert Slate Entity Mention (@)"
-                                          ><AtSign size={15} /> Tag</button>
+                                            className="p-2 rounded-lg text-slate-300 hover:bg-slate-700 hover:text-white transition-all font-bold flex items-center gap-1 text-xs" title="Insert @Mention in editor"
+                                          ><AtSign size={15} /> @Mention</button>
                                           <button
                                             onClick={() => activeEditor ? activeEditor.chain().focus().setHorizontalRule().run() : null}
                                             className="p-2 rounded-lg text-slate-300 hover:bg-slate-700 hover:text-white transition-all font-bold flex items-center gap-1 text-xs" title="Insert Horizontal Rule Divider (-)"
@@ -8950,9 +8958,13 @@ ${bodyHtml}
                                           setSelectedReport(updated);
                                           setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
                                         }}
-                                        onBlur={(e) => recordHistory(`Updated title of Section ${sIdx + 1} to "${e.target.value}"`, `Section ${sIdx + 1}`)}
-                                        className="text-4xl font-normal tracking-tight text-slate-900 text-center w-full outline-none focus:ring-0 pb-2 border-b border-transparent hover:border-slate-300 focus:border-indigo-500 transition-colors bg-transparent"
-                                        style={{ fontFamily: previewFontFamily || fontFamily }}
+                                        onFocus={() => setFocusedTitleIdx(sIdx)}
+                                        onBlur={(e) => {
+                                          setFocusedTitleIdx(null);
+                                          recordHistory(`Updated title of Section ${sIdx + 1} to "${e.target.value}"`, `Section ${sIdx + 1}`);
+                                        }}
+                                        className="text-4xl tracking-tight text-slate-900 text-center w-full outline-none focus:ring-0 pb-2 border-b border-transparent hover:border-slate-300 focus:border-indigo-500 transition-colors bg-transparent"
+                                        style={{ fontFamily: previewFontFamily || fontFamily, fontWeight: sec.titleBold ? '900' : 'normal' }}
                                         placeholder="Enter Section Title..."
                                       />
                                     </div>
@@ -9859,13 +9871,24 @@ ${bodyHtml}
                           </button>
 
                           <button
-                            onClick={() => window.print()}
+                            onClick={() => handleDownloadReport()}
                             className="p-3 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-2xl transition-all relative group shadow-sm hover:scale-105 active:scale-95"
-                            title="Download Report Briefing"
+                            title="Download as HTML File"
                           >
                             <Download size={22} />
                             <span className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-2xl font-sans">
-                              Download Briefing
+                              Download HTML
+                            </span>
+                          </button>
+
+                          <button
+                            onClick={() => handleGoogleDocsExport()}
+                            className="p-3 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-2xl transition-all relative group shadow-sm hover:scale-105 active:scale-95"
+                            title="Export to Google Docs"
+                          >
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10,9 9,9 8,9"/></svg>
+                            <span className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-emerald-800 text-white rounded-xl text-[10px] font-black uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-2xl font-sans">
+                              Export to Google Docs
                             </span>
                           </button>
 
@@ -9876,18 +9899,13 @@ ${bodyHtml}
                           >
                             <Share2 size={22} />
                             <span className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-2xl font-sans">
-                              Share Node
+                              Share Link
                             </span>
                           </button>
 
 
                           <button
-                            onClick={() => {
-                              if (confirm(`Are you sure you want to delete this entire briefing document?`)) {
-                                setReports(prev => prev.filter(r => r.id !== selectedReport.id));
-                                setSelectedReport(null);
-                              }
-                            }}
+                            onClick={() => setDeleteConfirmReport(selectedReport)}
                             className="p-3 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-2xl transition-all relative group hover:scale-105 active:scale-95"
                             title="Delete Report"
                           >
@@ -10745,6 +10763,8 @@ const spec = JSON.parse(response.text);
                                     const updated = { ...selectedReport, sections: updatedSecs };
                                     setSelectedReport(updated);
                                     setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
+                                    recordHistory(`Inserted ${selectedChartType} chart (${selectedDataField}) into Section ${activeSectionIndex + 1}`, `Section ${activeSectionIndex + 1}`);
+                                    handleSaveReport(updated);
                                   }}
                                   className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-xl shadow-indigo-200 active:scale-95 transition-all flex items-center justify-center gap-2"
                                 >
@@ -12478,18 +12498,105 @@ const spec = JSON.parse(response.text);
                   >Cancel</button>
                   <button
                     onClick={() => {
-                      const { sIdx, cIdx } = chartRemoveConfirm;
+                      const { sIdx, cIdx, type: removedType } = chartRemoveConfirm;
                       const updatedSecs = [...selectedReport.sections];
                       const updatedCharts = updatedSecs[sIdx].charts.filter((_, i) => i !== cIdx);
                       updatedSecs[sIdx] = { ...updatedSecs[sIdx], charts: updatedCharts };
                       const updated = { ...selectedReport, sections: updatedSecs };
                       setSelectedReport(updated);
                       setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
+                      recordHistory(`Deleted ${removedType} chart from Section ${sIdx + 1}`, `Section ${sIdx + 1}`);
+                      handleSaveReport(updated);
                       showToast('Chart removed', 'success');
                       setChartRemoveConfirm(null);
                     }}
                     className="px-6 py-2.5 bg-red-500 text-white rounded-full font-black uppercase tracking-widest text-xs hover:bg-red-600 shadow-lg shadow-red-200 active:scale-95 transition-all"
                   >Remove</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Tags Management Modal ─────────────────────────────────────── */}
+          {showTagsModal && selectedReport && (
+            <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-[200] flex items-center justify-center p-6 animate-in fade-in duration-200">
+              <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 flex flex-col gap-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
+                      <Tag size={18} />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-black text-slate-900 tracking-tight">Document Tags</h3>
+                      <p className="text-xs text-slate-500 font-medium mt-0.5">Add labels to organise and filter reports</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setShowTagsModal(false)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-slate-600 transition-colors"><X size={16} /></button>
+                </div>
+
+                {/* Current tags */}
+                <div className="flex flex-wrap gap-2 min-h-[40px]">
+                  {(selectedReport.tags || []).length === 0 && (
+                    <p className="text-xs text-slate-400 font-medium italic">No tags yet. Add one below.</p>
+                  )}
+                  {(selectedReport.tags || []).map((t, i) => (
+                    <span key={i} className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 border border-indigo-200 text-indigo-800 rounded-full text-xs font-bold">
+                      {t}
+                      <button
+                        onClick={() => {
+                          const newTags = (selectedReport.tags || []).filter((_, ti) => ti !== i);
+                          const updated = { ...selectedReport, tags: newTags };
+                          setSelectedReport(updated);
+                          setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
+                          recordHistory(`Removed tag "${t}" from report`, 'Tags');
+                        }}
+                        className="text-indigo-400 hover:text-red-500 transition-colors"
+                      ><X size={11} /></button>
+                    </span>
+                  ))}
+                </div>
+
+                {/* Add tag input */}
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const trimmed = tagInput.trim();
+                    if (!trimmed) return;
+                    const existing = selectedReport.tags || [];
+                    if (existing.includes(trimmed)) { showToast('Tag already exists', 'error'); return; }
+                    const newTags = [...existing, trimmed];
+                    const updated = { ...selectedReport, tags: newTags };
+                    setSelectedReport(updated);
+                    setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
+                    recordHistory(`Added tag "${trimmed}" to report`, 'Tags');
+                    setTagInput('');
+                  }}
+                  className="flex gap-2"
+                >
+                  <input
+                    type="text"
+                    value={tagInput}
+                    onChange={e => setTagInput(e.target.value)}
+                    placeholder="e.g. Brand Health, Q2, Market Entry"
+                    className="flex-1 py-3 px-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-all shadow-inner"
+                    autoFocus
+                  />
+                  <button type="submit" className="px-5 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg shadow-indigo-200 active:scale-95 transition-all">Add</button>
+                </form>
+
+                <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
+                  <button
+                    onClick={() => setShowTagsModal(false)}
+                    className="px-6 py-2.5 bg-slate-100 text-slate-600 rounded-full font-black uppercase tracking-widest text-xs hover:bg-slate-200 transition-all"
+                  >Cancel</button>
+                  <button
+                    onClick={() => {
+                      handleSaveReport(selectedReport);
+                      setShowTagsModal(false);
+                      showToast('Tags saved', 'success');
+                    }}
+                    className="px-6 py-2.5 bg-indigo-600 text-white rounded-full font-black uppercase tracking-widest text-xs hover:bg-indigo-700 shadow-lg shadow-indigo-200 active:scale-95 transition-all"
+                  >Save Tags</button>
                 </div>
               </div>
             </div>
