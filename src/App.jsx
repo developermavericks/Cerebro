@@ -136,7 +136,9 @@ import { Youtube } from '@tiptap/extension-youtube';
 import { HorizontalRule as TiptapHorizontalRule } from '@tiptap/extension-horizontal-rule';
 
 const lowlight = createLowlight(all);
-const API_BASE = window.location.port === '5173' ? `http://${window.location.hostname}:3001` : '';
+// In dev (any Vite port 5173-5180), proxy to the Express backend on 3001
+const _devPort = window.location.port;
+const API_BASE = (_devPort >= '5173' && _devPort <= '5180') ? `http://${window.location.hostname}:3001` : '';
 
 // Global Fetch Interceptor to automatically add User ID and Session Token headers to all API requests
 const originalFetch = window.fetch;
@@ -3228,12 +3230,12 @@ function App() {
   // Insert citation helper (Feature 5)
   const insertCitation = (article) => {
     if (!activeEditor) {
-      alert("Please click inside an editor block first to focus where you want to insert the citation.");
+      showToast('Click inside a text section first, then try inserting a citation', 'warning');
       return;
     }
     const citationText = ` [Citation: "${article.title}" (${article.source}, ${article.published})] `;
     activeEditor.chain().focus().insertContent(citationText).run();
-    alert("Citation inserted into the active text section!");
+    showToast('Citation inserted into the active section', 'success');
   };
 
   const handleOpenCleoChat = () => {
@@ -3352,6 +3354,20 @@ function App() {
         const data = await res.json();
         if (data && data.length > 0) {
           setReports(data);
+          // Restore chart visual configs from saved report data
+          const savedConfigs = {};
+          data.forEach(rep => {
+            (rep.sections || []).forEach(sec => {
+              (sec.charts || []).forEach(chart => {
+                if (chart.config && Object.keys(chart.config).length > 0) {
+                  savedConfigs[chart.id] = chart.config;
+                }
+              });
+            });
+          });
+          if (Object.keys(savedConfigs).length > 0) {
+            setChartConfigs(prev => ({ ...prev, ...savedConfigs }));
+          }
         }
       }
     } catch (err) {
@@ -3403,13 +3419,24 @@ function App() {
     const report = reportToSave || selectedReport;
     if (!report || !user || !user.id) return;
     try {
+      // Embed chart visual configs into each chart so they persist after reload
+      const reportWithChartConfigs = {
+        ...report,
+        sections: (report.sections || []).map(sec => ({
+          ...sec,
+          charts: (sec.charts || []).map(chart => ({
+            ...chart,
+            config: chartConfigs[chart.id] || chart.config || {}
+          }))
+        }))
+      };
       const res = await fetch(`${API_BASE}/api/reports`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'X-User-Id': user.id
         },
-        body: JSON.stringify(report)
+        body: JSON.stringify(reportWithChartConfigs)
       });
       if (res.ok) {
         const savedReport = await res.json();
@@ -3417,15 +3444,52 @@ function App() {
         setSelectedReport(savedReport);
         setIsSavingFlash(true);
         setTimeout(() => setIsSavingFlash(false), 1500);
-        alert(`Successfully saved "${savedReport.title}" to PostgreSQL.`);
+        showToast(`Saved "${savedReport.title}" successfully`, 'success');
       } else {
         const errData = await res.json();
-        alert(`Error saving report: ${errData.error || res.statusText}`);
+        showToast(`Save failed: ${errData.error || res.statusText}`, 'error');
       }
     } catch (err) {
       console.error('Error saving report:', err);
-      alert('Failed to connect to the backend server to save report.');
+      showToast('Could not connect to server — save failed', 'error');
     }
+  };
+
+  const handleDownloadReport = () => {
+    if (!selectedReport) return;
+    const sections = selectedReport.sections || [];
+    const bodyHtml = sections.map((sec, i) => `
+      <section style="margin-bottom:3rem;page-break-before:${i > 0 ? 'always' : 'auto'}">
+        <h2 style="font-size:1.5rem;font-weight:900;color:#1e293b;margin-bottom:1rem;padding-bottom:.5rem;border-bottom:2px solid #e2e8f0">${sec.title || `Section ${i + 1}`}</h2>
+        <div style="color:#334155;line-height:1.8">${sec.content || '<p><em>No content</em></p>'}</div>
+      </section>`).join('');
+    const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<title>${selectedReport.title}</title>
+<style>
+body{font-family:Georgia,serif;max-width:840px;margin:0 auto;padding:48px 40px;color:#1e293b;background:#fff}
+h1{font-size:2rem;font-weight:900;margin-bottom:.5rem}
+.meta{color:#64748b;font-size:.85rem;margin-bottom:3rem;padding-bottom:1rem;border-bottom:1px solid #e2e8f0}
+table{width:100%;border-collapse:collapse}
+td,th{padding:8px 12px;border:1px solid #cbd5e1;text-align:left}
+th{background:#f1f5f9;font-weight:700}
+blockquote{border-left:4px solid #6366f1;margin:1rem 0;padding:.5rem 1rem;background:#f8fafc;color:#475569}
+code{background:#f1f5f9;padding:2px 6px;border-radius:4px;font-family:monospace;font-size:.9em}
+pre{background:#1e293b;color:#e2e8f0;padding:1rem 1.5rem;border-radius:8px;overflow-x:auto}
+</style>
+</head><body>
+<h1>${selectedReport.title}</h1>
+<p class="meta">Type: ${selectedReport.type || 'Report'} &nbsp;|&nbsp; Status: ${selectedReport.status || ''} &nbsp;|&nbsp; ${selectedReport.date || ''}</p>
+${bodyHtml}
+</body></html>`;
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${(selectedReport.title || 'report').replace(/[^a-z0-9\-_\s]/gi, '').trim().replace(/\s+/g, '_')}.html`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+    showToast('Report downloaded as HTML file', 'success');
   };
 
   const handleDeleteReport = async (repId, repTitle) => {
@@ -3440,10 +3504,10 @@ function App() {
         if (selectedReport && selectedReport.id === repId) {
           setSelectedReport(null);
         }
-        alert(`Successfully deleted "${repTitle}".`);
+        showToast(`"${repTitle}" deleted`, 'success');
       } else {
         const errData = await res.json();
-        alert(`Error deleting report: ${errData.error || res.statusText}`);
+        showToast(`Delete failed: ${errData.error || res.statusText}`, 'error');
       }
     } catch (err) {
       console.error('Error deleting report:', err);
@@ -3456,11 +3520,11 @@ function App() {
     const shareUrl = `${window.location.origin}/?shareReportId=${selectedReport.id}`;
     navigator.clipboard.writeText(shareUrl)
       .then(() => {
-        alert(`Secure collaboration link copied to clipboard!\n\nLink: ${shareUrl}\n\nWhen someone opens this link, they will be prompted to sign in first, and then the report will open automatically.`);
+        showToast('Share link copied to clipboard!', 'success');
       })
       .catch(err => {
         console.error('Failed to copy to clipboard:', err);
-        alert(`Secure share link generated:\n\n${shareUrl}\n\n(Please copy it manually)`);
+        showToast(`Share link: ${shareUrl}`, 'info');
       });
   };
 
@@ -3683,7 +3747,7 @@ function App() {
         finally { setIsRefreshingBrand(false); }
       } else {
         const errData = await res.json();
-        alert(errData.error || 'Failed to add brand');
+        showToast(errData.error || 'Failed to add brand', 'error');
       }
     } catch (err) {
       console.error('Error adding brand:', err);
@@ -3771,7 +3835,7 @@ function App() {
 
   const handleRevokeLicenseKey = async (key) => {
     if (!user || !user.id || user.role !== 'admin') return;
-    if (!window.confirm(`Are you sure you want to revoke the license key: ${key}?`)) return;
+    if (!window.confirm(`Revoke license key: ${key}?`)) return;
     try {
       const res = await fetch(`${API_BASE}/api/admin/license-keys/revoke`, {
         method: 'POST',
@@ -3786,7 +3850,7 @@ function App() {
         await fetchLicenseKeys();
       } else {
         const errData = await res.json();
-        alert(errData.error || 'Failed to revoke license key');
+        showToast(errData.error || 'Failed to revoke license key', 'error');
       }
     } catch (err) {
       console.error('Error revoking license key:', err);
@@ -3931,6 +3995,36 @@ function App() {
   const [chartDragState, setChartDragState] = useState(null);
   const [activeResizingChartId, setActiveResizingChartId] = useState(null);
   const [isSavingFlash, setIsSavingFlash] = useState(false);
+
+  // ── Toast notification system ──────────────────────────────────────────────
+  const [toasts, setToasts] = useState([]);
+  const showToast = React.useCallback((message, type = 'success') => {
+    const id = Date.now() + Math.random();
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3500);
+  }, []);
+
+  // ── Reactive editor tick (forces re-render on each editor transaction) ──────
+  const [editorTick, setEditorTick] = useState(0);
+  const handleEditorStateChange = React.useCallback((editorOrUpdater) => {
+    setActiveEditor(editorOrUpdater);
+    if (typeof editorOrUpdater !== 'function') {
+      setEditorTick(t => t + 1);
+    }
+  }, []);
+
+  // ── Link insertion modal state ─────────────────────────────────────────────
+  const [showLinkModal, setShowLinkModal] = useState(false);
+  const [linkModalData, setLinkModalData] = useState({ text: '', url: 'https://', isCustomInsert: false });
+  const pendingLinkEditorRef = React.useRef(null);
+
+  // ── @Mention modal state ───────────────────────────────────────────────────
+  const [showMentionModal, setShowMentionModal] = useState(false);
+  const pendingMentionEditorRef = React.useRef(null);
+
+  // ── Section / chart delete confirmation state ──────────────────────────────
+  const [sectionDeleteConfirm, setSectionDeleteConfirm] = useState(null);
+  const [chartRemoveConfirm, setChartRemoveConfirm] = useState(null);
 
   React.useEffect(() => {
     const handleGlobalMouseMove = (e) => {
@@ -8091,16 +8185,10 @@ function App() {
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           if ((selectedReport.sections || []).length <= 1) {
-                                            alert("A report must have at least one section.");
+                                            showToast('A report must have at least one section', 'warning');
                                             return;
                                           }
-                                          if (confirm(`Remove section "${sec.title}"?`)) {
-                                            const updatedSecs = selectedReport.sections.filter((_, i) => i !== idx);
-                                            const updated = { ...selectedReport, sections: updatedSecs };
-                                            setSelectedReport(updated);
-                                            setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
-                                            setActiveSectionIndex(Math.max(0, idx - 1));
-                                          }
+                                          setSectionDeleteConfirm({ idx, sec });
                                         }}
                                         className="p-1 hover:text-red-400 text-slate-300 transition-colors ml-1"
                                         title="Delete Section"
@@ -8258,7 +8346,18 @@ function App() {
                                   <span className="px-3 py-1 bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 rounded-full font-mono text-[10px] font-black uppercase tracking-widest">
                                     {selectedReport.type}
                                   </span>
-                                  <h3 className="text-sm font-black tracking-tight text-white">{selectedReport.title}</h3>
+                                  <input
+                                    type="text"
+                                    value={selectedReport.title}
+                                    onChange={(e) => {
+                                      const updated = { ...selectedReport, title: e.target.value };
+                                      setSelectedReport(updated);
+                                      setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
+                                    }}
+                                    onBlur={() => recordHistory(`Renamed report to "${selectedReport.title}"`, 'Report Title')}
+                                    className="text-sm font-black tracking-tight text-white bg-transparent border-b border-transparent hover:border-slate-500 focus:border-indigo-400 outline-none transition-colors px-1 min-w-[160px] max-w-xs"
+                                    title="Click to rename report"
+                                  />
 
 
                                   {/* Theme & Layout Selector (Feature 8) */}
@@ -8608,30 +8707,9 @@ function App() {
                                                 } else {
                                                   const { from, to } = activeEditor.state.selection;
                                                   const selectedText = activeEditor.state.doc.textBetween(from, to, ' ');
-                                                  
-                                                  let linkText = selectedText;
-                                                  let isCustomInsert = !selectedText;
-
-                                                  if (!linkText) {
-                                                    linkText = window.prompt('Text to Display:');
-                                                    if (!linkText) return;
-                                                  } else {
-                                                    const newText = window.prompt('Text to Display:', linkText);
-                                                    if (newText === null) return;
-                                                    if (newText !== linkText) {
-                                                      linkText = newText;
-                                                      isCustomInsert = true;
-                                                    }
-                                                  }
-
-                                                  const url = window.prompt(`Address / URL for "${linkText}":`, 'https://');
-                                                  if (url) {
-                                                    if (isCustomInsert) {
-                                                      activeEditor.chain().focus().insertContent(`<a href="${url}">${linkText}</a>`).run();
-                                                    } else {
-                                                      activeEditor.chain().focus().setLink({ href: url }).run();
-                                                    }
-                                                  }
+                                                  pendingLinkEditorRef.current = activeEditor;
+                                                  setLinkModalData({ text: selectedText, url: 'https://', isCustomInsert: !selectedText });
+                                                  setShowLinkModal(true);
                                                 }
                                               }
                                             }}
@@ -8702,10 +8780,8 @@ function App() {
                                           <button
                                             onClick={() => {
                                               if (activeEditor) {
-                                                const tag = window.prompt('Enter Entity Mention / Source Tag (e.g. Chief Analyst, Cerebro AI):');
-                                                if (tag) {
-                                                  activeEditor.chain().focus().insertContent({ type: 'mention', attrs: { id: tag, label: tag } }).run();
-                                                }
+                                                pendingMentionEditorRef.current = activeEditor;
+                                                setShowMentionModal(true);
                                               }
                                             }}
                                             className="p-2 rounded-lg text-indigo-300 hover:bg-slate-700 hover:text-white transition-all font-bold flex items-center gap-1 text-xs" title="Insert Slate Entity Mention (@)"
@@ -8776,7 +8852,7 @@ function App() {
                                           setSelectedReport(updated);
                                           setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
                                           recordHistory(`Embedded local image file "${file.name}"`, `Section ${activeSectionIndex + 1}`);
-                                          alert(`Successfully embedded image into Section ${activeSectionIndex + 1}.`);
+                                          showToast(`Image embedded into Section ${activeSectionIndex + 1}`, 'success');
                                         };
                                         reader.readAsDataURL(file);
                                         e.target.value = '';
@@ -8834,7 +8910,7 @@ function App() {
                           )}
 
                           {/* Continuous Spacious Landscape Canvas Spanned Full Width */}
-                          <div className={`w-full bg-white min-h-[900px] flex flex-col relative pb-36 transition-all shadow-inner print:p-0 print:m-0 print:shadow-none print:bg-white ${isSavingFlash ? 'ring-8 ring-emerald-500/40 shadow-[0_0_50px_rgba(16,185,129,0.3)]' : ''}`} style={{ fontFamily: previewFontFamily || fontFamily }}>
+                          <div className={`w-full bg-white min-h-[900px] flex flex-col relative pb-36 transition-all shadow-inner overflow-hidden print:p-0 print:m-0 print:shadow-none print:bg-white ${isSavingFlash ? 'ring-8 ring-emerald-500/40 shadow-[0_0_50px_rgba(16,185,129,0.3)]' : ''}`} style={{ fontFamily: previewFontFamily || fontFamily }}>
                             <div className="py-16 space-y-24 print:py-0 print:space-y-16" style={{ paddingLeft: `${rulerIndent}px`, paddingRight: `${rulerIndent}px` }}>
                               {(selectedReport.sections || []).map((sec, sIdx) => (
                                 <div
@@ -9094,16 +9170,7 @@ function App() {
                                                   )}
 
                                                   <button
-                                                    onClick={() => {
-                                                      if (confirm(`Remove this ${chart.type}?`)) {
-                                                        const updatedSecs = [...selectedReport.sections];
-                                                        const updatedCharts = updatedSecs[sIdx].charts.filter((_, i) => i !== cIdx);
-                                                        updatedSecs[sIdx] = { ...updatedSecs[sIdx], charts: updatedCharts };
-                                                        const updated = { ...selectedReport, sections: updatedSecs };
-                                                        setSelectedReport(updated);
-                                                        setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
-                                                      }
-                                                    }}
+                                                    onClick={() => setChartRemoveConfirm({ sIdx, cIdx, type: chart.type })}
                                                     className="p-1.5 rounded hover:bg-red-600 hover:text-white ml-2 text-red-400 transition-colors" title="Delete Chart"
                                                   >
                                                     <Trash2 size={13} />
@@ -9748,7 +9815,7 @@ function App() {
                                           setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
                                         }}
                                         isActiveEditor={activeSectionIndex === sIdx}
-                                        onEditorStateChange={setActiveEditor}
+                                        onEditorStateChange={handleEditorStateChange}
                                         onFocus={() => setActiveSectionIndex(sIdx)}
                                         savedRangeRef={savedRangeRef}
                                         recordHistory={recordHistory}
@@ -9834,7 +9901,7 @@ function App() {
                         {/* Fixed Bottom-Right Action Buttons */}
                         <div className={`fixed bottom-6 ${isRightDrawerOpen ? 'right-[26rem]' : 'right-8'} z-50 flex items-center gap-3 font-sans transition-all duration-300 print:hidden`}>
                           <button
-                            onClick={() => window.print()}
+                            onClick={handleDownloadReport}
                             className="px-6 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black uppercase tracking-widest text-xs shadow-2xl flex items-center gap-2.5 active:scale-95 transition-all border border-indigo-500/30"
                           >
                             <Download size={18} /> Download Report
@@ -12175,6 +12242,259 @@ const spec = JSON.parse(response.text);
           </div>
         </div>
       )}
+          {/* ── Toast Notification Container ──────────────────────────────── */}
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[300] flex flex-col gap-2 items-center pointer-events-none print:hidden">
+            {toasts.map(toast => (
+              <div
+                key={toast.id}
+                className={`pointer-events-auto flex items-center gap-3 px-5 py-3.5 rounded-2xl shadow-2xl text-sm font-bold animate-in slide-in-from-bottom-3 fade-in duration-300 min-w-[280px] max-w-sm ${
+                  toast.type === 'success' ? 'bg-emerald-600 text-white' :
+                  toast.type === 'error' ? 'bg-red-600 text-white' :
+                  toast.type === 'warning' ? 'bg-amber-500 text-white' :
+                  'bg-slate-800 text-white'
+                }`}
+              >
+                <span className="text-lg shrink-0">
+                  {toast.type === 'success' ? '✓' : toast.type === 'error' ? '✕' : toast.type === 'warning' ? '⚠' : 'ℹ'}
+                </span>
+                <span className="leading-snug">{toast.message}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* ── Insert Link Modal ──────────────────────────────────────────── */}
+          {showLinkModal && (
+            <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-[200] flex items-center justify-center p-6 animate-in fade-in duration-200">
+              <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 flex flex-col gap-5">
+                <div className="flex items-center gap-3 mb-1">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-slate-900 tracking-tight">Insert Hyperlink</h3>
+                    <p className="text-[11px] text-slate-500 font-medium mt-0.5">Enter the display text and URL</p>
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-500 block mb-1.5">Display Text</label>
+                    <input
+                      type="text"
+                      value={linkModalData.text}
+                      onChange={e => setLinkModalData(d => ({ ...d, text: e.target.value, isCustomInsert: true }))}
+                      placeholder="Text to display..."
+                      className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-semibold text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all"
+                      autoFocus
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-500 block mb-1.5">URL / Address</label>
+                    <input
+                      type="url"
+                      value={linkModalData.url}
+                      onChange={e => setLinkModalData(d => ({ ...d, url: e.target.value }))}
+                      placeholder="https://..."
+                      className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-semibold text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all"
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const editor = pendingLinkEditorRef.current;
+                          const { text, url, isCustomInsert } = linkModalData;
+                          if (editor && url && url !== 'https://') {
+                            if (isCustomInsert && text) {
+                              editor.chain().focus().insertContent(`<a href="${url}">${text}</a>`).run();
+                            } else {
+                              editor.chain().focus().setLink({ href: url }).run();
+                            }
+                          }
+                          setShowLinkModal(false);
+                          pendingLinkEditorRef.current = null;
+                        }
+                        if (e.key === 'Escape') { setShowLinkModal(false); pendingLinkEditorRef.current = null; }
+                      }}
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
+                  <button
+                    onClick={() => { setShowLinkModal(false); pendingLinkEditorRef.current = null; }}
+                    className="px-5 py-2.5 bg-slate-100 text-slate-600 rounded-full font-black uppercase tracking-widest text-xs hover:bg-slate-200 transition-all"
+                  >Cancel</button>
+                  <button
+                    onClick={() => {
+                      const editor = pendingLinkEditorRef.current;
+                      const { text, url, isCustomInsert } = linkModalData;
+                      if (editor && url && url !== 'https://') {
+                        if (isCustomInsert && text) {
+                          editor.chain().focus().insertContent(`<a href="${url}">${text}</a>`).run();
+                        } else {
+                          editor.chain().focus().setLink({ href: url }).run();
+                        }
+                        showToast('Link inserted', 'success');
+                      }
+                      setShowLinkModal(false);
+                      pendingLinkEditorRef.current = null;
+                    }}
+                    className="px-6 py-2.5 bg-indigo-600 text-white rounded-full font-black uppercase tracking-widest text-xs hover:bg-indigo-700 shadow-lg shadow-indigo-200 active:scale-95 transition-all"
+                  >Insert Link</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── @Mention / Entity Tag Modal ────────────────────────────────── */}
+          {showMentionModal && (
+            <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-[200] flex items-center justify-center p-6 animate-in fade-in duration-200">
+              <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-8 flex flex-col gap-5">
+                <div className="flex items-center gap-3 mb-1">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0 font-black text-lg">@</div>
+                  <div>
+                    <h3 className="text-base font-black text-slate-900 tracking-tight">Insert Entity Tag</h3>
+                    <p className="text-[11px] text-slate-500 font-medium mt-0.5">Select or type a source tag</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {['Cerebro AI', 'Chief Analyst', 'Maverick Team', 'Alpha Copilot', 'Financial Hub', 'Tech Pulse', 'SEC Regulatory', 'Global Index'].map(tag => (
+                    <button
+                      key={tag}
+                      onClick={() => {
+                        const editor = pendingMentionEditorRef.current;
+                        if (editor) {
+                          editor.chain().focus().insertContent({ type: 'mention', attrs: { id: tag, label: tag } }).run();
+                          showToast(`@${tag} inserted`, 'success');
+                        }
+                        setShowMentionModal(false);
+                        pendingMentionEditorRef.current = null;
+                      }}
+                      className="px-3 py-2.5 rounded-xl text-xs font-bold bg-slate-50 hover:bg-indigo-600 hover:text-white border border-slate-200 hover:border-indigo-600 text-slate-700 transition-all active:scale-95 text-left"
+                    >@{tag}</button>
+                  ))}
+                </div>
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-500 block mb-1.5">Custom Tag</label>
+                  <div className="flex gap-2">
+                    <input
+                      id="custom-mention-input"
+                      type="text"
+                      placeholder="Type custom tag..."
+                      className="flex-1 px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-semibold text-sm outline-none focus:border-indigo-400 transition-all"
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          const val = e.target.value.trim();
+                          if (val) {
+                            const editor = pendingMentionEditorRef.current;
+                            if (editor) editor.chain().focus().insertContent({ type: 'mention', attrs: { id: val, label: val } }).run();
+                            showToast(`@${val} inserted`, 'success');
+                          }
+                          setShowMentionModal(false);
+                          pendingMentionEditorRef.current = null;
+                        }
+                        if (e.key === 'Escape') { setShowMentionModal(false); pendingMentionEditorRef.current = null; }
+                      }}
+                    />
+                    <button
+                      onClick={() => {
+                        const input = document.getElementById('custom-mention-input');
+                        const val = input?.value?.trim();
+                        if (val) {
+                          const editor = pendingMentionEditorRef.current;
+                          if (editor) editor.chain().focus().insertContent({ type: 'mention', attrs: { id: val, label: val } }).run();
+                          showToast(`@${val} inserted`, 'success');
+                        }
+                        setShowMentionModal(false);
+                        pendingMentionEditorRef.current = null;
+                      }}
+                      className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all active:scale-95"
+                    >Add</button>
+                  </div>
+                </div>
+                <button
+                  onClick={() => { setShowMentionModal(false); pendingMentionEditorRef.current = null; }}
+                  className="w-full py-2.5 bg-slate-100 text-slate-600 rounded-full font-black uppercase tracking-widest text-xs hover:bg-slate-200 transition-all"
+                >Cancel</button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Section Delete Confirmation Modal ─────────────────────────── */}
+          {sectionDeleteConfirm && (
+            <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-[200] flex items-center justify-center p-6 animate-in fade-in duration-200">
+              <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-8 flex flex-col gap-6">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-red-50 border border-red-100 flex items-center justify-center text-red-500 shrink-0">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-slate-900 tracking-tight">Delete Section</h3>
+                    <p className="text-xs text-slate-500 font-medium mt-0.5">This action cannot be undone</p>
+                  </div>
+                </div>
+                <p className="text-sm text-slate-600 font-semibold leading-relaxed">
+                  Remove <span className="font-black text-slate-900">"{sectionDeleteConfirm.sec.title.replace(/^\d+\.\s*/, '')}"</span>? All content in this section will be lost.
+                </p>
+                <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
+                  <button
+                    onClick={() => setSectionDeleteConfirm(null)}
+                    className="px-6 py-2.5 bg-slate-100 text-slate-600 rounded-full font-black uppercase tracking-widest text-xs hover:bg-slate-200 transition-all"
+                  >Cancel</button>
+                  <button
+                    onClick={() => {
+                      const { idx } = sectionDeleteConfirm;
+                      const updatedSecs = selectedReport.sections.filter((_, i) => i !== idx);
+                      const updated = { ...selectedReport, sections: updatedSecs };
+                      setSelectedReport(updated);
+                      setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
+                      setActiveSectionIndex(Math.max(0, idx - 1));
+                      showToast('Section deleted', 'success');
+                      setSectionDeleteConfirm(null);
+                    }}
+                    className="px-6 py-2.5 bg-red-500 text-white rounded-full font-black uppercase tracking-widest text-xs hover:bg-red-600 shadow-lg shadow-red-200 active:scale-95 transition-all"
+                  >Delete</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Chart Remove Confirmation Modal ───────────────────────────── */}
+          {chartRemoveConfirm && (
+            <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-[200] flex items-center justify-center p-6 animate-in fade-in duration-200">
+              <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-8 flex flex-col gap-6">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-red-50 border border-red-100 flex items-center justify-center text-red-500 shrink-0">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9l6 6M15 9l-6 6"/></svg>
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-slate-900 tracking-tight">Remove Chart</h3>
+                    <p className="text-xs text-slate-500 font-medium mt-0.5">This will remove the chart from the section</p>
+                  </div>
+                </div>
+                <p className="text-sm text-slate-600 font-semibold leading-relaxed">
+                  Remove this <span className="font-black text-slate-900">{chartRemoveConfirm.type}</span> from the document?
+                </p>
+                <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
+                  <button
+                    onClick={() => setChartRemoveConfirm(null)}
+                    className="px-6 py-2.5 bg-slate-100 text-slate-600 rounded-full font-black uppercase tracking-widest text-xs hover:bg-slate-200 transition-all"
+                  >Cancel</button>
+                  <button
+                    onClick={() => {
+                      const { sIdx, cIdx } = chartRemoveConfirm;
+                      const updatedSecs = [...selectedReport.sections];
+                      const updatedCharts = updatedSecs[sIdx].charts.filter((_, i) => i !== cIdx);
+                      updatedSecs[sIdx] = { ...updatedSecs[sIdx], charts: updatedCharts };
+                      const updated = { ...selectedReport, sections: updatedSecs };
+                      setSelectedReport(updated);
+                      setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
+                      showToast('Chart removed', 'success');
+                      setChartRemoveConfirm(null);
+                    }}
+                    className="px-6 py-2.5 bg-red-500 text-white rounded-full font-black uppercase tracking-widest text-xs hover:bg-red-600 shadow-lg shadow-red-200 active:scale-95 transition-all"
+                  >Remove</button>
+                </div>
+              </div>
+            </div>
+          )}
+
     </div>
   );
 }
