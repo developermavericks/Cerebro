@@ -49,15 +49,9 @@ try {
     setTimeout(() => fetchAllCompanies(), 2000);
     setInterval(() => fetchAllCompanies(), 5 * 60 * 1000);
 
-    // NEXUS: create table + initial 7-day sync
+    // NEXUS: ensure table exists on startup only (no auto-sync)
     const nexusClient = require('./nexus_client');
-    nexusClient.ensureTable()
-      .then(() => nexusClient.syncDateRange(7))
-      .catch(err => console.error('[NEXUS] Startup sync failed:', err.message));
-    // Daily resync at midnight
-    setInterval(() => {
-      nexusClient.syncDateRange(1).catch(err => console.error('[NEXUS] Daily sync failed:', err.message));
-    }, 24 * 60 * 60 * 1000);
+    nexusClient.ensureTable().catch(err => console.error('[NEXUS] Table setup failed:', err.message));
   }).catch(err => console.error('Error verifying database tables:', err));
 } catch (err) {
   console.error('Failed to read schema.sql:', err);
@@ -1596,7 +1590,7 @@ app.post('/api/nexus/cron', async (req, res) => {
   nexusSyncRunning = true;
   const nexusClient = require('./nexus_client');
   try {
-    const result = await nexusClient.syncDateRange(2);
+    const result = await nexusClient.syncDateRange(1);
     res.json({ success: true, synced: result.synced });
   } catch (err) {
     console.error('[NEXUS] Cron sync error:', err.message);
