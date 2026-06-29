@@ -8910,8 +8910,8 @@ ${bodyHtml}
                           )}
 
                           {/* Continuous Spacious Landscape Canvas Spanned Full Width */}
-                          <div className={`w-full bg-white min-h-[900px] flex flex-col relative pb-36 transition-all shadow-inner overflow-hidden print:p-0 print:m-0 print:shadow-none print:bg-white ${isSavingFlash ? 'ring-8 ring-emerald-500/40 shadow-[0_0_50px_rgba(16,185,129,0.3)]' : ''}`} style={{ fontFamily: previewFontFamily || fontFamily }}>
-                            <div className="py-16 space-y-24 print:py-0 print:space-y-16" style={{ paddingLeft: `${rulerIndent}px`, paddingRight: `${rulerIndent}px` }}>
+                          <div className={`w-full bg-white min-h-[900px] flex flex-col relative pb-36 transition-all shadow-inner print:p-0 print:m-0 print:shadow-none print:bg-white ${isSavingFlash ? 'ring-8 ring-emerald-500/40 shadow-[0_0_50px_rgba(16,185,129,0.3)]' : ''}`} style={{ fontFamily: previewFontFamily || fontFamily }}>
+                            <div className="py-16 space-y-24 print:py-0 print:space-y-16">
                               {(selectedReport.sections || []).map((sec, sIdx) => (
                                 <div
                                   id={`canvas-sec-${sIdx}`}
@@ -9796,7 +9796,7 @@ ${bodyHtml}
                                     {/* Sibling 3: The Rich Text Content (Flows perfectly around the floated items) */}
                                     {isPresentView ? (
                                       <div
-                                        style={{ textAlign: textAlign, fontSize: `${fontSize}px`, fontFamily: previewFontFamily || fontFamily }}
+                                        style={{ textAlign: textAlign, fontSize: `${fontSize}px`, fontFamily: previewFontFamily || fontFamily, paddingLeft: `${rulerIndent}px`, paddingRight: `${rulerIndent}px` }}
                                         className={`text-slate-800 leading-[2.2] whitespace-pre-wrap ${textBold ? 'font-bold' : 'font-normal'} ${textItalic ? 'italic' : 'not-italic'} ${textUnderline ? 'underline underline-offset-4' : 'no-underline'} overflow-visible`}
                                         dangerouslySetInnerHTML={{ __html: sec.content }}
                                       />
@@ -9820,7 +9820,7 @@ ${bodyHtml}
                                         savedRangeRef={savedRangeRef}
                                         recordHistory={recordHistory}
                                         sectionTitle={sec.title}
-                                        style={{ textAlign: textAlign, fontSize: `${fontSize}px`, fontFamily: previewFontFamily || fontFamily }}
+                                        style={{ textAlign: textAlign, fontSize: `${fontSize}px`, fontFamily: previewFontFamily || fontFamily, paddingLeft: `${rulerIndent}px`, paddingRight: `${rulerIndent}px` }}
                                         className="w-full min-h-[300px] outline-none text-slate-800 leading-[2.2] whitespace-pre-wrap transition-all bg-transparent p-4 rounded-2xl border border-transparent hover:border-slate-200 focus:border-indigo-300 focus:bg-slate-50/50 shadow-inner overflow-visible"
                                       />
                                     )}
