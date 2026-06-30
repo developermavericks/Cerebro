@@ -2951,7 +2951,6 @@ function App() {
   ]);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [brandArticles, setBrandArticles] = useState([]);
-  const [brandArticlePeriod, setBrandArticlePeriod] = useState('7days');
   const [isRefreshingBrand, setIsRefreshingBrand] = useState(false);
   const [reportTelemetryData, setReportTelemetryData] = useState(null);
   const [isFetchingTelemetry, setIsFetchingTelemetry] = useState(false);
@@ -3623,11 +3622,10 @@ ${bodyHtml}
   }, [user]);
 
 
-  const fetchBrandArticles = async (brandId, period) => {
+  const fetchBrandArticles = async (brandId) => {
     if (!user || !user.id) return;
-    const p = period || brandArticlePeriod || '7days';
     try {
-      const res = await fetch(`${API_BASE}/api/brands/${brandId}/articles?dateRange=${p}`, {
+      const res = await fetch(`${API_BASE}/api/brands/${brandId}/articles`, {
         headers: { 'X-User-Id': user.id }
       });
       if (res.ok) {
@@ -3682,7 +3680,7 @@ ${bodyHtml}
 
   React.useEffect(() => {
     if (selectedBrandForDetail && user && user.id) {
-      fetchBrandArticles(selectedBrandForDetail.id, brandArticlePeriod);
+      fetchBrandArticles(selectedBrandForDetail.id);
     }
   }, [selectedBrandForDetail, user]);
 
@@ -3809,7 +3807,7 @@ ${bodyHtml}
       });
       await fetchTrackedBrands();
       if (selectedBrandForDetail) {
-        await fetchBrandArticles(selectedBrandForDetail.id, brandArticlePeriod);
+        await fetchBrandArticles(selectedBrandForDetail.id);
       }
       const newTarget = Date.now() + 300 * 1000;
       localStorage.setItem('cerebro_refresh_target', newTarget.toString());
@@ -4228,7 +4226,7 @@ ${bodyHtml}
               headers: { 'X-User-Id': user.id }
             }).finally(() => {
               fetchTrackedBrands();
-              if (selectedBrandForDetail) fetchBrandArticles(selectedBrandForDetail.id, brandArticlePeriod);
+              if (selectedBrandForDetail) fetchBrandArticles(selectedBrandForDetail.id);
             });
           }
           const newTarget = Date.now() + 300 * 1000;
@@ -7696,26 +7694,10 @@ ${bodyHtml}
                           </div>
                         </div>
 
-                        <div className="mb-4 flex items-center justify-between">
+                        <div className="mb-4">
                           <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
                             {brandArticles.length} articles from NEXUS + tracked feed
                           </span>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Period:</span>
-                            <select
-                              value={brandArticlePeriod}
-                              onChange={(e) => {
-                                setBrandArticlePeriod(e.target.value);
-                                fetchBrandArticles(selectedBrandForDetail.id, e.target.value);
-                              }}
-                              className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest outline-none cursor-pointer bg-white border border-slate-200 text-slate-800 hover:bg-slate-50 shadow-sm"
-                            >
-                              <option value="1day">Last 1 Day</option>
-                              <option value="7days">Last 1 Week</option>
-                              <option value="30days">Last 1 Month</option>
-                              <option value="90days">Last 3 Months</option>
-                            </select>
-                          </div>
                         </div>
 
                         <div className="space-y-3">

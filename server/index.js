@@ -945,12 +945,9 @@ app.post('/api/brands/:id/viewed', getUserId, async (req, res) => {
   }
 });
 
-// Get articles for a brand — merges tracked RSS feed + NEXUS pool
+// Get articles for a brand — merges tracked RSS feed + full NEXUS pool (no date cap)
 app.get('/api/brands/:id/articles', getUserId, async (req, res) => {
   const { id } = req.params;
-  const { dateRange = '7days' } = req.query;
-  const intervalMap = { '1day': '1 day', '7days': '7 days', '30days': '30 days', '90days': '90 days' };
-  const interval = intervalMap[dateRange] || '7 days';
   try {
     const brandRes = await db.query('SELECT name FROM companies WHERE id = $1 AND user_id = $2', [id, req.userId]);
     if (brandRes.rows.length === 0) {
@@ -958,7 +955,7 @@ app.get('/api/brands/:id/articles', getUserId, async (req, res) => {
     }
     const brandName = brandRes.rows[0].name;
 
-    // Tracked RSS articles (full history, no date cap)
+    // Tracked RSS articles (full history)
     const articlesRes = await db.query(
       `SELECT a.id, a.title, a.link, a.published_at, a.source, a.summary, a.sentiment, a.created_at,
               c.last_ping_at as last_ping_time
@@ -969,12 +966,11 @@ app.get('/api/brands/:id/articles', getUserId, async (req, res) => {
          ORDER BY title, published_at DESC
        ) a
        JOIN companies c ON a.company_id = c.id
-       ORDER BY a.published_at DESC
-       LIMIT 200`,
+       ORDER BY a.published_at DESC`,
       [id]
     );
 
-    // NEXUS pool articles matching brand name within date range
+    // Full NEXUS pool — all articles mentioning this brand, no date cap, no row limit
     let nexusRows = [];
     try {
       const brandPattern = `%${brandName}%`;
@@ -991,9 +987,7 @@ app.get('/api/brands/:id/articles', getUserId, async (req, res) => {
            NULL::timestamptz AS last_ping_time
          FROM nexus_articles
          WHERE (title ILIKE $1 OR COALESCE(summary, '') ILIKE $1)
-           AND published_at >= NOW() - INTERVAL '${interval}'
-         ORDER BY published_at DESC
-         LIMIT 500`,
+         ORDER BY published_at DESC`,
         [brandPattern]
       );
       nexusRows = nexusRes.rows;
