@@ -132,11 +132,8 @@ function normalizeText(text) {
   return text.toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 
-async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [], topic = 'All', dateRange = '7days' }) {
+async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [], topic = 'All' }) {
   const db = require('./db');
-
-  const intervalMap = { '1day': '1 day', '7days': '7 days', '30days': '30 days', '90days': '90 days' };
-  const interval = intervalMap[dateRange] || '7 days';
 
   const targetBrands = (targetKeywords || []).map(b => b.trim()).filter(Boolean);
   if (!targetBrands.length) return {};
@@ -182,8 +179,7 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
         COALESCE(summary, '')                             AS "Summary",
         COALESCE(summary, '')                             AS "Full Body"
       FROM nexus_articles
-      WHERE published_at >= NOW() - INTERVAL '${interval}'
-        AND (${ilikeConds})
+      WHERE (${ilikeConds})
       ORDER BY published_at DESC
     `, sqlParams);
     // Always use nexus results (even if empty) — never fall back to RSS on 0 rows
@@ -198,8 +194,7 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
     try {
       const countRes = await db.query(`
         SELECT COUNT(*) AS count FROM nexus_articles
-        WHERE published_at >= NOW() - INTERVAL '${interval}'
-          AND NOT (${ilikeConds})
+        WHERE NOT (${ilikeConds})
       `, sqlParams);
       othersCount = parseInt(countRes.rows[0]?.count || 0, 10);
     } catch (err) {
@@ -319,12 +314,10 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
             let sentCat = res.score > 1 ? "Positive" : res.score < -1 ? "Negative" : "Neutral";
 
             results[brandName].sentiment[sentCat] += 1;
-            if (results[brandName].article_samples[sentCat].length < 20) {
-              const url = article['Resolved URL'] || article['URL'] || article['link'] || '';
-              const titleToCheck = title || 'No Title';
-              if (!results[brandName].article_samples[sentCat].some(s => s.title === titleToCheck || (url && s.url === url))) {
-                results[brandName].article_samples[sentCat].push({ title: titleToCheck, source, url, published: dateKey });
-              }
+            const url = article['Resolved URL'] || article['URL'] || article['link'] || '';
+            const titleToCheck = title || 'No Title';
+            if (!results[brandName].article_samples[sentCat].some(s => s.title === titleToCheck || (url && s.url === url))) {
+              results[brandName].article_samples[sentCat].push({ title: titleToCheck, source, url, published: dateKey });
             }
           }
         }

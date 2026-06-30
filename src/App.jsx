@@ -2798,7 +2798,6 @@ function App() {
   const [excludedKeywordsInput, setExcludedKeywordsInput] = useState('');
   const [analysisScope, setAnalysisScope] = useState('sector');
   const [analysisSector, setAnalysisSector] = useState('All');
-  const [dateRange, setDateRange] = useState('7days');
   const [curatedAnalysisResults, setCuratedAnalysisResults] = useState(null);
   const [curatedVisualizationType, setCuratedVisualizationType] = useState('Pie Chart');
   const [curatedTimelineType, setCuratedTimelineType] = useState('Line Chart');
@@ -4267,7 +4266,7 @@ ${bodyHtml}
       const res = await fetch(`${API_BASE}/api/curated-search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetKeywords: brands, excludedKeywords, topic: analysisSector, dateRange })
+        body: JSON.stringify({ targetKeywords: brands, excludedKeywords, topic: analysisSector })
       });
       if (res.ok) {
         const data = await res.json();
@@ -6093,25 +6092,6 @@ ${bodyHtml}
                     <div className={`w-full ${darkMode ? 'bg-[#0f172a]/40 border-white/5' : 'bg-white border-slate-200'} backdrop-blur-xl border rounded-[2.5rem] p-10 shadow-2xl mb-10 mt-4 print:hidden`}>
                       <div className="w-full flex flex-col sm:flex-row justify-between items-center gap-4 mb-8">
                         <div className="flex flex-wrap items-center gap-6">
-                          <div className="flex items-center gap-3">
-                            <span className={`text-[10px] font-black uppercase tracking-widest ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                              Date Range:
-                            </span>
-                            <select
-                              value={dateRange}
-                              onChange={(e) => setDateRange(e.target.value)}
-                              className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest outline-none cursor-pointer shadow-md transition-all ${
-                                darkMode
-                                  ? 'bg-[#151f32] border border-white/10 text-white hover:bg-[#1a2b47]'
-                                  : 'bg-white border border-slate-200 text-slate-800 hover:bg-slate-50'
-                              }`}
-                            >
-                              <option value="1day">Last 1 Day</option>
-                              <option value="7days">Last 1 Week</option>
-                              <option value="30days">Last 1 Month</option>
-                              <option value="90days">Last 3 Months</option>
-                            </select>
-                          </div>
                           <div className="flex items-center gap-3">
                             <span className={`text-[10px] font-black uppercase tracking-widest ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
                               Analysis Sector:
