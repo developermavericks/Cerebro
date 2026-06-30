@@ -169,7 +169,7 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
 
   let articles = [];
   let othersCount = 0;
-  let usedNexus = false;
+  let nexusTableExists = true;
 
   // Fetch matching articles from nexus
   try {
@@ -186,13 +186,15 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
         AND (${ilikeConds})
       ORDER BY published_at DESC
     `, sqlParams);
-    if (nexus.rows.length > 0) { articles = nexus.rows; usedNexus = true; }
+    // Always use nexus results (even if empty) — never fall back to RSS on 0 rows
+    articles = nexus.rows;
   } catch (err) {
     console.error('[Analyzer] nexus SELECT failed:', err.message);
+    nexusTableExists = false;
   }
 
-  // Count non-matching articles separately (independent of SELECT)
-  if (usedNexus) {
+  // Count non-matching articles in the same date window (for "Others" share)
+  if (nexusTableExists) {
     try {
       const countRes = await db.query(`
         SELECT COUNT(*) AS count FROM nexus_articles
@@ -205,8 +207,8 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
     }
   }
 
-  // Fallback to RSS articles table if nexus unavailable
-  if (!usedNexus) {
+  // Fallback to RSS articles table only if nexus table itself is unavailable (error, not empty)
+  if (!nexusTableExists) {
     try {
       const rss = await db.query(`
         SELECT
