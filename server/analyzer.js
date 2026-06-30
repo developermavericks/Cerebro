@@ -135,7 +135,7 @@ function normalizeText(text) {
 async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [], topic = 'All', dateRange = '7days' }) {
   const db = require('./db');
 
-  const intervalMap = { '7days': '7 days', '30days': '30 days', '90days': '90 days' };
+  const intervalMap = { '1day': '1 day', '7days': '7 days', '30days': '30 days', '90days': '90 days' };
   const interval = intervalMap[dateRange] || '7 days';
 
   const targetBrands = (targetKeywords || []).map(b => b.trim()).filter(Boolean);

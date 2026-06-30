@@ -945,14 +945,20 @@ app.post('/api/brands/:id/viewed', getUserId, async (req, res) => {
   }
 });
 
-// Get articles for a brand
+// Get articles for a brand — merges tracked RSS feed + NEXUS pool
 app.get('/api/brands/:id/articles', getUserId, async (req, res) => {
   const { id } = req.params;
+  const { dateRange = '7days' } = req.query;
+  const intervalMap = { '1day': '1 day', '7days': '7 days', '30days': '30 days', '90days': '90 days' };
+  const interval = intervalMap[dateRange] || '7 days';
   try {
     const brandRes = await db.query('SELECT name FROM companies WHERE id = $1 AND user_id = $2', [id, req.userId]);
     if (brandRes.rows.length === 0) {
       return res.status(404).json({ error: 'Brand not found' });
     }
+    const brandName = brandRes.rows[0].name;
+
+    // Tracked RSS articles (full history, no date cap)
     const articlesRes = await db.query(
       `SELECT a.id, a.title, a.link, a.published_at, a.source, a.summary, a.sentiment, a.created_at,
               c.last_ping_at as last_ping_time
@@ -967,7 +973,48 @@ app.get('/api/brands/:id/articles', getUserId, async (req, res) => {
        LIMIT 200`,
       [id]
     );
-    res.status(200).json(articlesRes.rows);
+
+    // NEXUS pool articles matching brand name within date range
+    let nexusRows = [];
+    try {
+      const brandPattern = `%${brandName}%`;
+      const nexusRes = await db.query(
+        `SELECT
+           'nexus-' || id::text AS id,
+           title,
+           url AS link,
+           published_at,
+           agency AS source,
+           COALESCE(summary, '') AS summary,
+           'Neutral' AS sentiment,
+           published_at AS created_at,
+           NULL::timestamptz AS last_ping_time
+         FROM nexus_articles
+         WHERE (title ILIKE $1 OR COALESCE(summary, '') ILIKE $1)
+           AND published_at >= NOW() - INTERVAL '${interval}'
+         ORDER BY published_at DESC
+         LIMIT 500`,
+        [brandPattern]
+      );
+      nexusRows = nexusRes.rows;
+    } catch (nexusErr) {
+      console.error('[brands/:id/articles] nexus query failed:', nexusErr.message);
+    }
+
+    // Merge & deduplicate by lowercased title
+    const seen = new Set();
+    const merged = [];
+    for (const a of articlesRes.rows) {
+      const key = (a.title || '').toLowerCase().trim();
+      if (!seen.has(key)) { seen.add(key); merged.push(a); }
+    }
+    for (const a of nexusRows) {
+      const key = (a.title || '').toLowerCase().trim();
+      if (!seen.has(key)) { seen.add(key); merged.push(a); }
+    }
+    merged.sort((a, b) => new Date(b.published_at) - new Date(a.published_at));
+
+    res.status(200).json(merged);
   } catch (err) {
     console.error('Error in GET /api/brands/:id/articles:', err);
     res.status(500).json({ error: 'Internal server error' });
@@ -1768,7 +1815,7 @@ if (process.env.NODE_ENV === 'production') {
   }
 })();
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
 

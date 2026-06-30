@@ -1511,7 +1511,7 @@ const SystemFlowComponent = ({ sidebarCollapsed, darkMode }) => {
     setDiagLoading(true);
     const start = Date.now();
     try {
-      const res = await fetch('http://localhost:3001/api/diagnostics', {
+      const res = await fetch(`${API_BASE}/api/diagnostics`, {
         headers: { 'Cache-Control': 'no-cache' }
       });
       if (!res.ok) throw new Error('Server returned error status');
@@ -2951,6 +2951,7 @@ function App() {
   ]);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [brandArticles, setBrandArticles] = useState([]);
+  const [brandArticlePeriod, setBrandArticlePeriod] = useState('7days');
   const [isRefreshingBrand, setIsRefreshingBrand] = useState(false);
   const [reportTelemetryData, setReportTelemetryData] = useState(null);
   const [isFetchingTelemetry, setIsFetchingTelemetry] = useState(false);
@@ -3622,10 +3623,11 @@ ${bodyHtml}
   }, [user]);
 
 
-  const fetchBrandArticles = async (brandId) => {
+  const fetchBrandArticles = async (brandId, period) => {
     if (!user || !user.id) return;
+    const p = period || brandArticlePeriod || '7days';
     try {
-      const res = await fetch(`${API_BASE}/api/brands/${brandId}/articles`, {
+      const res = await fetch(`${API_BASE}/api/brands/${brandId}/articles?dateRange=${p}`, {
         headers: { 'X-User-Id': user.id }
       });
       if (res.ok) {
@@ -3680,7 +3682,7 @@ ${bodyHtml}
 
   React.useEffect(() => {
     if (selectedBrandForDetail && user && user.id) {
-      fetchBrandArticles(selectedBrandForDetail.id);
+      fetchBrandArticles(selectedBrandForDetail.id, brandArticlePeriod);
     }
   }, [selectedBrandForDetail, user]);
 
@@ -3807,7 +3809,7 @@ ${bodyHtml}
       });
       await fetchTrackedBrands();
       if (selectedBrandForDetail) {
-        await fetchBrandArticles(selectedBrandForDetail.id);
+        await fetchBrandArticles(selectedBrandForDetail.id, brandArticlePeriod);
       }
       const newTarget = Date.now() + 300 * 1000;
       localStorage.setItem('cerebro_refresh_target', newTarget.toString());
@@ -4226,7 +4228,7 @@ ${bodyHtml}
               headers: { 'X-User-Id': user.id }
             }).finally(() => {
               fetchTrackedBrands();
-              if (selectedBrandForDetail) fetchBrandArticles(selectedBrandForDetail.id);
+              if (selectedBrandForDetail) fetchBrandArticles(selectedBrandForDetail.id, brandArticlePeriod);
             });
           }
           const newTarget = Date.now() + 300 * 1000;
@@ -6106,6 +6108,7 @@ ${bodyHtml}
                                   : 'bg-white border border-slate-200 text-slate-800 hover:bg-slate-50'
                               }`}
                             >
+                              <option value="1day">Last 1 Day</option>
                               <option value="7days">Last 1 Week</option>
                               <option value="30days">Last 1 Month</option>
                               <option value="90days">Last 3 Months</option>
@@ -7693,14 +7696,31 @@ ${bodyHtml}
                           </div>
                         </div>
 
+                        <div className="mb-4 flex items-center justify-between">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                            {brandArticles.length} articles from NEXUS + tracked feed
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Period:</span>
+                            <select
+                              value={brandArticlePeriod}
+                              onChange={(e) => {
+                                setBrandArticlePeriod(e.target.value);
+                                fetchBrandArticles(selectedBrandForDetail.id, e.target.value);
+                              }}
+                              className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest outline-none cursor-pointer bg-white border border-slate-200 text-slate-800 hover:bg-slate-50 shadow-sm"
+                            >
+                              <option value="1day">Last 1 Day</option>
+                              <option value="7days">Last 1 Week</option>
+                              <option value="30days">Last 1 Month</option>
+                              <option value="90days">Last 3 Months</option>
+                            </select>
+                          </div>
+                        </div>
+
                         <div className="space-y-3">
                           {(() => {
-                            const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-                            const recentArticles = brandArticles.filter(a => {
-                              const t = new Date(a.published_at).getTime();
-                              return !isNaN(t) && t >= cutoff;
-                            });
-                            const articlesToShow = recentArticles.length > 0 ? recentArticles : brandArticles;
+                            const articlesToShow = brandArticles;
                             if (articlesToShow.length === 0) return (
                               <div className="bg-white border-2 border-dashed border-slate-200 rounded-[3rem] p-20 text-center">
                                 <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-6 text-slate-300">
