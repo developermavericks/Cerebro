@@ -1685,6 +1685,22 @@ app.get('/api/nexus/dates', async (req, res) => {
   }
 });
 
+app.get('/api/nexus/sectors', async (req, res) => {
+  const secret = req.headers['x-cron-secret'] || req.query.secret;
+  if (!secret || secret !== process.env.CRON_SECRET) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const result = await db.query(`
+      SELECT COALESCE(sector, 'Unknown') AS sector, COUNT(*) AS count
+      FROM nexus_articles
+      GROUP BY sector
+      ORDER BY count DESC
+    `);
+    res.json(result.rows.map(r => ({ sector: r.sector, count: parseInt(r.count) })));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // User profile update
 app.put('/api/users/profile', getUserId, async (req, res) => {
   const { name, phone } = req.body;
