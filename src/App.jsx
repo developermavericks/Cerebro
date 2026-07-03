@@ -4124,6 +4124,13 @@ ${bodyHtml}
     }
   };
 
+  // Google News RSS links (news.google.com/rss/articles/...) don't open directly —
+  // removing /rss/ gives the standard Google News URL which properly redirects to the source.
+  const resolveArticleUrl = (url) => {
+    if (!url || url === 'N/A') return url;
+    return url.replace('https://news.google.com/rss/articles/', 'https://news.google.com/articles/');
+  };
+
   // Parses a plain-text chart description → chart config object.
   // When an API key is available in the future, replace this body with a fetch to /api/ai/chart.
   const generateChartFromPrompt = (prompt) => {
@@ -6399,7 +6406,7 @@ ${bodyHtml}
                                       <td className="px-8 py-5 text-xs font-black text-slate-400">{row.id}</td>
                                       <td className={`px-8 py-5 text-sm font-bold max-w-xs truncate ${darkMode ? 'text-slate-300' : 'text-slate-900'}`}>
                                         <a
-                                          href={row.url}
+                                          href={resolveArticleUrl(row.url)}
                                           target="_blank"
                                           rel="noopener noreferrer"
                                           className="hover:underline hover:text-indigo-500 transition-colors inline-flex items-center gap-1.5"
@@ -7378,7 +7385,7 @@ ${bodyHtml}
                                     const rows = exportFiltered.map((art, i) => `<tr>
                                       <td>${i + 1}</td>
                                       <td>${esc(art.title)}</td>
-                                      <td>${art.url && art.url !== 'N/A' ? `<a href="${esc(art.url)}">Open</a>` : 'N/A'}</td>
+                                      <td>${art.url && art.url !== 'N/A' ? `<a href="${esc(resolveArticleUrl(art.url))}">Open</a>` : 'N/A'}</td>
                                       <td>${esc(art.source)}</td>
                                       <td>${esc(art.published)}</td>
                                     </tr>`).join('');
@@ -7442,7 +7449,7 @@ ${bodyHtml}
                                           <td className="py-3 px-4 text-slate-400 whitespace-nowrap">{art.published}</td>
                                           <td className="py-3 px-4 text-right">
                                             {art.url && art.url !== 'N/A'
-                                              ? <a href={art.url} target="_blank" rel="noreferrer"
+                                              ? <a href={resolveArticleUrl(art.url)} target="_blank" rel="noreferrer"
                                                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 font-black text-[9px] uppercase tracking-wider transition-colors">
                                                   <Chrome size={11} /> Read
                                                 </a>
@@ -8432,7 +8439,7 @@ ${bodyHtml}
                                           type="button"
                                           onClick={(e) => {
                                             e.stopPropagation();
-                                            window.open(article.link, '_blank');
+                                            window.open(resolveArticleUrl(article.link), '_blank');
                                           }}
                                           className="mt-8 flex items-center gap-2 text-[10px] font-black text-indigo-600 uppercase tracking-[0.2em] hover:translate-x-2 transition-transform group/link"
                                         >
