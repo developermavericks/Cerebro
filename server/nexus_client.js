@@ -43,6 +43,38 @@ async function fetchPage(params, retries = 3) {
   }
 }
 
+// Canonical sector names used throughout the app
+const SECTOR_VARIANTS = {
+  'Tech':          ['tech', 'TECH', 'Techhh'],
+  'AI':            ['ai', 'Ai'],
+  'Healthcare':    ['healthcare', 'HealthCare', 'HEALTHCARE', 'Health'],
+  'Stock Market':  ['stock market'],
+  'Real Estate':   ['real estate'],
+  'Lifestyle':     ['lifestyle', 'LifeStyle'],
+  'Foods & Drinks':['foods and drinks', 'Foods and Drinks', 'FOODS AND DRINKS', 'Foods'],
+  'Travel':        ['travel', 'Travell'],
+  'Policies':      ['policies'],
+  'Startups':      ['startups', 'StartUp'],
+  'Consultancies': ['consultancies'],
+  'Google':        ['google', 'google 2', 'Google3'],
+  'Education':     ['education'],
+};
+// Reverse map: variant (lowercased) → canonical
+const _sectorLookup = {};
+for (const [canonical, variants] of Object.entries(SECTOR_VARIANTS)) {
+  _sectorLookup[canonical.toLowerCase()] = canonical;
+  for (const v of variants) _sectorLookup[v.toLowerCase()] = canonical;
+}
+const JUNK_SECTORS = new Set(['test56', 'test545', 'testing', 'scapia']);
+
+function normalizeSector(raw) {
+  if (!raw) return null;
+  const s = raw.trim();
+  const key = s.toLowerCase();
+  if (JUNK_SECTORS.has(key)) return 'Other';
+  return _sectorLookup[key] || s;
+}
+
 async function insertArticles(articles) {
   if (!articles || articles.length === 0) return 0;
   let inserted = 0;
@@ -56,7 +88,7 @@ async function insertArticles(articles) {
       `, [
         a.id, a.title, a.url, a.full_body, a.author, a.agency,
         a.published_at ? new Date(a.published_at) : null,
-        a.sector, a.region, a.summary, a.sentiment,
+        normalizeSector(a.sector), a.region, a.summary, a.sentiment,
         Array.isArray(a.tags) ? a.tags.join(', ') : a.tags,
         a.word_count,
         a.scraped_at ? new Date(a.scraped_at) : null

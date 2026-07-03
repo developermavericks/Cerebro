@@ -206,8 +206,8 @@ app.post('/api/login', async (req, res) => {
       }
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('[LOGIN ERROR]', err.message, err.code);
+    res.status(500).json({ error: 'Internal server error', detail: err.message });
   }
 });
 
@@ -599,6 +599,7 @@ app.get('/api/brands', getUserId, async (req, res) => {
   try {
     const result = await db.query(
       `SELECT c.id, c.name, c.region, c.last_status as status, c.last_viewed_at,
+              COALESCE(c.is_active, true) as is_active,
               COALESCE((SELECT COUNT(DISTINCT title) FROM articles a WHERE a.company_id = c.id)::int, 0) as mentions,
               COALESCE((SELECT COUNT(DISTINCT title) FROM articles a WHERE a.company_id = c.id AND (c.last_viewed_at IS NULL OR a.created_at > c.last_viewed_at))::int, 0) as new_mentions
        FROM companies c
@@ -925,6 +926,61 @@ app.delete('/api/brands/:id', getUserId, async (req, res) => {
     res.status(200).json({ message: 'Brand deleted successfully' });
   } catch (err) {
     console.error('Error in DELETE /api/brands:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Stop or resume tracking a brand (toggle is_active)
+app.patch('/api/brands/:id/active', getUserId, async (req, res) => {
+  const { id } = req.params;
+  const { is_active } = req.body;
+  if (typeof is_active !== 'boolean') {
+    return res.status(400).json({ error: 'is_active must be a boolean' });
+  }
+  try {
+    const check = await db.query('SELECT id FROM companies WHERE id = $1 AND user_id = $2', [id, req.userId]);
+    if (check.rows.length === 0) return res.status(404).json({ error: 'Brand not found' });
+    await db.query('UPDATE companies SET is_active = $1 WHERE id = $2', [is_active, id]);
+    res.status(200).json({ message: is_active ? 'Tracking resumed' : 'Tracking stopped' });
+  } catch (err) {
+    console.error('Error in PATCH /api/brands/:id/active:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Brand mention history — daily counts for last 60 days
+app.get('/api/brands/:id/history', getUserId, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const brandRes = await db.query('SELECT name FROM companies WHERE id = $1 AND user_id = $2', [id, req.userId]);
+    if (brandRes.rows.length === 0) return res.status(404).json({ error: 'Brand not found' });
+
+    const history = await db.query(
+      `SELECT DATE(created_at) as date, COUNT(DISTINCT title)::int as count
+       FROM articles
+       WHERE company_id = $1 AND created_at >= NOW() - INTERVAL '60 days'
+       GROUP BY DATE(created_at)
+       ORDER BY date ASC`,
+      [id]
+    );
+
+    const topSources = await db.query(
+      `SELECT source, COUNT(DISTINCT title)::int as count
+       FROM articles
+       WHERE company_id = $1 AND source IS NOT NULL
+       GROUP BY source
+       ORDER BY count DESC
+       LIMIT 8`,
+      [id]
+    );
+
+    res.status(200).json({
+      name: brandRes.rows[0].name,
+      timeline: history.rows,
+      topSources: topSources.rows
+    });
+  } catch (err) {
+    console.error('Error in GET /api/brands/:id/history:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1393,10 +1449,10 @@ app.get('/api/brands/:id/report', async (req, res) => {
 // Curated Query Search & Brand Analysis endpoint
 app.post('/api/curated-search', async (req, res) => {
   console.log('POST /api/curated-search hit with body:', req.body);
-  const { targetKeywords, excludedKeywords, topic, dateRange } = req.body;
+  const { targetKeywords, excludedKeywords, topic, startDate, endDate } = req.body;
   try {
     const analyzer = require('./analyzer');
-    const results = await analyzer.analyzeSpecificBrands({ targetKeywords, excludedKeywords, topic, dateRange });
+    const results = await analyzer.analyzeSpecificBrands({ targetKeywords, excludedKeywords, topic, startDate, endDate });
     console.log('Analysis results keys:', Object.keys(results.brands || {}));
     res.status(200).json(results);
   } catch (err) {
@@ -1680,22 +1736,6 @@ app.get('/api/nexus/dates', async (req, res) => {
       LIMIT 90
     `);
     res.json(result.rows.map(r => ({ date: r.date.toISOString().split('T')[0], count: parseInt(r.count) })));
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.get('/api/nexus/sectors', async (req, res) => {
-  const secret = req.headers['x-cron-secret'] || req.query.secret;
-  if (!secret || secret !== process.env.CRON_SECRET) return res.status(401).json({ error: 'Unauthorized' });
-  try {
-    const result = await db.query(`
-      SELECT COALESCE(sector, 'Unknown') AS sector, COUNT(*) AS count
-      FROM nexus_articles
-      GROUP BY sector
-      ORDER BY count DESC
-    `);
-    res.json(result.rows.map(r => ({ sector: r.sector, count: parseInt(r.count) })));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

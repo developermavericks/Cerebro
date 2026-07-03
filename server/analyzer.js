@@ -29,18 +29,21 @@ const OTHER_BRANDS_POOL = [
   "AIndra Systems", "Soket AI Labs"
 ];
 
-const TOPIC_KEYWORDS = {
-  "AI": ["ai", "artificial intelligence", "machine learning", "deep learning", "generative ai", "neural network", "openai", "copilot", "llm", "large language model"],
-  "STARTUP": ["startup", "startups", "venture capital", "funding", "founder", "founders", "entrepreneur", "entrepreneurs", "seed round", "series a"],
-  "CONSULTANCY": ["consultancy", "consulting", "consultant", "consultants", "mckinsey", "bcg", "bain", "accenture", "ey", "deloitte", "pwc", "kpmg"],
-  "FINANCE": ["finance", "financial", "banking", "investment", "capital", "stock", "stocks", "market", "markets", "bank", "banks", "equity"],
-  "TECHNOLOGY": ["technology", "tech", "software", "hardware", "digital", "it", "semiconductor", "microchip", "processor"],
-  "HEALTHCARE": ["healthcare", "health", "medical", "pharma", "pharmaceutical", "hospital", "hospitals", "clinical", "medicine"],
-  "EDUCATION": ["education", "educational", "school", "schools", "university", "universities", "college", "colleges", "learning", "student", "students"],
-  "ENERGY": ["energy", "power", "solar", "wind", "oil", "gas", "renewable", "renewables", "electricity"],
-  "RETAIL": ["retail", "shopping", "e-commerce", "ecommerce", "store", "stores", "consumer", "goods", "supermarket"],
-  "MEDIA": ["media", "news", "press", "journalism", "broadcast", "television", "tv", "newspaper", "social media"],
-  "AUTOMOTIVE": ["automotive", "automobile", "car", "cars", "vehicle", "vehicles", "ev", "electric vehicle", "electric vehicles"]
+// Maps frontend dropdown value → canonical DB sector value
+const SECTOR_TO_DB = {
+  'AI':          'AI',
+  'TECH':        'Tech',
+  'FOODS_DRINKS':'Foods & Drinks',
+  'HEALTHCARE':  'Healthcare',
+  'TRAVEL':      'Travel',
+  'CONSULTANCY': 'Consultancies',
+  'STARTUP':     'Startups',
+  'LIFESTYLE':   'Lifestyle',
+  'POLICIES':    'Policies',
+  'STOCK_MARKET':'Stock Market',
+  'REAL_ESTATE': 'Real Estate',
+  'GOOGLE':      'Google',
+  'EDUCATION':   'Education',
 };
 
 const BRAND_FAMILIES = {
@@ -132,7 +135,7 @@ function normalizeText(text) {
   return text.toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 
-async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [], topic = 'All' }) {
+async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [], topic = 'All', startDate = null, endDate = null }) {
   const db = require('./db');
 
   const targetBrands = (targetKeywords || []).map(b => b.trim()).filter(Boolean);
@@ -158,11 +161,31 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
   const targetTerms = Object.keys(normalizedTargetMap);
 
   // SQL pre-filter: only fetch articles containing at least one target keyword
-  const sqlParams = targetTerms.map(t => `%${t}%`);
+  const brandParams = targetTerms.map(t => `%${t}%`);
   const ilikeConds = targetTerms.map((_, i) => {
     const p = i + 1;
     return `(COALESCE(title,'') ILIKE $${p} OR COALESCE(summary,'') ILIKE $${p})`;
   }).join(' OR ');
+
+  // Sector filter via DB field (accurate — uses normalized sector column)
+  const dbSector = topic && topic !== 'All' ? (SECTOR_TO_DB[topic.toUpperCase()] || null) : null;
+
+  // Build dynamic extra clauses + params
+  const extraParams = [];
+  let extraClauses = '';
+  if (dbSector) {
+    extraParams.push(dbSector);
+    extraClauses += ` AND sector = $${brandParams.length + extraParams.length}`;
+  }
+  if (startDate) {
+    extraParams.push(startDate);
+    extraClauses += ` AND published_at >= $${brandParams.length + extraParams.length}::date`;
+  }
+  if (endDate) {
+    extraParams.push(endDate);
+    extraClauses += ` AND published_at < ($${brandParams.length + extraParams.length}::date + INTERVAL '1 day')`;
+  }
+  const sqlParams = [...brandParams, ...extraParams];
 
   let articles = [];
   let othersCount = 0;
@@ -176,25 +199,24 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
         url                                               AS "Resolved URL",
         published_at                                      AS "Published At",
         agency                                            AS "Publisher/Agency",
-        COALESCE(summary, '')                             AS "Summary",
-        COALESCE(summary, '')                             AS "Full Body"
+        COALESCE(full_body, '')                           AS "Summary",
+        COALESCE(full_body, '')                           AS "Full Body"
       FROM nexus_articles
-      WHERE (${ilikeConds})
+      WHERE (${ilikeConds})${extraClauses}
       ORDER BY published_at DESC
     `, sqlParams);
-    // Always use nexus results (even if empty) — never fall back to RSS on 0 rows
     articles = nexus.rows;
   } catch (err) {
     console.error('[Analyzer] nexus SELECT failed:', err.message);
     nexusTableExists = false;
   }
 
-  // Count non-matching articles in the same date window (for "Others" share)
+  // Count non-matching articles in the same sector/date window (for "Others" share)
   if (nexusTableExists) {
     try {
       const countRes = await db.query(`
         SELECT COUNT(*) AS count FROM nexus_articles
-        WHERE NOT (${ilikeConds})
+        WHERE NOT (${ilikeConds})${extraClauses}
       `, sqlParams);
       othersCount = parseInt(countRes.rows[0]?.count || 0, 10);
     } catch (err) {
@@ -250,13 +272,6 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
     return new RegExp('\\b' + escapedParts.join('\\s+') + '\\b', 'i');
   });
 
-  let topicRegex = null;
-  if (topic && topic !== 'All') {
-    const keywords = TOPIC_KEYWORDS[topic.toUpperCase()] || [topic];
-    const escaped = keywords.map(k => escapeRegExp(normalizeText(k)));
-    topicRegex = new RegExp('\\b(' + escaped.join('|') + ')\\b', 'i');
-  }
-
   for (const article of articles) {
     const title = article['Title'] || '';
     const summary = article['Summary'] || '';
@@ -265,11 +280,6 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
     const content = normalizeText(rawContent);
 
     if (!content.trim()) continue;
-
-    if (topicRegex) {
-      topicRegex.lastIndex = 0;
-      if (!topicRegex.test(content)) continue;
-    }
 
     let isExcluded = false;
     for (const regex of compiledExcluded) {

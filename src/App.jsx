@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import ReactDOM from 'react-dom';
 import {
   Mail,
   Lock,
@@ -184,6 +185,101 @@ window.fetch = async function (url, options = {}) {
   return response;
 };
 
+
+const PREDEFINED_REPORTS = [
+  {
+    id: 'predefined-1',
+    _predefined: true,
+    title: 'AI Competitive Intelligence Report Q2 2026',
+    type: 'VS Analysis',
+    status: 'Generated',
+    date: '2026-06-30',
+    author: 'Cerebro Intelligence',
+    priority: 'High',
+    topic: 'AI',
+    keywords: 'OpenAI, Google, Microsoft, Anthropic, Meta AI',
+    summary: 'Comprehensive competitive analysis of the global AI landscape in Q2 2026, covering market share, media sentiment, and brand positioning across leading players.',
+    tags: ['AI', 'Competitive Intelligence', 'Q2 2026', 'Tech'],
+    metrics: {},
+    bookmarks: [],
+    sections: [
+      {
+        id: 'sec-p1-1',
+        title: '1. Executive Summary',
+        content: 'The global AI industry in Q2 2026 is dominated by five major players — OpenAI, Google DeepMind, Microsoft, Anthropic, and Meta AI — collectively accounting for over 70% of media coverage and investment activity. This report analyses their competitive positioning, media sentiment, and strategic direction based on 238,000+ articles from the NEXUS intelligence pool.\n\nKey findings:\n• OpenAI maintains the highest share of voice at ~28% of AI-related coverage\n• Google DeepMind leads in positive sentiment at 64% positive articles\n• Anthropic shows the fastest growth trajectory in coverage volume (+42% QoQ)\n• Microsoft Azure AI sees strong enterprise adoption coverage\n• Meta AI gains ground in open-source narrative',
+        charts: [],
+        images: []
+      },
+      {
+        id: 'sec-p1-2',
+        title: '2. Share of Voice Analysis',
+        content: 'Media coverage distribution across the five tracked brands reveals a highly concentrated landscape. OpenAI continues to dominate with product launches (GPT-5, Sora) driving consistent coverage spikes. Google DeepMind benefits from integration into Google Search and Workspace. Microsoft\'s Copilot brand has achieved strong enterprise mindshare.\n\nShare of Voice (estimated from NEXUS data):\n• OpenAI: 28.4%\n• Google / DeepMind: 24.1%\n• Microsoft: 19.8%\n• Anthropic: 14.3%\n• Meta AI: 13.4%',
+        charts: [],
+        images: []
+      },
+      {
+        id: 'sec-p1-3',
+        title: '3. Sentiment Landscape',
+        content: 'Sentiment analysis across brands shows varying public and media perception. Anthropic leads in neutral-to-positive coverage driven by safety-focused narratives. OpenAI faces the most mixed sentiment due to governance controversies. Meta AI benefits from open-source goodwill.\n\nSentiment breakdown (Positive / Neutral / Negative):\n• Anthropic: 61% / 31% / 8%\n• Google DeepMind: 58% / 34% / 8%\n• Microsoft: 52% / 38% / 10%\n• Meta AI: 49% / 40% / 11%\n• OpenAI: 44% / 35% / 21%',
+        charts: [],
+        images: []
+      },
+      {
+        id: 'sec-p1-4',
+        title: '4. Strategic Recommendations',
+        content: 'Based on the competitive intelligence gathered:\n\n1. Monitor Anthropic\'s enterprise push — their Claude 4 series is gaining traction in regulated industries (finance, legal, healthcare)\n2. Track Google\'s Gemini Ultra adoption as a leading indicator of AI platform consolidation\n3. Watch Microsoft\'s M365 Copilot renewal rates as enterprise AI ROI bellwether\n4. Flag OpenAI governance stories early — they tend to amplify into broader regulatory narratives\n5. Meta AI\'s open-source strategy may disrupt enterprise licensing models by Q4 2026',
+        charts: [],
+        images: []
+      }
+    ]
+  },
+  {
+    id: 'predefined-2',
+    _predefined: true,
+    title: 'Google Brand Intelligence Report — June 2026',
+    type: 'Brand Analysis',
+    status: 'Generated',
+    date: '2026-06-28',
+    author: 'Cerebro Intelligence',
+    priority: 'High',
+    topic: 'Technology',
+    keywords: 'Google, DeepMind, Gemini, Google Cloud, Android',
+    summary: 'In-depth brand intelligence report tracking Google\'s media presence, sentiment trajectory, and key narrative themes across 2,100+ articles from the NEXUS pool in June 2026.',
+    tags: ['Google', 'Brand Analysis', 'June 2026', 'AI'],
+    metrics: {},
+    bookmarks: [],
+    sections: [
+      {
+        id: 'sec-p2-1',
+        title: '1. Brand Overview',
+        content: 'Google appeared in approximately 2,142 articles across the NEXUS intelligence pool (June 21–28, 2026), representing ~0.9% of total coverage. Coverage is distributed across Google\'s key business units: Search & AI (38%), Cloud (24%), Android/Hardware (18%), YouTube (12%), and Other (8%).\n\nTop coverage drivers this period:\n• Gemini 2.0 Pro launch and developer adoption\n• Google I/O follow-through coverage\n• Antitrust proceedings in EU and US markets\n• Google Cloud Next enterprise announcements',
+        charts: [],
+        images: []
+      },
+      {
+        id: 'sec-p2-2',
+        title: '2. Media Coverage Analysis',
+        content: 'Google\'s media footprint this month spans 847 unique publications. Top publications by volume include TechCrunch, The Verge, Reuters, Bloomberg Technology, and Economic Times (India).\n\nCoverage volume by day (June 21–28):\n• June 21: 287 articles\n• June 22: 341 articles (spike: Gemini 2.0 announcement)\n• June 23: 198 articles\n• June 24: 312 articles\n• June 25: 428 articles (spike: antitrust ruling)\n• June 26: 376 articles\n• June 27: 219 articles\n• June 28: 181 articles',
+        charts: [],
+        images: []
+      },
+      {
+        id: 'sec-p2-3',
+        title: '3. Sentiment Breakdown',
+        content: 'Overall sentiment for Google in June 2026 leans positive, driven primarily by AI product launches and Cloud growth narratives. Negative sentiment clusters around antitrust and privacy topics.\n\nSentiment distribution:\n• Positive: 58% (1,242 articles) — AI leadership, product launches, cloud growth\n• Neutral: 27% (578 articles) — earnings reports, partnership announcements\n• Negative: 15% (322 articles) — antitrust, data privacy, layoffs\n\nKey negative narrative clusters:\n• EU Digital Markets Act compliance coverage\n• Search monopoly trial verdict analysis\n• Gemini safety concerns from AI researchers',
+        charts: [],
+        images: []
+      },
+      {
+        id: 'sec-p2-4',
+        title: '4. Key Themes & Recommendations',
+        content: 'Dominant narrative themes this month:\n\n1. AI Leadership — Gemini 2.0 positioning vs GPT-5 (strong positive)\n2. Cloud Growth — Google Cloud at $12B run rate narrative (positive)\n3. Regulatory Headwinds — Antitrust and DMA coverage (negative, watch closely)\n4. Hardware — Pixel 9 and TPU announcements gaining niche coverage\n\nRecommendations:\n• Prioritise monitoring antitrust coverage — regulatory outcomes have outsized brand impact\n• Track Gemini developer sentiment separately from consumer sentiment\n• Set alerts for Google Cloud deal announcements — strong positive brand signal',
+        charts: [],
+        images: []
+      }
+    ]
+  }
+];
 
 // Error Boundary to catch runtime React errors and show a useful message
 class ErrorBoundary extends React.Component {
@@ -2602,7 +2698,7 @@ function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [isTestEnv]);
 
-  // Security Effect: Detect duplicate tabs and enforce a single active session
+  // Security Effect: Detect duplicate tabs — only block if another LIVE tab responds
   React.useEffect(() => {
     if (isTestEnv) return;
 
@@ -2612,52 +2708,50 @@ function App() {
       sessionStorage.setItem('cerebro_tab_id', tabId);
     }
 
-    const checkSession = () => {
-      const savedUser = localStorage.getItem('cerebro_user');
-      if (savedUser) {
-        const activeTabId = localStorage.getItem('cerebro_active_tab_id');
-        if (activeTabId && activeTabId !== tabId) {
-          console.warn('[Cerebro Security] Duplicate active session tab detected. Transitioning to login.');
-          setUser(null);
-          setView('login');
-          setShowDuplicateSessionModal(true);
-        }
-      }
-    };
-
     const channel = new BroadcastChannel('cerebro_session_channel');
 
     channel.onmessage = (event) => {
-      if (event.data.type === 'ping_active_session') {
-        if (user && localStorage.getItem('cerebro_active_tab_id') === tabId) {
-          channel.postMessage({ type: 'pong_active_session', tabId: tabId });
-        }
-      } else if (event.data.type === 'new_tab_opened') {
-        if (user && localStorage.getItem('cerebro_active_tab_id') === tabId) {
-          channel.postMessage({ type: 'session_already_active', activeTabId: tabId });
-        }
-      } else if (event.data.type === 'session_already_active') {
-        if (user) {
-          console.warn('[Cerebro Security] Another tab is already active with this session.');
-          setUser(null);
-          setView('login');
-          setShowDuplicateSessionModal(true);
-        }
-      } else if (event.data.type === 'session_claimed') {
+      // Another tab logged in fresh — this tab loses the session
+      if (event.data.type === 'session_claimed') {
         if (user && event.data.tabId !== tabId) {
-          console.warn('[Cerebro Security] Another tab has claimed the active session.');
+          console.warn('[Cerebro Security] Another tab claimed the session.');
           setUser(null);
           setView('login');
           setShowDuplicateSessionModal(true);
         }
       }
+      // A new tab is asking if anyone is alive — respond if this tab owns the session
+      if (event.data.type === 'ping_live_tabs') {
+        if (user && event.data.fromTabId !== tabId) {
+          channel.postMessage({ type: 'live_tab_exists', tabId });
+        }
+      }
     };
 
+    // When this tab opens with an active user, ping to check for other live tabs
     if (user) {
-      channel.postMessage({ type: 'new_tab_opened', tabId });
+      let responded = false;
+      const pingChannel = new BroadcastChannel('cerebro_session_channel');
+      pingChannel.onmessage = (ev) => {
+        if (ev.data.type === 'live_tab_exists' && !responded) {
+          responded = true;
+          pingChannel.close();
+          // Another live tab exists — show the modal
+          console.warn('[Cerebro Security] Another live tab detected on open.');
+          setUser(null);
+          setView('login');
+          setShowDuplicateSessionModal(true);
+        }
+      };
+      pingChannel.postMessage({ type: 'ping_live_tabs', fromTabId: tabId });
+      // If no response in 300ms, claim the session silently
+      setTimeout(() => {
+        if (!responded) {
+          localStorage.setItem('cerebro_active_tab_id', tabId);
+        }
+        pingChannel.close();
+      }, 300);
     }
-
-    const interval = setInterval(checkSession, 1500);
 
     const handleStorageChange = (e) => {
       if (e.key === 'cerebro_user') {
@@ -2665,20 +2759,15 @@ function App() {
           setUser(null);
           setView('login');
         } else {
-          // Only auto-login if this tab itself is active or no other active tab is defined
-          const activeTabId = localStorage.getItem('cerebro_active_tab_id');
-          if (!activeTabId || activeTabId === tabId) {
-            const newUser = JSON.parse(e.newValue);
-            setUser(newUser);
-            setView('landing');
-          }
+          const newUser = JSON.parse(e.newValue);
+          setUser(newUser);
+          setView('landing');
         }
       }
     };
     window.addEventListener('storage', handleStorageChange);
 
     return () => {
-      clearInterval(interval);
       window.removeEventListener('storage', handleStorageChange);
       channel.close();
     };
@@ -2798,11 +2887,16 @@ function App() {
   const [excludedKeywordsInput, setExcludedKeywordsInput] = useState('');
   const [analysisScope, setAnalysisScope] = useState('sector');
   const [analysisSector, setAnalysisSector] = useState('All');
+  const [analysisStartDate, setAnalysisStartDate] = useState('');
+  const [analysisEndDate, setAnalysisEndDate] = useState('');
   const [curatedAnalysisResults, setCuratedAnalysisResults] = useState(null);
   const [curatedVisualizationType, setCuratedVisualizationType] = useState('Pie Chart');
   const [curatedTimelineType, setCuratedTimelineType] = useState('Line Chart');
   const [curatedDrillBrand, setCuratedDrillBrand] = useState('');
   const [curatedDrillSentiment, setCuratedDrillSentiment] = useState('All');
+  const [brandArticlePage, setBrandArticlePage] = useState(1);
+  const [brandArticleDateFrom, setBrandArticleDateFrom] = useState('');
+  const [brandArticleDateTo, setBrandArticleDateTo] = useState('');
   const [keywordSearchError, setKeywordSearchError] = useState(null);
   const [keywordSearchCount, setKeywordSearchCount] = useState(() => {
     try {
@@ -2814,6 +2908,7 @@ function App() {
   const [pieTooltip, setPieTooltip] = useState(null);
   const [barTooltip, setBarTooltip] = useState(null);
   const [maximizedChart, setMaximizedChart] = useState(null);
+  const [expandedChartIds, setExpandedChartIds] = useState({});
   const [deleteConfirmReport, setDeleteConfirmReport] = useState(null);
   const [statusDropdownRepId, setStatusDropdownRepId] = useState(null);
   const [reachUrl, setReachUrl] = useState('');
@@ -2853,7 +2948,7 @@ function App() {
     }
   }, [user]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('cerebro_dark_mode') === 'true');
   useEffect(() => {
     if (darkMode) {
       document.documentElement.classList.add('dark');
@@ -2949,8 +3044,13 @@ function App() {
     { id: Date.now(), timestamp: new Date().toISOString(), action: 'Initialized Cerebro Studio Briefing Document', section: 'Document Root' }
   ]);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [previewHistoryEntry, setPreviewHistoryEntry] = useState(null);
   const [brandArticles, setBrandArticles] = useState([]);
   const [isRefreshingBrand, setIsRefreshingBrand] = useState(false);
+  const [showBrandHistoryModal, setShowBrandHistoryModal] = useState(false);
+  const [brandHistoryTarget, setBrandHistoryTarget] = useState(null);
+  const [brandHistoryData, setBrandHistoryData] = useState(null);
+  const [brandHistoryLoading, setBrandHistoryLoading] = useState(false);
   const [reportTelemetryData, setReportTelemetryData] = useState(null);
   const [isFetchingTelemetry, setIsFetchingTelemetry] = useState(false);
 
@@ -3188,6 +3288,190 @@ function App() {
     );
   };
 
+  // ── Google Docs Export Helpers ───────────────────────────────────────────
+  const requestGoogleDocsAccess = (onToken) => {
+    if (!window.google?.accounts?.oauth2) {
+      showToast('Google API not loaded. Refresh and try again.', 'error');
+      return;
+    }
+    const tokenClient = window.google.accounts.oauth2.initTokenClient({
+      client_id: window.GOOGLE_CLIENT_ID,
+      scope: 'https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.metadata.readonly',
+      callback: (resp) => {
+        if (resp.access_token) {
+          setGoogleDocsToken(resp.access_token);
+          showToast('Google Docs connected ✓', 'success');
+          if (onToken) onToken(resp.access_token);
+        } else {
+          showToast('Google authorization failed', 'error');
+        }
+      }
+    });
+    tokenClient.requestAccessToken({ prompt: '' });
+  };
+
+  const captureChartEl = async (el) => {
+    const { default: html2canvas } = await import('html2canvas');
+    // Wait for all web fonts to finish loading so text renders correctly
+    await document.fonts.ready;
+    // Let any pending React paint flush
+    await new Promise(r => requestAnimationFrame(r));
+    await new Promise(r => requestAnimationFrame(r));
+
+    // Temporarily enforce a minimum height so thin charts (KPI cards) don't
+    // export as flat strips — restored immediately after capture
+    const prevMinH = el.style.minHeight;
+    const prevPadB = el.style.paddingBottom;
+    const naturalH = el.getBoundingClientRect().height;
+    if (naturalH < 200) {
+      el.style.minHeight = '220px';
+      el.style.paddingBottom = '20px';
+    }
+
+    const canvas = await html2canvas(el, {
+      scale: 4, useCORS: true, backgroundColor: '#ffffff',
+      logging: false, imageTimeout: 20000, allowTaint: true
+    });
+
+    el.style.minHeight = prevMinH;
+    el.style.paddingBottom = prevPadB;
+
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png', 1.0));
+    return { blob, aspectRatio: canvas.width / canvas.height };
+  };
+
+  const exportChartToGoogleDoc = async ({ blob: imageBlob, aspectRatio }, chartLabel, docName, existingDocId) => {
+    const token = googleDocsToken;
+    const metadata = new Blob([JSON.stringify({ name: `cerebro-chart-${Date.now()}.png`, mimeType: 'image/png' })], { type: 'application/json' });
+    const formBody = new FormData();
+    formBody.append('metadata', metadata);
+    formBody.append('file', imageBlob);
+    const uploadRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+      method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: formBody
+    });
+    const { id: fileId } = await uploadRes.json();
+    await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'reader', type: 'anyone' })
+    });
+    let docId = existingDocId;
+    let docTitle = docName;
+    if (!docId) {
+      const docRes = await fetch('https://docs.googleapis.com/v1/documents', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: docName })
+      });
+      const d = await docRes.json();
+      docId = d.documentId;
+      docTitle = d.title;
+    }
+    const infoRes = await fetch(`https://docs.googleapis.com/v1/documents/${docId}`, { headers: { Authorization: `Bearer ${token}` } });
+    const info = await infoRes.json();
+    const content = info.body?.content ?? [];
+    const endIndex = Math.max(1, (content[content.length - 1]?.endIndex ?? 2) - 1);
+    const imageUri = `https://drive.google.com/uc?export=view&id=${fileId}`;
+
+    // US-Letter text area = 468 PT (6.5"). A4 text area ≈ 453 PT. Use 460 PT to fit both.
+    const imgW = 460;
+    const imgH = Math.round(imgW / (aspectRatio || 1.6));
+
+    const requests = [];
+    // Two blank lines + bold label before the image
+    const prefix = chartLabel ? `\n\n${chartLabel}\n` : '\n\n';
+    requests.push({ insertText: { location: { index: endIndex }, text: prefix } });
+    const imgIdx = endIndex + prefix.length;
+    requests.push({
+      insertInlineImage: {
+        location: { index: imgIdx },
+        objectSize: {
+          height: { magnitude: imgH, unit: 'PT' },
+          width:  { magnitude: imgW, unit: 'PT' }
+        },
+        uri: imageUri
+      }
+    });
+    // Bold the label line
+    if (chartLabel) {
+      requests.push({
+        updateTextStyle: {
+          range: { startIndex: endIndex + 2, endIndex: endIndex + 2 + chartLabel.length },
+          textStyle: { bold: true, fontSize: { magnitude: 14, unit: 'PT' } },
+          fields: 'bold,fontSize'
+        }
+      });
+    }
+    await fetch(`https://docs.googleapis.com/v1/documents/${docId}:batchUpdate`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requests })
+    });
+    return { docId, docTitle, docUrl: `https://docs.google.com/document/d/${docId}/edit` };
+  };
+
+  const handleExportChartClick = (sIdx, cIdx) => {
+    const chart = selectedReport?.sections?.[sIdx]?.charts?.[cIdx];
+    if (!chart) return;
+    const rawConfig = chartConfigs[chart.id] || chart.config || {};
+    const label = chart.label || rawConfig.field || rawConfig.type || chart.type || 'Chart';
+    setExportTargetChart({ sIdx, cIdx, label });
+    setExportDocMode('new');
+    setExportDocName(selectedReport?.title || 'Cerebro Report');
+    setSelectedDriveDocId('');
+    setSelectedDriveDocTitle('');
+    setDriveDocsList([]);
+    setDriveDocsSearch('');
+    setShowExportDocModal(true);
+  };
+
+  const fetchDriveDocs = async (tokenOverride) => {
+    const token = tokenOverride || googleDocsToken;
+    if (!token) {
+      requestGoogleDocsAccess((newToken) => fetchDriveDocs(newToken));
+      return;
+    }
+    setDriveDocsLoading(true);
+    try {
+      const res = await fetch(
+        "https://www.googleapis.com/drive/v3/files?q=mimeType%3D'application%2Fvnd.google-apps.document'&orderBy=modifiedTime+desc&pageSize=100&fields=files(id,name,modifiedTime)",
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const data = await res.json();
+      if (data.error) throw new Error(data.error.message);
+      setDriveDocsList(data.files || []);
+    } catch (err) {
+      console.error('[Drive] Failed to list docs:', err);
+      showToast('Failed to load Drive docs — try reconnecting Google', 'error');
+    } finally {
+      setDriveDocsLoading(false);
+    }
+  };
+
+  const handleExportConfirm = async () => {
+    if (!googleDocsToken) { requestGoogleDocsAccess(); return; }
+    const { sIdx, cIdx, label } = exportTargetChart;
+    const el = exportChartRefs.current[`${sIdx}-${cIdx}`];
+    if (!el) { showToast('Chart element not found', 'error'); return; }
+    setIsExportingChart(true);
+    try {
+      const captured = await captureChartEl(el);
+      const useDocId = exportDocMode === 'existing' ? (selectedDriveDocId || null) : null;
+      if (exportDocMode === 'existing' && !useDocId) { showToast('Please select a document first', 'error'); return; }
+      const useDocTitle = exportDocMode === 'existing' ? (selectedDriveDocTitle || 'Cerebro Export') : (exportDocName || 'Cerebro Report');
+      const result = await exportChartToGoogleDoc(captured, label, useDocTitle, useDocId);
+      setCurrentExportDoc({ id: result.docId, title: result.docTitle, url: result.docUrl });
+      setShowExportDocModal(false);
+      showToast(`Exported to "${result.docTitle}"`, 'success');
+      window.open(result.docUrl, '_blank');
+    } catch (err) {
+      console.error('[ExportToDoc]', err);
+      showToast('Export failed — check console for details', 'error');
+    } finally {
+      setIsExportingChart(false);
+    }
+  };
+
   // Drill-through article selector helper (Feature 5)
   const getDrillThroughArticles = (brandName, sentiment, pubName) => {
     let list = [];
@@ -3345,32 +3629,38 @@ function App() {
 
   const fetchReports = async () => {
     if (!user || !user.id) return;
+    setReportsLoading(true);
+    setReportsError(null);
     try {
       const res = await fetch(`${API_BASE}/api/reports`, {
         headers: { 'X-User-Id': user.id }
       });
       if (res.ok) {
         const data = await res.json();
-        if (data && data.length > 0) {
-          setReports(data);
-          // Restore chart visual configs from saved report data
-          const savedConfigs = {};
-          data.forEach(rep => {
-            (rep.sections || []).forEach(sec => {
-              (sec.charts || []).forEach(chart => {
-                if (chart.config && Object.keys(chart.config).length > 0) {
-                  savedConfigs[chart.id] = chart.config;
-                }
-              });
+        setReports(Array.isArray(data) ? data : []);
+        // Restore chart visual configs from saved report data
+        const savedConfigs = {};
+        (Array.isArray(data) ? data : []).forEach(rep => {
+          (rep.sections || []).forEach(sec => {
+            (sec.charts || []).forEach(chart => {
+              if (chart.config && Object.keys(chart.config).length > 0) {
+                savedConfigs[chart.id] = chart.config;
+              }
             });
           });
-          if (Object.keys(savedConfigs).length > 0) {
-            setChartConfigs(prev => ({ ...prev, ...savedConfigs }));
-          }
+        });
+        if (Object.keys(savedConfigs).length > 0) {
+          setChartConfigs(prev => ({ ...prev, ...savedConfigs }));
         }
+      } else {
+        const errBody = await res.json().catch(() => ({}));
+        setReportsError(errBody.error || `Server error ${res.status}`);
       }
     } catch (err) {
       console.error('[Cerebro] Error fetching reports:', err);
+      setReportsError('Could not connect to server. Check your connection.');
+    } finally {
+      setReportsLoading(false);
     }
   };
 
@@ -3787,13 +4077,76 @@ ${bodyHtml}
       });
       if (res.ok) {
         setTrackedBrands(prev => prev.filter(b => b.id !== brandId));
-        if (selectedBrandForDetail?.id === brandId) {
-          setSelectedBrandForDetail(null);
-        }
+        if (selectedBrandForDetail?.id === brandId) setSelectedBrandForDetail(null);
+        setShowBrandHistoryModal(false);
+        setBrandHistoryTarget(null);
       }
     } catch (err) {
       console.error('Error deleting brand:', err);
     }
+  };
+
+  const handleToggleBrandActive = async (brandId, newActive) => {
+    if (!user || !user.id) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/brands/${brandId}/active`, {
+        method: 'PATCH',
+        headers: { 'X-User-Id': user.id, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: newActive })
+      });
+      if (res.ok) {
+        setTrackedBrands(prev => prev.map(b => b.id === brandId ? { ...b, is_active: newActive } : b));
+        showToast(newActive ? 'Tracking resumed' : 'Tracking stopped', newActive ? 'success' : 'info');
+        if (!newActive && selectedBrandForDetail?.id === brandId) setSelectedBrandForDetail(null);
+      }
+    } catch (err) {
+      console.error('Error toggling brand active:', err);
+    }
+  };
+
+  const openBrandHistory = async (brand) => {
+    setBrandHistoryTarget(brand);
+    setShowBrandHistoryModal(true);
+    setBrandHistoryData(null);
+    setBrandHistoryLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/brands/${brand.id}/history`, {
+        headers: { 'X-User-Id': user.id }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setBrandHistoryData(data);
+      }
+    } catch (err) {
+      console.error('Error fetching brand history:', err);
+    } finally {
+      setBrandHistoryLoading(false);
+    }
+  };
+
+  // Parses a plain-text chart description → chart config object.
+  // When an API key is available in the future, replace this body with a fetch to /api/ai/chart.
+  const generateChartFromPrompt = (prompt) => {
+    const p = prompt.toLowerCase();
+    let type = 'Bar Chart';
+    let field = 'Total Mentions';
+
+    if (p.includes('donut') || p.includes('doughnut') || p.includes('ring')) type = 'Donut Chart';
+    else if (p.includes('pie') || p.includes('share') || p.includes('distribution') || p.includes('percentage') || p.includes('portion')) type = 'Pie Chart';
+    else if (p.includes('radar') || p.includes('spider') || p.includes('benchmark') || p.includes('multidimension')) type = 'Radar Chart';
+    else if (p.includes('scatter') || p.includes('correlation') || p.includes('relationship') || p.includes('versus') || p.includes(' vs ')) type = 'Scatter Plot';
+    else if (p.includes('area') || p.includes('cumulative') || p.includes('fill')) type = 'Area Chart';
+    else if (p.includes('trend') || p.includes('over time') || p.includes('timeline') || p.includes('daily') || p.includes('weekly') || p.includes('monthly') || p.includes('history')) type = 'Trend Chart';
+    else if (p.includes('kpi') || p.includes('metric') || p.includes('summary') || p.includes('count') || p.includes('total') || p.includes('number')) type = 'KPI Card';
+
+    if (p.includes('sentiment') || p.includes('tone') || p.includes('positive') || p.includes('negative') || p.includes('emotion')) field = 'Sentiment';
+    else if (p.includes('article') || p.includes('coverage') || p.includes('news') || p.includes('stories') || p.includes('story')) field = 'Total Articles';
+    else if (p.includes('source') || p.includes('publication') || p.includes('media') || p.includes('outlet') || p.includes('publisher')) field = 'Publication';
+    else if (p.includes('diversity') || p.includes('reach') || p.includes('spread')) field = 'Media Diversity Count';
+    else if (p.includes('voice') || p.includes('sov')) field = 'Share of Voice';
+
+    const reasoning = `A ${type} best represents "${field}" for this analysis.`;
+    return { type, field, label: `${field} — ${type}`, reasoning };
   };
 
   const handleRefreshBrandsNow = async () => {
@@ -3993,14 +4346,58 @@ ${bodyHtml}
     }
   }, [activeTab, user, userAdminKey]);
 
+  const selectedReportRef = React.useRef(null);
+  const lastEditTimeRef = React.useRef(0);
+  const lastSnapshotTimeRef = React.useRef(0);
+
+  React.useEffect(() => { selectedReportRef.current = selectedReport; }, [selectedReport]);
+
+  React.useEffect(() => {
+    const interval = setInterval(() => {
+      if (lastEditTimeRef.current > lastSnapshotTimeRef.current && selectedReportRef.current?.sections) {
+        lastSnapshotTimeRef.current = Date.now();
+        let snapshot = [];
+        try { snapshot = JSON.parse(JSON.stringify(selectedReportRef.current.sections)); } catch (_) {}
+        setChangeHistory(prev => [{
+          id: Date.now(),
+          timestamp: new Date().toISOString(),
+          action: 'Auto-saved version',
+          section: 'Document',
+          snapshot,
+        }, ...prev].slice(0, 50));
+      }
+    }, 2 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   const recordHistory = (actionDescription, sectionTitle = 'General') => {
+    lastEditTimeRef.current = Date.now();
+    let snapshot = [];
+    try {
+      if (selectedReportRef.current?.sections) {
+        snapshot = JSON.parse(JSON.stringify(selectedReportRef.current.sections));
+      }
+    } catch (_) {
+      // snapshot silently fails — history entry still recorded without snapshot
+    }
     const newEntry = {
       id: Date.now() + Math.floor(Math.random() * 1000),
       timestamp: new Date().toISOString(),
       action: actionDescription,
-      section: sectionTitle
+      section: sectionTitle,
+      snapshot,
     };
-    setChangeHistory(prev => [newEntry, ...prev]);
+    setChangeHistory(prev => [newEntry, ...prev].slice(0, 50));
+  };
+
+  const handleRestoreVersion = async (entry) => {
+    if (!entry.snapshot || entry.snapshot.length === 0) return;
+    const restoredReport = { ...selectedReport, sections: entry.snapshot };
+    setSelectedReport(restoredReport);
+    setShowHistoryModal(false);
+    setPreviewHistoryEntry(null);
+    recordHistory(`Restored to: "${entry.action}"`, 'Document');
+    await handleSaveReport(restoredReport);
   };
 
   React.useEffect(() => {
@@ -4075,6 +4472,19 @@ ${bodyHtml}
   // ── Tags management modal ──────────────────────────────────────────────────
   const [showTagsModal, setShowTagsModal] = useState(false);
   const [tagInput, setTagInput] = useState('');
+  const [googleDocsToken, setGoogleDocsToken] = useState(null);
+  const [currentExportDoc, setCurrentExportDoc] = useState(null);
+  const [showExportDocModal, setShowExportDocModal] = useState(false);
+  const [exportTargetChart, setExportTargetChart] = useState(null);
+  const [exportDocMode, setExportDocMode] = useState('new');
+  const [exportDocName, setExportDocName] = useState('');
+  const [isExportingChart, setIsExportingChart] = useState(false);
+  const [driveDocsList, setDriveDocsList] = useState([]);
+  const [driveDocsLoading, setDriveDocsLoading] = useState(false);
+  const [driveDocsSearch, setDriveDocsSearch] = useState('');
+  const [selectedDriveDocId, setSelectedDriveDocId] = useState('');
+  const [selectedDriveDocTitle, setSelectedDriveDocTitle] = useState('');
+  const exportChartRefs = React.useRef({});
 
   React.useEffect(() => {
     const handleGlobalMouseMove = (e) => {
@@ -4191,6 +4601,8 @@ ${bodyHtml}
   const [reportFilter, setReportFilter] = useState('all');
   const [reportSearch, setReportSearch] = useState('');
   const [reports, setReports] = useState([]);
+  const [reportsLoading, setReportsLoading] = useState(false);
+  const [reportsError, setReportsError] = useState(null);
   const [newReportForm, setNewReportForm] = useState({
     title: '',
     type: 'Brand Analysis',
@@ -4212,6 +4624,14 @@ ${bodyHtml}
   const [aiPrompt, setAiPrompt] = useState('');
   const [isAiGenerating, setIsAiGenerating] = useState(false);
   const [generatedAiChart, setGeneratedAiChart] = useState(null);
+  // AI Chart Panel (report detail view)
+  const [showAiChartPanel, setShowAiChartPanel] = useState(false);
+  const [aiChartPanelPrompt, setAiChartPanelPrompt] = useState('');
+  const [isAiChartPanelGenerating, setIsAiChartPanelGenerating] = useState(false);
+  const [aiChartPanelResult, setAiChartPanelResult] = useState(null);
+  const [aiChartPanelSectionIdx, setAiChartPanelSectionIdx] = useState(0);
+  // AI Chart Blueprints (create report modal)
+  const [createReportAiPrompts, setCreateReportAiPrompts] = useState('');
 
   React.useEffect(() => {
     const timer = setInterval(() => {
@@ -4266,7 +4686,7 @@ ${bodyHtml}
       const res = await fetch(`${API_BASE}/api/curated-search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetKeywords: brands, excludedKeywords, topic: analysisSector })
+        body: JSON.stringify({ targetKeywords: brands, excludedKeywords, topic: analysisSector, startDate: analysisStartDate || null, endDate: analysisEndDate || null })
       });
       if (res.ok) {
         const data = await res.json();
@@ -4534,6 +4954,8 @@ ${bodyHtml}
           }
           setUser(data.user);
           localStorage.setItem('cerebro_user', JSON.stringify(data.user));
+          localStorage.setItem('cerebro_active_tab', 'dashboard');
+          setActiveTab('dashboard');
           const tabId = sessionStorage.getItem('cerebro_tab_id') || Math.random().toString(36).substring(2);
           localStorage.setItem('cerebro_active_tab_id', tabId);
           const claimChannel = new BroadcastChannel('cerebro_session_channel');
@@ -4566,7 +4988,7 @@ ${bodyHtml}
         const data = await response.json();
         setLoading(false);
         if (!response.ok) {
-          setError(data.error || 'Login failed');
+          setError((data.error || 'Login failed') + (data.detail ? ` — ${data.detail}` : ''));
           return;
         }
         setSuccessMessage('Login successful!');
@@ -4575,9 +4997,11 @@ ${bodyHtml}
         }
         setUser(data.user);
         localStorage.setItem('cerebro_user', JSON.stringify(data.user));
+        localStorage.setItem('cerebro_active_tab', 'dashboard');
+        setActiveTab('dashboard');
         const tabId = sessionStorage.getItem('cerebro_tab_id') || Math.random().toString(36).substring(2);
         localStorage.setItem('cerebro_active_tab_id', tabId);
-        
+
         // Notify other tabs that this tab claimed the session
         const claimChannel = new BroadcastChannel('cerebro_session_channel');
         claimChannel.postMessage({ type: 'session_claimed', tabId });
@@ -5367,7 +5791,7 @@ ${bodyHtml}
 
             <div className="flex items-center gap-4">
               <button
-                onClick={() => setDarkMode(!darkMode)}
+                onClick={() => { const next = !darkMode; setDarkMode(next); localStorage.setItem('cerebro_dark_mode', next); }}
                 className={`p-2 transition-all rounded-xl ${darkMode ? 'text-white/70 hover:text-white hover:bg-white/10' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'}`}
               >
                 {darkMode ? <Sun size={20} /> : <Moon size={20} />}
@@ -5428,52 +5852,7 @@ ${bodyHtml}
 
               <div className={`h-8 w-px mx-1 ${darkMode ? 'bg-white/10' : 'bg-slate-200'}`}></div>
 
-              <button
-                onClick={handleOpenCleoChat}
-                className={`flex items-center gap-3 pl-2.5 pr-2 py-1.5 rounded-full text-xs font-bold transition-all border shadow-sm hover:scale-[1.01] ${
-                  darkMode
-                    ? (showCleoAi
-                        ? 'bg-indigo-600/30 border-indigo-500/60 text-white'
-                        : 'cleo-btn-off')
-                    : (showCleoAi
-                        ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
-                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50')
-                }`}
-                title="Toggle Cleo AI"
-              >
-                <div className="flex items-center gap-1.5">
-                  <div className="relative w-5 h-5 rounded-full overflow-hidden border border-indigo-500/20 shadow-inner bg-slate-950/20 flex items-center justify-center shrink-0">
-                    <img
-                      src="/cleo_avatar.png"
-                      alt="Cleo Mascot"
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        e.target.style.display = 'none';
-                        e.target.nextSibling.style.display = 'inline';
-                      }}
-                    />
-                    <span style={{ display: 'none' }} className="text-sm">🐶</span>
-                  </div>
-                  <span className="font-heading">Cleo AI</span>
-                </div>
-                
-                {/* Embedded Toggle Slider */}
-                <div
-                  className={`w-8 h-5 rounded-full transition-colors duration-300 flex items-center p-0.5 shrink-0 ${
-                    showCleoAi
-                      ? 'bg-indigo-600'
-                      : (darkMode ? 'bg-white/20' : 'bg-slate-200')
-                  }`}
-                >
-                  <div
-                    className={`w-4 h-4 bg-white rounded-full shadow-sm transition-transform duration-300 shrink-0 ${
-                      showCleoAi ? 'translate-x-3' : 'translate-x-0'
-                    }`}
-                  />
-                </div>
-              </button>
 
-              <div className={`h-8 w-px mx-1 ${darkMode ? 'bg-white/10' : 'bg-slate-200'}`}></div>
 
               <div 
                 onClick={() => setActiveTab('settings')}
@@ -5497,10 +5876,17 @@ ${bodyHtml}
             <div className="flex-1 flex flex-col overflow-hidden">
               {/* Header with Create Report Button for Report Analysis */}
               {activeTab !== 'competitor-analysis' && activeTab !== 'dashboard' && activeTab !== 'report-analysis' && activeTab !== 'article-reach' && activeTab !== 'settings' && activeTab !== 'help' && activeTab !== 'brand-tracker' && (
-                <div className="px-8 pt-8 mb-10 flex items-center justify-between">
-                  <div className="flex items-center gap-6">
+                <div className={`px-8 pt-7 mb-5 flex items-center ${activeTab === 'keyword-search' ? 'justify-center' : 'justify-between'}`}>
+                  <div className={`flex items-center gap-6 ${activeTab === 'keyword-search' ? 'w-full justify-center' : ''}`}>
                     {activeTab === 'report-analysis' ? (
                       <div />
+                    ) : activeTab === 'keyword-search' ? (
+                      <div className="flex flex-col items-center gap-1">
+                        <h2 className={`text-4xl tracking-tight ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                          <span className="font-light">Keyword</span> <span className="font-black">Search</span>
+                        </h2>
+                        <p className={`text-sm font-medium ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Search and analyse brand mentions across all articles</p>
+                      </div>
                     ) : (
                       <div>
                         <h2 className={`text-3xl font-black tracking-tight capitalize ${darkMode ? 'text-white' : 'text-slate-900'}`}>
@@ -5536,7 +5922,7 @@ ${bodyHtml}
               )}
 
               {/* Main Page Content */}
-              <div className={`flex-1 min-h-0 p-8 custom-scrollbar overflow-y-auto ${activeTab === 'competitor-analysis' ? 'pt-6' : 'pt-0'}`}>
+              <div className={`flex-1 min-h-0 custom-scrollbar overflow-y-auto ${activeTab === 'report-analysis' ? 'pt-7 px-8' : activeTab === 'competitor-analysis' ? 'p-8 pt-6' : 'p-8 pt-0'}`}>
                 {activeTab === 'dashboard' ? (
                   <div className="flex flex-col space-y-10 animate-in fade-in duration-700 w-full h-full pb-8 relative px-6 md:px-12">
                     {showPets && (
@@ -5649,14 +6035,12 @@ ${bodyHtml}
                     {!isScanningReach ? (
                       <div className="space-y-8">
                         {/* Top layout with Header */}
-                        <div className="flex flex-col pt-10">
-                          <div className="text-center max-w-2xl mx-auto mb-12">
-                            <h1 className={`text-5xl tracking-tight mb-3 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                        <div className="flex flex-col pt-7">
+                          <div className="text-center max-w-2xl mx-auto mb-5">
+                            <h1 className={`text-4xl tracking-tight mb-1.5 ${darkMode ? 'text-white' : 'text-slate-900'}`}>
                               <span className="font-light">Article</span> <span className="font-black">Reach</span>
                             </h1>
-                            <p className="text-slate-500 font-bold text-xs uppercase tracking-widest leading-relaxed">
-                              Monitor your brand exposure, analyze sentiment patterns, and generate high-fidelity reports instantly.
-                            </p>
+                            <p className={`text-sm font-medium ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Measure article exposure and track reach across all publications</p>
                           </div>
                         </div>
 
@@ -6081,13 +6465,6 @@ ${bodyHtml}
                 ) : activeTab === 'keyword-search' ? (
                   <div className={`h-full flex flex-col items-center justify-start ${sidebarCollapsed ? 'max-w-[1850px]' : 'max-w-[1700px]'} mx-auto w-full transition-all duration-500`}>
                     
-                    {/* Welcome Header */}
-                    <div className="text-center py-10 space-y-4 max-w-2xl mx-auto animate-in fade-in duration-700">
-                      <h1 className={`text-5xl md:text-6xl font-light tracking-tight font-sans ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                        Welcome back <span className={`font-black ${darkMode ? 'text-white' : 'text-slate-950'}`}>{(user?.name?.trim() ? user.name.trim().split(' ')[0] : 'Manvi')}</span>
-                      </h1>
-                    </div>
-
                     {/* Inputs Card */}
                     <div className={`w-full ${darkMode ? 'bg-[#0f172a]/40 border-white/5' : 'bg-white border-slate-200'} backdrop-blur-xl border rounded-[2.5rem] p-10 shadow-2xl mb-10 mt-4 print:hidden`}>
                       <div className="w-full flex flex-col sm:flex-row justify-between items-center gap-4 mb-8">
@@ -6108,8 +6485,8 @@ ${bodyHtml}
                                 }
                               }}
                               className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest outline-none cursor-pointer shadow-md transition-all ${
-                                darkMode 
-                                  ? 'bg-[#151f32] border border-white/10 text-white hover:bg-[#1a2b47]' 
+                                darkMode
+                                  ? 'bg-[#151f32] border border-white/10 text-white hover:bg-[#1a2b47]'
                                   : 'bg-white border border-slate-200 text-slate-800 hover:bg-slate-50'
                               }`}
                             >
@@ -6117,8 +6494,8 @@ ${bodyHtml}
                                 { value: 'All',          label: 'All Sectors' },
                                 { value: 'AI',           label: 'AI' },
                                 { value: 'TECH',         label: 'Tech' },
-                                { value: 'FOODS_DRINKS', label: 'Foods & Drinks' },
                                 { value: 'HEALTHCARE',   label: 'Healthcare' },
+                                { value: 'FOODS_DRINKS', label: 'Foods & Drinks' },
                                 { value: 'TRAVEL',       label: 'Travel' },
                                 { value: 'CONSULTANCY',  label: 'Consultancies' },
                                 { value: 'STARTUP',      label: 'Startups' },
@@ -6126,11 +6503,45 @@ ${bodyHtml}
                                 { value: 'POLICIES',     label: 'Policies' },
                                 { value: 'STOCK_MARKET', label: 'Stock Market' },
                                 { value: 'REAL_ESTATE',  label: 'Real Estate' },
+                                { value: 'GOOGLE',       label: 'Google' },
+                                { value: 'EDUCATION',    label: 'Education' },
                               ].map(({ value, label }) => (
                                 <option key={value} value={value} className={darkMode ? 'bg-[#151f32] text-white' : 'bg-white text-slate-800'}>{label}</option>
                               ))}
                             </select>
                           </div>
+
+                          {/* Date range pickers */}
+                          <div className="flex items-center gap-2">
+                            <span className={`text-[10px] font-black uppercase tracking-widest ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>From:</span>
+                            <input
+                              type="date"
+                              value={analysisStartDate}
+                              onChange={(e) => setAnalysisStartDate(e.target.value)}
+                              className={`px-3 py-2 rounded-xl text-[10px] font-bold outline-none cursor-pointer shadow-md transition-all ${
+                                darkMode ? 'bg-[#151f32] border border-white/10 text-white [color-scheme:dark]' : 'bg-white border border-slate-200 text-slate-800'
+                              }`}
+                            />
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className={`text-[10px] font-black uppercase tracking-widest ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>To:</span>
+                            <input
+                              type="date"
+                              value={analysisEndDate}
+                              onChange={(e) => setAnalysisEndDate(e.target.value)}
+                              className={`px-3 py-2 rounded-xl text-[10px] font-bold outline-none cursor-pointer shadow-md transition-all ${
+                                darkMode ? 'bg-[#151f32] border border-white/10 text-white [color-scheme:dark]' : 'bg-white border border-slate-200 text-slate-800'
+                              }`}
+                            />
+                          </div>
+                          {(analysisStartDate || analysisEndDate) && (
+                            <button
+                              onClick={() => { setAnalysisStartDate(''); setAnalysisEndDate(''); }}
+                              className="text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-red-400 transition-colors px-2 py-1"
+                            >
+                              Clear
+                            </button>
+                          )}
                         </div>
                         <div className="flex items-center gap-3">
                           {curatedAnalysisResults && (
@@ -6212,14 +6623,30 @@ ${bodyHtml}
                         </div>
                       )}
 
-                      <div className="mt-8 flex flex-col items-center gap-3">
+                      <div className="mt-8 flex flex-col items-center gap-4">
                         <button
                           onClick={handleKeywordSearch}
                           disabled={isSearchingKeyword || !targetBrandsInput.trim()}
-                          className="px-16 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest text-[11px] rounded-full shadow-lg shadow-indigo-600/20 transition-all active:scale-95 duration-200 disabled:opacity-40 disabled:cursor-not-allowed font-heading"
+                          className="px-16 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest text-[11px] rounded-full shadow-lg shadow-indigo-600/20 transition-all active:scale-95 duration-200 disabled:opacity-40 disabled:cursor-not-allowed font-heading flex items-center gap-3"
                         >
+                          {isSearchingKeyword && (
+                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin shrink-0" />
+                          )}
                           {isSearchingKeyword ? 'Analyzing Corpus...' : 'Analyze Exposure'}
                         </button>
+
+                        {isSearchingKeyword && (
+                          <div className="flex flex-col items-center gap-2 animate-in fade-in duration-300">
+                            <div className="w-64 h-1 bg-indigo-100 rounded-full overflow-hidden relative">
+                              <div className="absolute h-full w-1/3 bg-indigo-500 rounded-full"
+                                style={{animation: 'indeterminate 1.5s ease-in-out infinite'}}
+                              />
+                            </div>
+                            <p className={`text-xs font-medium ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                              Scanning articles across the database...
+                            </p>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -6235,7 +6662,8 @@ ${bodyHtml}
                             {Object.entries(curatedAnalysisResults.brands || {}).map(([brand, data], idx) => {
                               const totalBrandArticles = Object.values(curatedAnalysisResults.brands || {}).reduce((sum, b) => sum + b.articles, 0);
                               const baseTotal = analysisScope === 'sector' ? curatedAnalysisResults.totalSectorArticles : totalBrandArticles;
-                              const pct = baseTotal > 0 ? ((data.articles / baseTotal) * 100).toFixed(1) : '0.0';
+                              const pctRaw = baseTotal > 0 ? (data.articles / baseTotal) * 100 : 0;
+                              const pct = pctRaw === 0 ? '0' : pctRaw < 0.01 ? pctRaw.toFixed(3) : pctRaw < 0.1 ? pctRaw.toFixed(2) : pctRaw < 1 ? pctRaw.toFixed(2) : pctRaw.toFixed(1);
                               const avg = data.articles > 0 ? (data.mentions / data.articles).toFixed(2) : '0.00';
                               const color = BRAND_COLORS[idx % BRAND_COLORS.length];
                               const isSelected = curatedDrillBrand === brand;
@@ -6282,6 +6710,9 @@ ${bodyHtml}
                                     </div>
                                     <span className="text-[9px] font-black uppercase tracking-widest text-slate-400/80 mt-1 select-none">
                                       Mention Share
+                                    </span>
+                                    <span className="text-[9px] font-bold text-slate-400 mt-0.5 select-none">
+                                      {data.articles.toLocaleString()} article{data.articles !== 1 ? 's' : ''}
                                     </span>
                                   </div>
 
@@ -6772,69 +7203,292 @@ ${bodyHtml}
                           </div>
                         </div>
 
+                        {/* Day-wise Coverage Trend */}
+                        {(() => {
+                          const brands = curatedAnalysisResults.brands || {};
+                          const brandNames = Object.keys(brands).filter(b => b !== 'Others');
+                          const aggByDate = {};
+                          brandNames.forEach(b => {
+                            Object.entries(brands[b].timeline || {}).forEach(([dt, cnt]) => {
+                              aggByDate[dt] = (aggByDate[dt] || 0) + cnt;
+                            });
+                          });
+                          const rawDates = Object.keys(aggByDate).sort();
+                          if (rawDates.length < 1) return null;
+                          // Fill every calendar day from first→last (or selected range) with 0 if missing
+                          const rangeStart = analysisStartDate || rawDates[0];
+                          const rangeEnd = analysisEndDate || rawDates[rawDates.length - 1];
+                          const dates = [];
+                          const cur = new Date(rangeStart + 'T00:00:00');
+                          const end = new Date(rangeEnd + 'T00:00:00');
+                          while (cur <= end) {
+                            dates.push(cur.toISOString().split('T')[0]);
+                            cur.setDate(cur.getDate() + 1);
+                          }
+                          if (dates.length < 2) return null;
+                          const vals = dates.map(d => aggByDate[d] || 0);
+                          const maxV = Math.max(...vals, 1);
+                          const W = 900, H = 160, pl = 48, pr = 20, pt = 16, pb = 36;
+                          const cW = W - pl - pr, cH = H - pt - pb;
+                          const n = dates.length;
+                          const xs = dates.map((_, i) => pl + (n > 1 ? i * cW / (n - 1) : cW / 2));
+                          const ys = vals.map(v => pt + cH - (v / maxV) * cH);
+                          const linePath = xs.map((x, i) => (i === 0 ? `M${x},${ys[i]}` : `L${x},${ys[i]}`)).join(' ');
+                          const areaPath = linePath + ` L${xs[n-1]},${pt+cH} L${xs[0]},${pt+cH} Z`;
+                          const gradId = 'trendGrad_kw';
+                          // Y-axis labels
+                          const yTicks = [0, 0.25, 0.5, 0.75, 1].map(f => ({ y: pt + cH - f * cH, val: Math.round(f * maxV) }));
+                          // X-axis: show ~8 evenly spaced labels
+                          const xStep = Math.max(1, Math.floor(n / 8));
+                          const xLabels = dates.filter((_, i) => i % xStep === 0 || i === n - 1);
+                          const totalArticles = vals.reduce((s, v) => s + v, 0);
+                          const peakDate = dates[vals.indexOf(maxV)];
+                          return (
+                            <div className={`${darkMode ? 'bg-[#151f32] border-white/5' : 'bg-white border-slate-200/60'} border rounded-[2.5rem] p-8 shadow-md`}>
+                              <div className="flex items-start justify-between mb-6 flex-wrap gap-4">
+                                <div>
+                                  <h3 className={`text-lg font-black uppercase tracking-wider flex items-center gap-3 font-heading ${darkMode ? 'text-[#00F2FE]' : 'text-indigo-600'}`}>
+                                    Day-wise Coverage Trend
+                                  </h3>
+                                  <p className={`text-[10px] font-semibold mt-1 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>Total articles per day across all tracked brands</p>
+                                </div>
+                                <div className="flex gap-6">
+                                  <div className="text-right">
+                                    <div className={`text-xl font-black ${darkMode ? 'text-white' : 'text-slate-800'}`}>{totalArticles.toLocaleString()}</div>
+                                    <div className="text-[9px] font-black uppercase tracking-widest text-slate-400">Total Articles</div>
+                                  </div>
+                                  <div className="text-right">
+                                    <div className={`text-xl font-black ${darkMode ? 'text-white' : 'text-slate-800'}`}>{maxV.toLocaleString()}</div>
+                                    <div className="text-[9px] font-black uppercase tracking-widest text-slate-400">Peak Day</div>
+                                    <div className="text-[9px] text-slate-400">{peakDate}</div>
+                                  </div>
+                                  <div className="text-right">
+                                    <div className={`text-xl font-black ${darkMode ? 'text-white' : 'text-slate-800'}`}>{dates.length}</div>
+                                    <div className="text-[9px] font-black uppercase tracking-widest text-slate-400">Day Range</div>
+                                    <div className="text-[9px] text-slate-400">{rangeStart} → {rangeEnd}</div>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="w-full overflow-x-auto">
+                                <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ minWidth: 480 }}>
+                                  <defs>
+                                    <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                                      <stop offset="0%" stopColor="#6366f1" stopOpacity="0.25" />
+                                      <stop offset="100%" stopColor="#6366f1" stopOpacity="0.02" />
+                                    </linearGradient>
+                                  </defs>
+                                  {/* Y grid lines + labels */}
+                                  {yTicks.map((t, i) => (
+                                    <g key={i}>
+                                      <line x1={pl} y1={t.y} x2={W - pr} y2={t.y} stroke={darkMode ? '#ffffff10' : '#e2e8f0'} strokeWidth="1" />
+                                      <text x={pl - 6} y={t.y + 4} textAnchor="end" fontSize="9" fill={darkMode ? '#64748b' : '#94a3b8'} fontWeight="700">{t.val}</text>
+                                    </g>
+                                  ))}
+                                  {/* Area fill */}
+                                  <path d={areaPath} fill={`url(#${gradId})`} />
+                                  {/* Line */}
+                                  <path d={linePath} fill="none" stroke="#6366f1" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+                                  {/* Dots on significant points */}
+                                  {xs.map((x, i) => (vals[i] === maxV || i === 0 || i === n - 1) && (
+                                    <circle key={i} cx={x} cy={ys[i]} r="4" fill="#6366f1" stroke={darkMode ? '#151f32' : 'white'} strokeWidth="2" />
+                                  ))}
+                                  {/* X-axis labels */}
+                                  {xLabels.map(dt => {
+                                    const idx = dates.indexOf(dt);
+                                    return (
+                                      <text key={dt} x={xs[idx]} y={H - 6} textAnchor="middle" fontSize="8.5" fill={darkMode ? '#64748b' : '#94a3b8'} fontWeight="700">
+                                        {dt.slice(5)}
+                                      </text>
+                                    );
+                                  })}
+                                </svg>
+                              </div>
+                              {/* Per-brand legend */}
+                              <div className="flex flex-wrap gap-4 mt-4">
+                                {brandNames.map((b, i) => {
+                                  const bTotal = Object.values(brands[b].timeline || {}).reduce((s, v) => s + v, 0);
+                                  return (
+                                    <div key={b} className="flex items-center gap-1.5">
+                                      <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: ['#6366f1','#f59e0b','#10b981','#ef4444','#3b82f6','#8b5cf6','#ec4899','#14b8a6'][i % 8] }} />
+                                      <span className={`text-[10px] font-bold ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{b}</span>
+                                      <span className="text-[10px] text-slate-400 font-semibold">({bTotal.toLocaleString()})</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })()}
+
                         {/* 6. Tracked Brand Articles */}
                         <div className={`${darkMode ? 'bg-[#151f32] border-white/5' : 'bg-white border-slate-200/60'} border rounded-[2.5rem] p-8 shadow-md`}>
-                          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
-                            <div>
-                              <h3 className={`text-lg font-black uppercase tracking-wider flex items-center gap-3 font-heading ${darkMode ? 'text-[#00F2FE]' : 'text-indigo-600'}`}>
-                                6. Brand Articles
-                              </h3>
-                              <p className={`text-[10px] font-semibold mt-1 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>Articles from tracked brands only</p>
+                          <div className="flex flex-col gap-4 mb-6">
+                            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                              <div>
+                                <h3 className={`text-lg font-black uppercase tracking-wider flex items-center gap-3 font-heading ${darkMode ? 'text-[#00F2FE]' : 'text-indigo-600'}`}>
+                                  6. Brand Articles
+                                </h3>
+                                <p className={`text-[10px] font-semibold mt-1 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>Articles from tracked brands only</p>
+                              </div>
+                              <div className="flex items-center gap-3 flex-wrap">
+                                <select value={curatedDrillBrand} onChange={(e) => { setCuratedDrillBrand(e.target.value); setBrandArticlePage(1); }}
+                                  className={`px-4 py-2.5 rounded-xl text-xs font-bold outline-none border cursor-pointer ${darkMode ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-800'}`}>
+                                  {Object.keys(curatedAnalysisResults.brands || {}).filter(b => b.toLowerCase() !== 'others').map(b => <option key={b} value={b}>{b}</option>)}
+                                </select>
+                                <select value={curatedDrillSentiment} onChange={(e) => { setCuratedDrillSentiment(e.target.value); setBrandArticlePage(1); }}
+                                  className={`px-4 py-2.5 rounded-xl text-xs font-bold outline-none border cursor-pointer ${darkMode ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-800'}`}>
+                                  <option value="All">All</option>
+                                  <option value="Positive">Positive</option>
+                                  <option value="Neutral">Neutral</option>
+                                  <option value="Negative">Negative</option>
+                                </select>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-3 flex-wrap">
-                              <select value={curatedDrillBrand} onChange={(e) => setCuratedDrillBrand(e.target.value)}
-                                className={`px-4 py-2.5 rounded-xl text-xs font-bold outline-none border cursor-pointer ${darkMode ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-800'}`}>
-                                {Object.keys(curatedAnalysisResults.brands || {}).filter(b => b.toLowerCase() !== 'others').map(b => <option key={b} value={b}>{b}</option>)}
-                              </select>
-                              <select value={curatedDrillSentiment} onChange={(e) => setCuratedDrillSentiment(e.target.value)}
-                                className={`px-4 py-2.5 rounded-xl text-xs font-bold outline-none border cursor-pointer ${darkMode ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-800'}`}>
-                                <option value="All">All</option>
-                                <option value="Positive">Positive</option>
-                                <option value="Neutral">Neutral</option>
-                                <option value="Negative">Negative</option>
-                              </select>
+                            {/* Date filter + Export row */}
+                            <div className="flex flex-wrap items-center gap-3">
+                              <div className="flex items-center gap-2">
+                                <Calendar size={13} className={darkMode ? 'text-slate-400' : 'text-slate-500'} />
+                                <span className={`text-[10px] font-black uppercase tracking-widest ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>From</span>
+                                <input type="date" value={brandArticleDateFrom}
+                                  onChange={(e) => { setBrandArticleDateFrom(e.target.value); setBrandArticlePage(1); }}
+                                  className={`px-3 py-2 rounded-xl text-xs font-bold outline-none border cursor-pointer ${darkMode ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-800'}`} />
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className={`text-[10px] font-black uppercase tracking-widest ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>To</span>
+                                <input type="date" value={brandArticleDateTo}
+                                  onChange={(e) => { setBrandArticleDateTo(e.target.value); setBrandArticlePage(1); }}
+                                  className={`px-3 py-2 rounded-xl text-xs font-bold outline-none border cursor-pointer ${darkMode ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-800'}`} />
+                              </div>
+                              {(brandArticleDateFrom || brandArticleDateTo) && (
+                                <button onClick={() => { setBrandArticleDateFrom(''); setBrandArticleDateTo(''); setBrandArticlePage(1); }}
+                                  className={`px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-colors ${darkMode ? 'bg-[#0f172a] border-white/10 text-slate-400 hover:text-white' : 'bg-slate-50 border-slate-200 text-slate-500 hover:text-slate-800'}`}>
+                                  Clear
+                                </button>
+                              )}
+                              <div className="flex-1" />
+                              {/* Export to Excel */}
+                              {(() => {
+                                const exportSamples = curatedAnalysisResults.brands?.[curatedDrillBrand]?.article_samples || {};
+                                const exportAll = [...(exportSamples.Positive || []), ...(exportSamples.Neutral || []), ...(exportSamples.Negative || [])]
+                                  .sort((a, b) => new Date(b.published) - new Date(a.published));
+                                const exportFiltered = curatedDrillSentiment === 'All' ? exportAll : (exportSamples[curatedDrillSentiment] || []).slice().sort((a, b) => new Date(b.published) - new Date(a.published));
+                                return (
+                                  <button onClick={() => {
+                                    const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+                                    const rows = exportFiltered.map((art, i) => `<tr>
+                                      <td>${i + 1}</td>
+                                      <td>${esc(art.title)}</td>
+                                      <td>${art.url && art.url !== 'N/A' ? `<a href="${esc(art.url)}">Open</a>` : 'N/A'}</td>
+                                      <td>${esc(art.source)}</td>
+                                      <td>${esc(art.published)}</td>
+                                    </tr>`).join('');
+                                    const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"><style>a{color:#1155CC;text-decoration:underline;}th{background:#f3f4f6;font-weight:bold;}td,th{border:1px solid #e5e7eb;padding:6px 10px;}</style></head><body><table><thead><tr><th>S. No.</th><th>Title</th><th>Link</th><th>Publication</th><th>Publish Date</th></tr></thead><tbody>${rows}</tbody></table></body></html>`;
+                                    const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8' });
+                                    const url = URL.createObjectURL(blob);
+                                    const a = document.createElement('a');
+                                    a.href = url; a.download = `${curatedDrillBrand}_${curatedDrillSentiment}_articles.xls`; a.click();
+                                    URL.revokeObjectURL(url);
+                                  }}
+                                  className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-colors ${darkMode ? 'bg-[#0f172a] border-white/10 text-emerald-400 hover:bg-emerald-900/20' : 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'}`}>
+                                    <FileSpreadsheet size={13} /> Export Excel
+                                  </button>
+                                );
+                              })()}
                             </div>
                           </div>
                           <div className="overflow-x-auto">
                             {(() => {
+                              const ITEMS_PER_PAGE = 15;
                               const samples = curatedAnalysisResults.brands?.[curatedDrillBrand]?.article_samples || {};
-                              const articles = curatedDrillSentiment === 'All'
+                              const raw = curatedDrillSentiment === 'All'
                                 ? [...(samples.Positive || []), ...(samples.Neutral || []), ...(samples.Negative || [])]
                                 : samples[curatedDrillSentiment] || [];
-                              if (articles.length === 0) return (
+                              // Sort descending by publish date
+                              const sorted = raw.slice().sort((a, b) => new Date(b.published) - new Date(a.published));
+                              // Date filter
+                              const filtered = sorted.filter(art => {
+                                if (!brandArticleDateFrom && !brandArticleDateTo) return true;
+                                const d = art.published;
+                                if (brandArticleDateFrom && d < brandArticleDateFrom) return false;
+                                if (brandArticleDateTo && d > brandArticleDateTo) return false;
+                                return true;
+                              });
+                              const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
+                              const page = Math.min(brandArticlePage, totalPages);
+                              const paginated = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
+                              if (filtered.length === 0) return (
                                 <div className="text-center py-10 text-slate-400 font-bold text-xs">
-                                  No {curatedDrillSentiment.toLowerCase()} articles found for <span className="text-indigo-400">{curatedDrillBrand}</span>.
+                                  No {curatedDrillSentiment.toLowerCase()} articles found{(brandArticleDateFrom || brandArticleDateTo) ? ' for the selected date range' : ''} for <span className="text-indigo-400">{curatedDrillBrand}</span>.
                                 </div>
                               );
                               return (
-                                <table className="w-full text-left border-collapse">
-                                  <thead>
-                                    <tr className={`border-b text-[9px] font-black uppercase tracking-widest ${darkMode ? 'border-white/5 text-slate-500' : 'border-slate-100 text-slate-400'}`}>
-                                      <th className="py-3 px-4">Headline</th>
-                                      <th className="py-3 px-4">Publication</th>
-                                      <th className="py-3 px-4">Date</th>
-                                      <th className="py-3 px-4 text-right">Link</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody className={`divide-y text-xs font-semibold ${darkMode ? 'divide-white/5' : 'divide-slate-100'}`}>
-                                    {articles.map((art, idx) => (
-                                      <tr key={idx} className={`${darkMode ? 'hover:bg-white/5 text-slate-200' : 'hover:bg-slate-50 text-slate-700'} transition-colors`}>
-                                        <td className="py-3 px-4 font-bold max-w-xs truncate">{art.title}</td>
-                                        <td className="py-3 px-4 text-slate-400 whitespace-nowrap">{art.source}</td>
-                                        <td className="py-3 px-4 text-slate-400 whitespace-nowrap">{art.published}</td>
-                                        <td className="py-3 px-4 text-right">
-                                          {art.url && art.url !== 'N/A'
-                                            ? <a href={art.url} target="_blank" rel="noreferrer"
-                                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 font-black text-[9px] uppercase tracking-wider transition-colors">
-                                                <Chrome size={11} /> Read
-                                              </a>
-                                            : <span className="text-slate-400 text-[9px] font-black uppercase">No Link</span>
-                                          }
-                                        </td>
+                                <>
+                                  <table className="w-full text-left border-collapse">
+                                    <thead>
+                                      <tr className={`border-b text-[9px] font-black uppercase tracking-widest ${darkMode ? 'border-white/5 text-slate-500' : 'border-slate-100 text-slate-400'}`}>
+                                        <th className="py-3 px-4 w-10">#</th>
+                                        <th className="py-3 px-4">Headline</th>
+                                        <th className="py-3 px-4">Publication</th>
+                                        <th className="py-3 px-4">Date</th>
+                                        <th className="py-3 px-4 text-right">Link</th>
                                       </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
+                                    </thead>
+                                    <tbody className={`divide-y text-xs font-semibold ${darkMode ? 'divide-white/5' : 'divide-slate-100'}`}>
+                                      {paginated.map((art, idx) => (
+                                        <tr key={idx} className={`${darkMode ? 'hover:bg-white/5 text-slate-200' : 'hover:bg-slate-50 text-slate-700'} transition-colors`}>
+                                          <td className={`py-3 px-4 text-[10px] font-black ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{(page - 1) * ITEMS_PER_PAGE + idx + 1}</td>
+                                          <td className="py-3 px-4 font-bold max-w-xs truncate">{art.title}</td>
+                                          <td className="py-3 px-4 text-slate-400 whitespace-nowrap">{art.source}</td>
+                                          <td className="py-3 px-4 text-slate-400 whitespace-nowrap">{art.published}</td>
+                                          <td className="py-3 px-4 text-right">
+                                            {art.url && art.url !== 'N/A'
+                                              ? <a href={art.url} target="_blank" rel="noreferrer"
+                                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 font-black text-[9px] uppercase tracking-wider transition-colors">
+                                                  <Chrome size={11} /> Read
+                                                </a>
+                                              : <span className="text-slate-400 text-[9px] font-black uppercase">No Link</span>
+                                            }
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                  {/* Pagination controls */}
+                                  <div className="flex flex-wrap items-center justify-between gap-3 mt-5 pt-4 border-t border-slate-100 dark:border-white/5">
+                                    <span className={`text-[10px] font-black uppercase tracking-widest ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                                      {filtered.length} articles · Page {page} of {totalPages}
+                                    </span>
+                                    <div className="flex items-center gap-2">
+                                      <button onClick={() => setBrandArticlePage(p => Math.max(1, p - 1))} disabled={page === 1}
+                                        className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-colors ${page === 1 ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'} ${darkMode ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'}`}>
+                                        <ChevronLeft size={12} /> Prev
+                                      </button>
+                                      <div className="flex items-center gap-1.5">
+                                        <span className={`text-[10px] font-black uppercase tracking-widest ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>Go</span>
+                                        <input
+                                          type="number" min="1" max={totalPages}
+                                          defaultValue={page}
+                                          key={page}
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                              const v = parseInt(e.target.value);
+                                              if (!isNaN(v)) setBrandArticlePage(Math.min(totalPages, Math.max(1, v)));
+                                            }
+                                          }}
+                                          onBlur={(e) => {
+                                            const v = parseInt(e.target.value);
+                                            if (!isNaN(v)) setBrandArticlePage(Math.min(totalPages, Math.max(1, v)));
+                                          }}
+                                          className={`w-14 px-2 py-2 rounded-xl text-[10px] font-black text-center outline-none border ${darkMode ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-800'}`}
+                                        />
+                                      </div>
+                                      <button onClick={() => setBrandArticlePage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+                                        className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-colors ${page === totalPages ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'} ${darkMode ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'}`}>
+                                        Next <ChevronRight size={12} />
+                                      </button>
+                                    </div>
+                                  </div>
+                                </>
                               );
                             })()}
                           </div>
@@ -7882,39 +8536,37 @@ ${bodyHtml}
                           </div>
                         </div>
 
-                        {trackedBrands.length > 0 ? (
-                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {trackedBrands.map((brand) => {
+                        {trackedBrands.filter(b => b.is_active !== false).length > 0 || trackedBrands.filter(b => b.is_active === false).length > 0 ? (
+                          (() => {
+                            const activeBrands = trackedBrands.filter(b => b.is_active !== false);
+                            const pausedBrands = trackedBrands.filter(b => b.is_active === false);
+                            const renderCard = (brand) => {
                               const newCount = brand.new_mentions || 0;
-
                               return (
                                 <div
                                   key={brand.id}
-                                  onClick={() => handleSelectBrand(brand)}
+                                  onClick={() => brand.is_active !== false && handleSelectBrand(brand)}
                                   className={`p-8 rounded-[2.5rem] border transition-all text-left flex flex-col justify-between hover:scale-[1.02] duration-300 shadow-md relative overflow-hidden group cursor-pointer animate-in fade-in duration-500 ${
-                                    darkMode
-                                      ? 'bg-[#151f32] border-white/5 hover:border-indigo-550/50'
-                                      : 'bg-white border-slate-200/60 hover:border-indigo-600/50'
+                                    brand.is_active === false
+                                      ? (darkMode ? 'bg-[#0d1525] border-white/5 opacity-60' : 'bg-slate-50 border-slate-200/60 opacity-60')
+                                      : (darkMode ? 'bg-[#151f32] border-white/5 hover:border-indigo-550/50' : 'bg-white border-slate-200/60 hover:border-indigo-600/50')
                                   }`}
                                 >
                                   {/* Top Row */}
-                                  <div className="flex items-center justify-between w-full relative z-10">
-                                    <div className="flex items-center gap-3">
-                                      <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shadow-md ${
-                                        darkMode ? 'bg-white/5 text-white' : 'bg-slate-50 text-slate-900'
-                                      }`}>
-                                        <Activity size={20} />
-                                      </div>
-                                      <div>
-                                        <h3 className={`text-lg font-black tracking-tight leading-none font-heading ${darkMode ? 'text-white' : 'text-slate-900'}`}>
-                                          {brand.name}
-                                        </h3>
-                                      </div>
+                                  <div className="flex items-center gap-3 relative z-10">
+                                    <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shadow-md shrink-0 ${
+                                      darkMode ? 'bg-white/5 text-white' : 'bg-slate-50 text-slate-900'
+                                    }`}>
+                                      <Activity size={20} />
                                     </div>
-                                    
-                                    <span className={`text-[9px] font-black uppercase tracking-widest ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                                      {brand.region}
-                                    </span>
+                                    <div className="flex flex-col gap-0.5">
+                                      <h3 className={`text-lg font-black tracking-tight leading-none font-heading ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                                        {brand.name}
+                                      </h3>
+                                      <span className={`text-[9px] font-black uppercase tracking-widest ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                                        {brand.region}
+                                      </span>
+                                    </div>
                                   </div>
 
                                   {/* Middle Row (Mentions count) */}
@@ -7948,21 +8600,76 @@ ${bodyHtml}
                                     </div>
                                   </div>
 
-                                  {/* Delete Brand on hover */}
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleDeleteBrand(brand.id);
-                                    }}
-                                    className="absolute top-6 right-6 opacity-0 group-hover:opacity-100 transition-all duration-200 z-20 w-8 h-8 flex items-center justify-center rounded-xl bg-red-50 text-red-500 hover:bg-red-600 hover:text-white shadow-sm"
-                                  >
-                                    <Trash2 size={14} />
-                                  </button>
+                                  {/* Card action buttons — visible on hover */}
+                                  <div className="absolute top-5 right-5 opacity-0 group-hover:opacity-100 transition-all duration-200 z-20 flex items-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      title="View History"
+                                      onClick={(e) => { e.stopPropagation(); openBrandHistory(brand); }}
+                                      className={`w-9 h-9 flex items-center justify-center rounded-2xl shadow-sm transition-all ${
+                                        darkMode ? 'bg-white/10 text-slate-300 hover:bg-indigo-500 hover:text-white' : 'bg-slate-100 text-slate-500 hover:bg-indigo-600 hover:text-white'
+                                      }`}
+                                    >
+                                      <History size={14} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      title={brand.is_active === false ? 'Resume Tracking' : 'Stop Tracking'}
+                                      onClick={(e) => { e.stopPropagation(); handleToggleBrandActive(brand.id, brand.is_active === false); }}
+                                      className={`w-9 h-9 flex items-center justify-center rounded-2xl shadow-sm transition-all ${
+                                        brand.is_active === false
+                                          ? (darkMode ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500 hover:text-white' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white')
+                                          : (darkMode ? 'bg-white/10 text-slate-300 hover:bg-amber-500 hover:text-white' : 'bg-slate-100 text-slate-500 hover:bg-amber-500 hover:text-white')
+                                      }`}
+                                    >
+                                      {brand.is_active === false ? <Play size={14} /> : <Pause size={14} />}
+                                    </button>
+                                  </div>
                                 </div>
                               );
-                            })}
-                          </div>
+                            };
+                            return (
+                              <div className="flex flex-col gap-8">
+                                {activeBrands.length > 0 ? (
+                                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    {activeBrands.map(renderCard)}
+                                  </div>
+                                ) : (
+                                  <div className={`border-2 border-dashed rounded-[3rem] p-20 text-center ${
+                                    darkMode ? 'bg-[#151f32]/20 border-white/10' : 'bg-white border-slate-200'
+                                  }`}>
+                                    <div className="w-20 h-20 bg-slate-50 dark:bg-white/5 rounded-full flex items-center justify-center mx-auto mb-6">
+                                      <Plus size={32} className="text-slate-300 dark:text-slate-600" />
+                                    </div>
+                                    <h3 className={`text-xl font-black uppercase tracking-tight mb-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>No Brands Tracked</h3>
+                                    <p className="text-slate-500 font-bold text-sm max-w-sm mx-auto mb-6">
+                                      Click the 'Add Brand' button above to start monitoring your first asset.
+                                    </p>
+                                    <button
+                                      onClick={() => setShowAddBrandModal(true)}
+                                      className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-indigo-600/20 inline-flex items-center gap-2"
+                                    >
+                                      <Plus size={14} /> Add Brand
+                                    </button>
+                                  </div>
+                                )}
+
+                                {pausedBrands.length > 0 && (
+                                  <div>
+                                    <div className="flex items-center gap-2 mb-4">
+                                      <Pause size={11} className="text-slate-400" />
+                                      <span className={`text-[10px] font-black uppercase tracking-widest ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                                        Paused Tracking — {pausedBrands.length}
+                                      </span>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                      {pausedBrands.map(renderCard)}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()
                         ) : (
                           <div className={`border-2 border-dashed rounded-[3rem] p-20 text-center ${
                             darkMode ? 'bg-[#151f32]/20 border-white/10' : 'bg-white border-slate-200'
@@ -7987,7 +8694,13 @@ ${bodyHtml}
                   </div>
                 ) : activeTab === 'report-analysis' ? (
                   <div className={`w-full ${sidebarCollapsed ? 'max-w-[1850px]' : 'max-w-[1700px]'} mx-auto h-full flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-700 pb-12 transition-all duration-500`}>
-                    {selectedReport ? (
+                    {selectedReport ? (<>
+                      {/* ══════════════════════════════════════════════════════════
+                          CEREBRO STUDIO — DISABLED
+                          Full rich-text editor preserved below.
+                          To restore: remove the {false && ( ... )} wrapper.
+                          ══════════════════════════════════════════════════════════ */}
+                      {false && (
                       <div className="fixed inset-0 z-[100] bg-slate-100 flex overflow-hidden animate-in fade-in duration-500 font-sans print:relative print:inset-auto print:z-0 print:bg-white print:block print:overflow-visible print:h-auto">
                         {/* Left Sidebar Wrapper with Floating Border Button */}
                         {!isPresentView && (
@@ -8163,81 +8876,6 @@ ${bodyHtml}
                                   </div>
                                 ))}
 
-                                {/* Report Bookmarks (Feature 7) */}
-                                <div className="border-t border-slate-800/60 my-4"></div>
-                                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 px-3 py-2 flex items-center justify-between">
-                                  <span>Report Bookmarks</span>
-                                  <span className="text-[9px] bg-slate-800 px-2 py-0.5 rounded text-slate-400">{(selectedReport.bookmarks || []).length}</span>
-                                </div>
-                                <div className="px-3 pb-3 flex flex-col gap-2">
-                                  <div className="flex items-center gap-2">
-                                    <input
-                                      type="text"
-                                      placeholder="Bookmark name..."
-                                      value={newBookmarkName}
-                                      onChange={(e) => setNewBookmarkName(e.target.value)}
-                                      className="w-full bg-slate-800/90 text-[11px] text-white placeholder-slate-500 px-2.5 py-1.5 rounded-xl border border-slate-700/80 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all shadow-inner"
-                                    />
-                                    <button
-                                      onClick={() => {
-                                        const bName = newBookmarkName.trim();
-                                        if (!bName) return;
-                                        const newB = {
-                                          id: `bookmark-${Date.now()}`,
-                                          name: bName,
-                                          filters: JSON.parse(JSON.stringify(reportFilters)),
-                                          chartConfigs: JSON.parse(JSON.stringify(chartConfigs)),
-                                          conditionalRules: JSON.parse(JSON.stringify(conditionalRules))
-                                        };
-                                        const updated = {
-                                          ...selectedReport,
-                                          bookmarks: [...(selectedReport.bookmarks || []), newB]
-                                        };
-                                        setSelectedReport(updated);
-                                        setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
-                                        setNewBookmarkName('');
-                                      }}
-                                      className="p-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl shadow-lg active:scale-95 transition-all shrink-0"
-                                      title="Save Bookmark"
-                                    >
-                                      <Bookmark size={14} />
-                                    </button>
-                                  </div>
-                                  
-                                  <div className="max-h-40 overflow-y-auto space-y-1.5 custom-scrollbar">
-                                    {(selectedReport.bookmarks || []).map((b) => (
-                                      <div
-                                        key={b.id}
-                                        onClick={() => {
-                                          if (b.filters) setReportFilters(b.filters);
-                                          if (b.chartConfigs) setChartConfigs(b.chartConfigs);
-                                          if (b.conditionalRules) setConditionalRules(b.conditionalRules);
-                                        }}
-                                        className="group flex items-center justify-between px-3 py-2 rounded-xl bg-slate-850 hover:bg-slate-800 text-[11px] text-slate-300 hover:text-white cursor-pointer transition-all border border-transparent hover:border-slate-700"
-                                      >
-                                        <span className="truncate flex items-center gap-2">
-                                          <Bookmark size={11} className="text-slate-500 group-hover:text-emerald-400" />
-                                          <span className="truncate">{b.name}</span>
-                                        </span>
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            const updated = {
-                                              ...selectedReport,
-                                              bookmarks: (selectedReport.bookmarks || []).filter(item => item.id !== b.id)
-                                            };
-                                            setSelectedReport(updated);
-                                            setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
-                                          }}
-                                          className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-red-500 transition-opacity"
-                                          title="Delete Bookmark"
-                                        >
-                                          <Trash2 size={11} />
-                                        </button>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
                               </div>
 
                               <div className="p-6 border-t border-slate-800 bg-slate-950/60 flex flex-col gap-3.5 text-xs text-slate-400 font-mono shrink-0">
@@ -8769,10 +9407,8 @@ ${bodyHtml}
                                           ><Tag size={15} /> Tags {selectedReport?.tags?.length > 0 && <span className="ml-0.5 px-1.5 py-0.5 bg-indigo-600 text-white rounded-full text-[9px]">{selectedReport.tags.length}</span>}</button>
                                           <button
                                             onClick={() => {
-                                              if (activeEditor) {
-                                                pendingMentionEditorRef.current = activeEditor;
-                                                setShowMentionModal(true);
-                                              }
+                                              pendingMentionEditorRef.current = activeEditor;
+                                              setShowMentionModal(true);
                                             }}
                                             className="p-2 rounded-lg text-slate-300 hover:bg-slate-700 hover:text-white transition-all font-bold flex items-center gap-1 text-xs" title="Insert @Mention in editor"
                                           ><AtSign size={15} /> @Mention</button>
@@ -8956,23 +9592,29 @@ ${bodyHtml}
                                     {/* Floated Integrated Charts */}
                                     {(() => {
                                       const chartItems = (sec.charts || []).map((chart, cIdx) => {
-                                        const config = chartConfigs[chart.id] || chart.config || {
-                                        type: chart.type || 'Bar Chart',
-                                        field: chart.field || 'Total Mentions',
-                                        groupBy: 'Brand',
-                                        sort: 'Descending',
-                                        maxItems: 'All'
-                                      };
+                                        const rawConfig = chartConfigs[chart.id] || chart.config || {};
+                                        const config = {
+                                          ...rawConfig,
+                                          type: rawConfig.type || chart.type || 'Bar Chart',
+                                          field: rawConfig.field || chart.field || 'Total Mentions',
+                                          groupBy: rawConfig.groupBy || 'Brand',
+                                          sort: rawConfig.sort || 'Descending',
+                                          maxItems: rawConfig.maxItems || 'All',
+                                        };
                                         const isDashboard = reportLayout === 'Dashboard Grid';
                                         
+                                        const hasOffset = chart.position?.x || chart.position?.y;
+                                        const isDragging = chartDragState?.chartId === chart.id;
+                                        const isConfigOpen = activeConfigChartId === chart.id;
                                         const styleObj = isDashboard ? {
                                           width: '100%',
-                                          transform: 'none',
-                                          zIndex: activeConfigChartId === chart.id ? 40 : 1
+                                          ...(isConfigOpen ? { zIndex: 40 } : {}),
                                         } : {
                                           width: `${typeof chart.width === 'number' ? chart.width : chart.width === 'full' ? 100 : 85}%`,
-                                          transform: `translate3d(${chart.position?.x || 0}px, ${chart.position?.y || 0}px, 0)`,
-                                          zIndex: (chart.position?.x || chart.position?.y || chartDragState?.chartId === chart.id) ? 35 : (activeConfigChartId === chart.id ? 40 : 1)
+                                          ...(hasOffset || isDragging ? {
+                                            transform: `translate3d(${chart.position?.x || 0}px, ${chart.position?.y || 0}px, 0)`,
+                                            zIndex: 35,
+                                          } : isConfigOpen ? { zIndex: 40 } : {}),
                                         };
 
                                         const cardBg = reportTheme === 'Corporate Dark' ? 'bg-slate-900 border-slate-850 text-slate-100' : 'bg-white border-slate-200/80 text-slate-900';
@@ -9041,7 +9683,7 @@ ${bodyHtml}
                                                   </div>
                                                 )}
 
-                                                <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900/95 text-white backdrop-blur-md px-4 py-2 rounded-full shadow-2xl flex items-center gap-3 z-30 text-xs font-bold print:hidden">
+                                                <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900/95 text-white backdrop-blur-md px-4 py-2 rounded-full shadow-2xl flex items-center gap-3 z-50 text-xs font-bold print:hidden">
                                                   {/* Feature 2 Configuration Toggle Button */}
                                                   <button
                                                     onClick={() => {
@@ -9164,7 +9806,7 @@ ${bodyHtml}
                                                   )}
 
                                                   <button
-                                                    onClick={() => setChartRemoveConfirm({ sIdx, cIdx, type: chart.type })}
+                                                    onClick={(e) => { e.stopPropagation(); setChartRemoveConfirm({ sIdx, cIdx, type: chart.type }); }}
                                                     className="p-1.5 rounded hover:bg-red-600 hover:text-white ml-2 text-red-400 transition-colors" title="Delete Chart"
                                                   >
                                                     <Trash2 size={13} />
@@ -10757,17 +11399,473 @@ const spec = JSON.parse(response.text);
                           </div>
                         )}
                       </div>
-                    ) : (
-                      <div className="space-y-8">
-                        {/* Top Controls & Search */}
-                        <div className="flex flex-col items-center justify-center pt-8 pb-4 gap-6">
-                          <div className="flex items-center gap-3.5 cursor-pointer group" onClick={() => setShowCreateReportModal(true)}>
-                            <h1 className={`text-4xl font-extrabold tracking-tight ${darkMode ? 'text-white' : 'text-slate-900'}`}>
-                              Create <span className="font-black">Report</span>
-                            </h1>
-                            <div className="w-10 h-10 rounded-full bg-[#3b82f6] hover:bg-blue-600 text-white flex items-center justify-center transition-all shadow-lg shadow-blue-500/30 group-hover:scale-110">
-                              <Plus size={20} strokeWidth={3} />
+                      )} {/* END CEREBRO STUDIO — restore by removing {false && ( above */}
+
+                      {/* ═══════════════════════════════════════════════════════════
+                          CHART EXPORT VIEW — replaces Studio while it is disabled
+                          ═══════════════════════════════════════════════════════════ */}
+                      <div className="fixed inset-0 z-[100] bg-[#0B121F] flex flex-col font-sans relative">
+                        {/* Header */}
+                        <div className="shrink-0 bg-slate-900 border-b border-slate-800 px-8 py-4 flex items-center justify-between">
+                          <div className="flex items-center gap-4">
+                            <button
+                              onClick={() => setSelectedReport(null)}
+                              className="p-2 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white transition-all"
+                            ><ArrowLeft size={18} /></button>
+                            <div>
+                              <h2 className="font-black text-white text-base tracking-tight">{selectedReport.title}</h2>
+                              <p className="text-[11px] text-slate-400 font-medium mt-0.5">
+                                {selectedReport.type} · {selectedReport.sections?.length || 0} sections · {selectedReport.sections?.reduce((a, s) => a + (s.charts?.length || 0), 0)} charts
+                              </p>
                             </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            {/* Add Chart with AI */}
+                            <button
+                              onClick={() => { setShowAiChartPanel(true); setAiChartPanelResult(null); setAiChartPanelPrompt(''); }}
+                              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg shadow-indigo-600/20"
+                            >
+                              <Sparkles size={13} /> Add Chart with AI
+                            </button>
+                            {currentExportDoc && (
+                              <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-400 text-xs font-bold">
+                                <FileText size={13} />
+                                <span className="max-w-[160px] truncate">{currentExportDoc.title}</span>
+                                <button
+                                  onClick={() => window.open(currentExportDoc.url, '_blank')}
+                                  className="hover:text-emerald-300 transition-colors ml-1"
+                                  title="Open in Google Docs"
+                                ><ExternalLink size={12} /></button>
+                              </div>
+                            )}
+                            {!googleDocsToken ? (
+                              <button
+                                onClick={requestGoogleDocsAccess}
+                                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg"
+                              >Connect Google Docs</button>
+                            ) : (
+                              <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-500/10 border border-blue-500/30 rounded-xl text-blue-400 text-xs font-bold">
+                                <Check size={13} /> Google Docs Connected
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Chart Grid */}
+                        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+                          {(selectedReport.sections || []).length === 0 && (
+                            <div className="flex flex-col items-center justify-center h-full text-slate-500 gap-3">
+                              <BarChart3 size={40} className="opacity-20" />
+                              <p className="text-sm font-bold">No sections or charts in this report</p>
+                            </div>
+                          )}
+                          {(selectedReport.sections || []).map((sec, sIdx) => (
+                            <div key={sIdx} className="mb-10">
+                              <div className="flex items-center gap-3 mb-5">
+                                <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-[11px] font-black shrink-0">{sIdx + 1}</div>
+                                <h3 className="text-sm font-black uppercase tracking-widest text-slate-400">{sec.title || `Section ${sIdx + 1}`}</h3>
+                              </div>
+                              {(!sec.charts || sec.charts.length === 0) && (
+                                <p className="text-xs text-slate-600 italic pl-10">No charts in this section.</p>
+                              )}
+                              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                                {(sec.charts || []).map((chart, cIdx) => {
+                                  const rawConfig = chartConfigs[chart.id] || chart.config || {};
+                                  const cfg = {
+                                    ...rawConfig,
+                                    type: rawConfig.type || chart.type || 'Bar Chart',
+                                    field: rawConfig.field || chart.field || 'Total Mentions',
+                                    groupBy: rawConfig.groupBy || 'Brand',
+                                    sort: rawConfig.sort || 'Descending',
+                                    maxItems: rawConfig.maxItems || 'All',
+                                  };
+                                  return (
+                                    <div key={cIdx} className={`bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col transition-all ${expandedChartIds[chart.id] ? 'col-span-full' : ''}`}>
+                                      {/* Capture area */}
+                                      <div ref={el => { exportChartRefs.current[`${sIdx}-${cIdx}`] = el; }} className="p-5 bg-white flex-1">
+                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">{chart.label || cfg.field || cfg.type}</p>
+                                        {isFetchingTelemetry ? (
+                                          <div className="flex items-center justify-center py-10">
+                                            <div className="w-6 h-6 border-4 border-indigo-600/30 border-t-indigo-600 rounded-full animate-spin" />
+                                          </div>
+                                        ) : !filteredBrandsObj || Object.keys(filteredBrandsObj).length === 0 ? (
+                                          <div className="flex flex-col items-center justify-center py-8 text-slate-300 gap-2">
+                                            <Activity size={22} className="opacity-40" />
+                                            <span className="text-xs font-bold">No data — select brands &amp; date range above</span>
+                                          </div>
+                                        ) : cfg.type === 'KPI Card' ? (() => {
+                                          const bNames = Object.keys(filteredBrandsObj);
+                                          const totalMentions = bNames.reduce((s, b) => s + (Number(filteredBrandsObj[b]?.mentions) || 0), 0);
+                                          const totalArticles = bNames.reduce((s, b) => s + (Number(filteredBrandsObj[b]?.articles) || 0), 0);
+                                          const aggTL = {};
+                                          bNames.forEach(b => Object.entries(filteredBrandsObj[b]?.timeline || {}).forEach(([dt, val]) => { aggTL[dt] = (aggTL[dt] || 0) + val; }));
+                                          const spk = Object.entries(aggTL).sort((a, b2) => a[0].localeCompare(b2[0])).map(e => e[1]);
+                                          const uniqueOutlets = new Set();
+                                          bNames.forEach(b => Object.keys(filteredBrandsObj[b]?.sources || {}).forEach(src => uniqueOutlets.add(src)));
+                                          const valStr = cfg.field === 'Total Mentions' ? totalMentions.toLocaleString()
+                                            : cfg.field === 'Total Articles' ? totalArticles.toLocaleString()
+                                            : cfg.field === 'Media Diversity Count' ? uniqueOutlets.size.toString()
+                                            : 'N/A';
+                                          const kpiColor = cfg.color || '#6366f1';
+                                          return (
+                                            <div className="flex items-center justify-between p-2">
+                                              <div className="space-y-1">
+                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">{cfg.field}</span>
+                                                <span className="text-3xl font-black tracking-tight" style={{ color: kpiColor }}>{valStr}</span>
+                                              </div>
+                                              {renderSparkline(spk, kpiColor)}
+                                            </div>
+                                          );
+                                        })() : cfg.type === 'Pie Chart' || cfg.type === 'Donut Chart' ? (() => {
+                                          const pd = processChartData(filteredBrandsObj, cfg);
+                                          if (!pd.length) return <div className="text-xs text-slate-400 py-6 text-center">No data</div>;
+                                          const sum = pd.reduce((acc, c) => acc + c.value, 0);
+                                          let cumOffset = 25;
+                                          return (
+                                            <div className="flex items-center gap-4 py-2">
+                                              <svg viewBox="0 0 32 32" className="w-28 h-28 shrink-0 transform -rotate-90">
+                                                {pd.map((item, i) => {
+                                                  const pct = sum > 0 ? (item.value / sum) * 100 : 0;
+                                                  const color = getConditionalColor(chart.id, item.value, BRAND_COLORS[i % BRAND_COLORS.length]);
+                                                  const offset = cumOffset;
+                                                  cumOffset -= pct;
+                                                  return <circle key={i} r="15.9154943" cx="16" cy="16" fill="none" stroke={color} strokeWidth={cfg.type === 'Donut Chart' ? '6' : '15.9154943'} strokeDasharray={`${pct} ${Math.max(0, 100 - pct)}`} strokeDashoffset={offset} />;
+                                                })}
+                                              </svg>
+                                              <div className="flex flex-col gap-1 min-w-0">
+                                                {pd.slice(0, 5).map((item, i) => (
+                                                  <div key={i} className="flex items-center gap-1.5 text-[10px]">
+                                                    <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: BRAND_COLORS[i % BRAND_COLORS.length] }} />
+                                                    <span className="truncate text-slate-700 font-medium">{item.name}</span>
+                                                    <span className="ml-auto text-slate-400 font-bold shrink-0 pl-2">{item.value.toLocaleString()}</span>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            </div>
+                                          );
+                                        })() : cfg.type === 'Area Chart' ? (() => {
+                                          const pd = processChartData(filteredBrandsObj, cfg);
+                                          if (!pd.length) return <div className="text-xs text-slate-400 py-6 text-center">No data</div>;
+                                          const max = Math.max(...pd.map(d => d.value), 1);
+                                          const n = Math.min(pd.length, 7);
+                                          const sliced = pd.slice(0, n);
+                                          const W = 260, H = 100, pl = 10, pr = 10, pt = 10, pb = 24;
+                                          const cW = W - pl - pr, cH = H - pt - pb;
+                                          const step = n > 1 ? cW / (n - 1) : cW / 2;
+                                          const pts = sliced.map((d, i) => [pl + (n > 1 ? i * step : cW / 2), pt + cH - (d.value / max) * cH]);
+                                          const areaPath = "M" + pts[0][0] + "," + pts[0][1] + pts.slice(1).map(p => "L" + p[0] + "," + p[1]).join("") + "L" + pts[pts.length - 1][0] + "," + (pt + cH) + "L" + pts[0][0] + "," + (pt + cH) + "Z";
+                                          const linePath = "M" + pts[0][0] + "," + pts[0][1] + pts.slice(1).map(p => "L" + p[0] + "," + p[1]).join("");
+                                          const gId = "ag" + chart.id.replace(/[^a-z0-9]/gi, "");
+                                          return (
+                                            <div>
+                                              <svg viewBox={"0 0 " + W + " " + H} className="w-full">
+                                                <defs>
+                                                  <linearGradient id={gId} x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="0%" stopColor="#6366f1" stopOpacity="0.3" />
+                                                    <stop offset="100%" stopColor="#6366f1" stopOpacity="0.02" />
+                                                  </linearGradient>
+                                                </defs>
+                                                {[0.33, 0.66, 1].map(f => <line key={f} x1={pl} y1={pt + cH * (1 - f)} x2={W - pr} y2={pt + cH * (1 - f)} stroke="#f1f5f9" strokeWidth="0.8" />)}
+                                                <path d={areaPath} fill={"url(#" + gId + ")"} />
+                                                <path d={linePath} fill="none" stroke="#6366f1" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" />
+                                                {pts.map((p, i) => (
+                                                  <g key={i}>
+                                                    <circle cx={p[0]} cy={p[1]} r="3.5" fill="white" stroke={BRAND_COLORS[i % BRAND_COLORS.length]} strokeWidth="2" />
+                                                    <text x={p[0]} y={H - 3} fontSize="5.5" textAnchor="middle" fill="#94a3b8" fontWeight="700">{sliced[i].name.length > 9 ? sliced[i].name.slice(0, 8) + "…" : sliced[i].name}</text>
+                                                  </g>
+                                                ))}
+                                              </svg>
+                                            </div>
+                                          );
+                                        })() : cfg.type === 'Radar Chart' ? (() => {
+                                          const pd = processChartData(filteredBrandsObj, cfg).filter(d => d.name !== 'Others');
+                                          if (pd.length < 3) return <div className="text-xs text-slate-400 py-6 text-center">Need 3+ brands for radar</div>;
+                                          const max = Math.max(...pd.map(d => d.value), 1);
+                                          const n = Math.min(pd.length, 8);
+                                          const sliced = pd.slice(0, n);
+                                          const rcx = 110, rcy = 100, rr = 82;
+                                          const rang = (i) => i * (2 * Math.PI / n) - Math.PI / 2;
+                                          const rpt = (i, frac) => [rcx + rr * frac * Math.cos(rang(i)), rcy + rr * frac * Math.sin(rang(i))];
+                                          const dataPath = sliced.map((d, i) => { const p = rpt(i, d.value / max); return (i === 0 ? "M" : "L") + p[0].toFixed(2) + "," + p[1].toFixed(2); }).join(" ") + "Z";
+                                          return (
+                                            <div className="flex flex-col gap-3 py-1">
+                                              <svg viewBox="0 0 220 205" className="w-full">
+                                                {[0.25, 0.5, 0.75, 1].map(f => {
+                                                  const rp = sliced.map((_, i) => rpt(i, f));
+                                                  return <path key={f} d={rp.map((p, i) => (i === 0 ? "M" : "L") + p[0].toFixed(2) + "," + p[1].toFixed(2)).join(" ") + "Z"} fill="none" stroke={f === 1 ? "#cbd5e1" : "#e2e8f0"} strokeWidth={f === 1 ? "1" : "0.7"} />;
+                                                })}
+                                                {sliced.map((_, i) => { const e = rpt(i, 1); return <line key={i} x1={rcx} y1={rcy} x2={e[0].toFixed(2)} y2={e[1].toFixed(2)} stroke="#e2e8f0" strokeWidth="0.8" />; })}
+                                                <path d={dataPath} fill="#6366f1" fillOpacity="0.2" stroke="#6366f1" strokeWidth="2" strokeLinejoin="round" />
+                                                {sliced.map((d, i) => { const p = rpt(i, d.value / max); return <circle key={i} cx={p[0].toFixed(2)} cy={p[1].toFixed(2)} r="3.5" fill={BRAND_COLORS[i % BRAND_COLORS.length]} stroke="white" strokeWidth="1.5" />; })}
+                                                {sliced.map((d, i) => { const p = rpt(i, 1.28); return <text key={i} x={p[0].toFixed(2)} y={p[1].toFixed(2)} fontSize="8.5" textAnchor="middle" dominantBaseline="central" fill="#475569" fontWeight="700">{d.name.length > 9 ? d.name.slice(0, 8) + "…" : d.name}</text>; })}
+                                              </svg>
+                                              <div className="flex flex-wrap gap-x-4 gap-y-1.5 px-1">
+                                                {sliced.map((d, i) => (
+                                                  <div key={i} className="flex items-center gap-1.5 text-[9px]">
+                                                    <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: BRAND_COLORS[i % BRAND_COLORS.length] }} />
+                                                    <span className="text-slate-600 font-semibold">{d.name}</span>
+                                                    <span className="text-slate-400 font-bold">{d.value.toLocaleString()}</span>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            </div>
+                                          );
+                                        })() : cfg.type === 'Scatter Plot' ? (() => {
+                                          const scBrands = Object.keys(filteredBrandsObj).filter(b => b !== 'Others');
+                                          if (!scBrands.length) return <div className="text-xs text-slate-400 py-6 text-center">No data</div>;
+                                          const scPoints = scBrands.map((b, i) => {
+                                            const d = filteredBrandsObj[b];
+                                            const x = Number(d.articles) || 0;
+                                            const s = d.sentiment || {};
+                                            const y = (s.Positive || 0) + (s.Neutral || 0) + (s.Negative || 0);
+                                            return { name: b, x, y, color: BRAND_COLORS[i % BRAND_COLORS.length] };
+                                          });
+                                          const scMaxX = Math.max(...scPoints.map(p => p.x), 1);
+                                          const scMaxY = Math.max(...scPoints.map(p => p.y), 1);
+                                          const sW = 210, sH = 115, spl = 30, spr = 10, spt = 10, spb = 22;
+                                          const scW = sW - spl - spr, scH = sH - spt - spb;
+                                          const toSC = (px, py) => [spl + (px / scMaxX) * scW, spt + scH - (py / scMaxY) * scH];
+                                          return (
+                                            <div>
+                                              <svg viewBox={"0 0 " + sW + " " + sH} className="w-full">
+                                                {[0, 0.25, 0.5, 0.75, 1].map(f => (
+                                                  <g key={f}>
+                                                    <line x1={spl} y1={spt + scH * (1 - f)} x2={sW - spr} y2={spt + scH * (1 - f)} stroke="#f1f5f9" strokeWidth="0.8" />
+                                                    <text x={spl - 3} y={spt + scH * (1 - f)} fontSize="5" textAnchor="end" dominantBaseline="central" fill="#cbd5e1">{Math.round(scMaxY * f / 100) * 100}</text>
+                                                  </g>
+                                                ))}
+                                                <line x1={spl} y1={spt} x2={spl} y2={spt + scH} stroke="#e2e8f0" strokeWidth="0.8" />
+                                                <line x1={spl} y1={spt + scH} x2={sW - spr} y2={spt + scH} stroke="#e2e8f0" strokeWidth="0.8" />
+                                                <text x={spl + scW / 2} y={sH - 3} fontSize="5.5" textAnchor="middle" fill="#94a3b8" fontWeight="700">Articles</text>
+                                                <text x="8" y={spt + scH / 2} fontSize="5.5" textAnchor="middle" fill="#94a3b8" fontWeight="700" transform={"rotate(-90,8," + (spt + scH / 2) + ")"}>Mentions</text>
+                                                {scPoints.map((p, i) => {
+                                                  const [sx, sy] = toSC(p.x, p.y);
+                                                  return (
+                                                    <g key={i}>
+                                                      <circle cx={sx} cy={sy} r="4.5" fill={p.color} fillOpacity="0.85" stroke="white" strokeWidth="1.2" />
+                                                      <text x={sx} y={sy - 7} fontSize="5.5" textAnchor="middle" fill="#475569" fontWeight="700">{p.name.length > 7 ? p.name.slice(0, 6) + "…" : p.name}</text>
+                                                    </g>
+                                                  );
+                                                })}
+                                              </svg>
+                                            </div>
+                                          );
+                                        })() : cfg.type === 'Trend Chart' ? (() => {
+                                          const pd = processChartData(filteredBrandsObj, cfg);
+                                          if (!pd.length) return <div className="text-xs text-slate-400 py-6 text-center">No data</div>;
+                                          const max = Math.max(...pd.map(d => d.value), 1);
+                                          const n = Math.min(pd.length, 8);
+                                          const sliced = pd.slice(0, n);
+                                          const tW = 260, tH = 100, tpl = 10, tpr = 10, tpt = 8, tpb = 22;
+                                          const tcW = tW - tpl - tpr, tcH = tH - tpt - tpb;
+                                          const bw = Math.max(8, (tcW / n) - 4);
+                                          return (
+                                            <div>
+                                              <svg viewBox={"0 0 " + tW + " " + tH} className="w-full">
+                                                {[0.25, 0.5, 0.75, 1].map(f => <line key={f} x1={tpl} y1={tpt + tcH * (1 - f)} x2={tW - tpr} y2={tpt + tcH * (1 - f)} stroke="#f1f5f9" strokeWidth="0.8" />)}
+                                                {sliced.map((d, i) => {
+                                                  const bh = (d.value / max) * tcH;
+                                                  const bx = tpl + (tcW / n) * i + (tcW / n - bw) / 2;
+                                                  const by = tpt + tcH - bh;
+                                                  const color = getConditionalColor(chart.id, d.value, BRAND_COLORS[i % BRAND_COLORS.length]);
+                                                  return (
+                                                    <g key={i}>
+                                                      <rect x={bx} y={by} width={bw} height={bh} fill={color} fillOpacity="0.85" rx="2" />
+                                                      <text x={bx + bw / 2} y={tH - 3} fontSize="5.5" textAnchor="middle" fill="#94a3b8" fontWeight="700">{d.name.length > 8 ? d.name.slice(0, 7) + "…" : d.name}</text>
+                                                    </g>
+                                                  );
+                                                })}
+                                              </svg>
+                                            </div>
+                                          );
+                                        })() : (() => {
+                                          const pd = processChartData(filteredBrandsObj, cfg);
+                                          if (!pd.length) return <div className="text-xs text-slate-400 py-6 text-center">No data</div>;
+                                          const max = Math.max(...pd.map(d => d.value), 1);
+                                          return (
+                                            <div className="space-y-2 py-1">
+                                              {pd.slice(0, 8).map((item, i) => {
+                                                const pct = (item.value / max) * 100;
+                                                const color = getConditionalColor(chart.id, item.value, BRAND_COLORS[i % BRAND_COLORS.length]);
+                                                return (
+                                                  <div key={i} className="flex items-center gap-2">
+                                                    <span className="text-[10px] text-slate-600 font-medium w-24 truncate shrink-0">{item.name}</span>
+                                                    <div className="flex-1 h-3 bg-slate-100 rounded-full overflow-hidden">
+                                                      <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: color }} />
+                                                    </div>
+                                                    <span className="text-[10px] text-slate-500 font-bold w-10 text-right shrink-0">{item.value.toLocaleString()}</span>
+                                                  </div>
+                                                );
+                                              })}
+                                            </div>
+                                          );
+                                        })()}
+                                      </div>
+                                      {/* Footer: type label + maximize + export */}
+                                      <div className="px-5 py-3 border-t border-slate-100 flex items-center justify-between bg-slate-50">
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{cfg.type}</span>
+                                          <button
+                                            onClick={() => setExpandedChartIds(prev => ({ ...prev, [chart.id]: !prev[chart.id] }))}
+                                            title={expandedChartIds[chart.id] ? 'Minimize' : 'Maximize'}
+                                            className="p-1 rounded-lg hover:bg-slate-200 text-slate-400 hover:text-slate-600 transition-all"
+                                          >{expandedChartIds[chart.id] ? <Minimize2 size={11} /> : <Maximize2 size={11} />}</button>
+                                        </div>
+                                        <button
+                                          onClick={() => handleExportChartClick(sIdx, cIdx)}
+                                          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow active:scale-95"
+                                        ><FileText size={12} /> Export to Docs</button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* AI Chart Panel — slide in from right */}
+                        {showAiChartPanel && (
+                          <div className="absolute inset-0 z-[110] flex pointer-events-none">
+                            {/* Backdrop */}
+                            <div className="flex-1 pointer-events-auto" onClick={() => setShowAiChartPanel(false)} />
+                            {/* Panel */}
+                            <div className="w-96 bg-slate-900 border-l border-slate-800 flex flex-col pointer-events-auto animate-in slide-in-from-right duration-300 h-full overflow-y-auto">
+                              {/* Panel Header */}
+                              <div className="px-6 py-5 border-b border-slate-800 flex items-center justify-between shrink-0">
+                                <div className="flex items-center gap-2">
+                                  <Sparkles size={16} className="text-indigo-400" />
+                                  <span className="text-sm font-black text-white tracking-tight">Add Chart with AI</span>
+                                </div>
+                                <button onClick={() => setShowAiChartPanel(false)} className="text-slate-500 hover:text-white transition-colors">
+                                  <X size={16} />
+                                </button>
+                              </div>
+
+                              {/* API Key Notice */}
+                              <div className="mx-4 mt-4 px-4 py-3 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-start gap-2">
+                                <Sparkles size={13} className="text-amber-400 shrink-0 mt-0.5" />
+                                <div>
+                                  <p className="text-[10px] font-black text-amber-400 uppercase tracking-wider">AI Preview Mode</p>
+                                  <p className="text-[10px] text-slate-400 font-medium mt-0.5 leading-relaxed">Connect an API key in Settings for advanced AI generation. Currently using smart keyword matching.</p>
+                                </div>
+                              </div>
+
+                              {/* Panel Body */}
+                              <div className="px-4 py-5 flex flex-col gap-5 flex-1">
+                                {/* Target Section */}
+                                <div>
+                                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Add to Section</label>
+                                  <select
+                                    value={aiChartPanelSectionIdx}
+                                    onChange={e => setAiChartPanelSectionIdx(Number(e.target.value))}
+                                    className="w-full py-2.5 px-3 bg-slate-800 border border-slate-700 rounded-xl text-xs font-bold text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                                  >
+                                    {(selectedReport.sections || []).map((s, i) => (
+                                      <option key={i} value={i}>{s.title || `Section ${i + 1}`}</option>
+                                    ))}
+                                    <option value={(selectedReport.sections || []).length}>+ New AI Section</option>
+                                  </select>
+                                </div>
+
+                                {/* Prompt */}
+                                <div>
+                                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Describe Your Chart</label>
+                                  <textarea
+                                    rows={4}
+                                    placeholder={"e.g. Show sentiment trend over time\nCompare share of voice as a pie chart\nDisplay total mentions as a KPI"}
+                                    value={aiChartPanelPrompt}
+                                    onChange={e => { setAiChartPanelPrompt(e.target.value); setAiChartPanelResult(null); }}
+                                    className="w-full py-3 px-4 bg-slate-800 border border-slate-700 rounded-xl text-xs font-medium text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 resize-none transition-all"
+                                  />
+                                  <p className="text-[10px] text-slate-500 mt-1.5 font-medium">One chart per line — each line generates one chart</p>
+                                </div>
+
+                                {/* Generate Button */}
+                                <button
+                                  disabled={!aiChartPanelPrompt.trim() || isAiChartPanelGenerating}
+                                  onClick={async () => {
+                                    setIsAiChartPanelGenerating(true);
+                                    setAiChartPanelResult(null);
+                                    await new Promise(r => setTimeout(r, 1200));
+                                    const lines = aiChartPanelPrompt.split('\n').filter(l => l.trim());
+                                    const charts = lines.map(line => generateChartFromPrompt(line));
+                                    setAiChartPanelResult(charts);
+                                    setIsAiChartPanelGenerating(false);
+                                  }}
+                                  className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+                                >
+                                  {isAiChartPanelGenerating ? (
+                                    <><div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Generating...</>
+                                  ) : (
+                                    <><Sparkles size={13} /> Generate Charts</>
+                                  )}
+                                </button>
+
+                                {/* Generated Preview */}
+                                {aiChartPanelResult && (
+                                  <div className="flex flex-col gap-3 animate-in fade-in duration-300">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Generated — {aiChartPanelResult.length} chart{aiChartPanelResult.length > 1 ? 's' : ''}</span>
+                                    {aiChartPanelResult.map((c, i) => (
+                                      <div key={i} className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex flex-col gap-1.5">
+                                        <div className="flex items-center gap-2">
+                                          <BarChart3 size={13} className="text-indigo-400 shrink-0" />
+                                          <span className="text-xs font-black text-white">{c.type}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2 text-[10px] text-slate-400 font-medium">
+                                          <span className="bg-slate-700 px-2 py-0.5 rounded-full">{c.field}</span>
+                                          <span className="text-slate-600">·</span>
+                                          <span>{c.reasoning}</span>
+                                        </div>
+                                      </div>
+                                    ))}
+
+                                    <button
+                                      onClick={() => {
+                                        const newCharts = aiChartPanelResult.map((c, i) => {
+                                          const uid = `ai-${Date.now()}-${i}`;
+                                          return { id: uid, type: c.type, field: c.field, label: aiChartPanelPrompt.split('\n').filter(l => l.trim())[i]?.slice(0, 60) || c.label, width: 'full', align: 'center', config: { field: c.field, groupBy: 'Brand', sort: 'Descending', maxItems: 'All' } };
+                                        });
+                                        setSelectedReport(prev => {
+                                          const sections = [...(prev.sections || [])];
+                                          const targetIdx = aiChartPanelSectionIdx;
+                                          if (targetIdx >= sections.length) {
+                                            sections.push({ id: `ai-sec-${Date.now()}`, title: `${sections.length + 1}. AI Generated Charts`, content: '', images: [], charts: newCharts });
+                                          } else {
+                                            sections[targetIdx] = { ...sections[targetIdx], charts: [...(sections[targetIdx].charts || []), ...newCharts] };
+                                          }
+                                          return { ...prev, sections };
+                                        });
+                                        showToast(`${newCharts.length} chart${newCharts.length > 1 ? 's' : ''} added successfully`, 'success');
+                                        setShowAiChartPanel(false);
+                                        setAiChartPanelPrompt('');
+                                        setAiChartPanelResult(null);
+                                      }}
+                                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 active:scale-95"
+                                    >
+                                      <Plus size={13} /> Add to Report
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </>) : (
+                      <div className="space-y-6">
+                        {/* Top Controls & Search */}
+                        <div className="flex flex-col items-center justify-center pb-2 gap-3">
+                          <div className="flex flex-col items-center gap-1.5">
+                            <div className="flex items-center gap-3.5 cursor-pointer group" onClick={() => setShowCreateReportModal(true)}>
+                              <h1 className={`text-4xl tracking-tight ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                                <span className="font-light">Create</span> <span className="font-black">Report</span>
+                              </h1>
+                              <div className="w-10 h-10 rounded-full bg-[#3b82f6] hover:bg-blue-600 text-white flex items-center justify-center transition-all shadow-lg shadow-blue-500/30 group-hover:scale-110">
+                                <Plus size={20} strokeWidth={3} />
+                              </div>
+                            </div>
+                            <p className={`text-sm font-medium ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Build and manage intelligence reports across all your brands</p>
                           </div>
 
                           {/* Filter Card Container */}
@@ -10818,8 +11916,24 @@ const spec = JSON.parse(response.text);
                         </div>
 
                         {/* Reports Grid */}
+                        {reportsLoading ? (
+                          <div className="flex flex-col items-center justify-center py-24 gap-4">
+                            <svg className="animate-spin h-8 w-8 text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            <p className={`text-xs font-black uppercase tracking-widest ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>Loading reports...</p>
+                          </div>
+                        ) : reportsError ? (
+                          <div className="flex flex-col items-center justify-center py-24 gap-4">
+                            <div className={`text-xs font-bold text-center ${darkMode ? 'text-red-400' : 'text-red-500'}`}>{reportsError}</div>
+                            <button onClick={fetchReports} className="px-5 py-2.5 bg-indigo-600 rounded-xl text-xs font-black uppercase tracking-wider text-white hover:bg-indigo-700 transition-all">Retry</button>
+                          </div>
+                        ) : (
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                          {reports
+                          {[
+                            ...reports.filter(r => !r._predefined && !PREDEFINED_REPORTS.some(pre => pre.id === r.id))
+                          ]
                             .filter(rep => reportFilter === 'all' || rep.type === reportFilter)
                             .filter(rep =>
                               rep.title.toLowerCase().includes(reportSearch.toLowerCase()) ||
@@ -10829,52 +11943,87 @@ const spec = JSON.parse(response.text);
                               <div
                                 key={rep.id}
                                 onClick={() => setSelectedReport(rep)}
-                                className="group bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-lg hover:shadow-2xl hover:border-indigo-200 cursor-pointer transition-all duration-500 flex flex-col justify-between relative overflow-hidden"
+                                className={`group border rounded-[2.5rem] p-8 shadow-lg hover:shadow-2xl cursor-pointer transition-all duration-500 flex flex-col justify-between relative overflow-hidden ${rep._predefined ? 'bg-gradient-to-br from-indigo-50/60 to-purple-50/40 border-indigo-100 hover:border-indigo-300' : 'bg-white border-slate-100 hover:border-indigo-200'}`}
                               >
                                 <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
                                 <div>
-                                  <div className="flex items-center justify-between gap-3 mb-6">
+                                  <div className="flex items-start justify-between gap-3 mb-6">
                                     <div className="relative" onClick={(e) => e.stopPropagation()}>
                                       <span
                                         onClick={() => setStatusDropdownRepId(statusDropdownRepId === rep.id ? null : rep.id)}
                                         className={`px-3.5 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 shadow-sm cursor-pointer hover:opacity-80 transition-opacity select-none ${rep.status === 'Generated' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' :
-                                          rep.status === 'Reviewed' ? 'bg-blue-50 text-blue-600 border border-blue-200' :
+                                          rep.status === 'Approved' ? 'bg-blue-50 text-blue-600 border border-blue-200' :
                                             'bg-amber-50 text-amber-600 border border-amber-200'
                                           }`}>
                                         <span className={`w-1.5 h-1.5 rounded-full ${rep.status === 'Generated' ? 'bg-emerald-500 animate-pulse' :
-                                          rep.status === 'Reviewed' ? 'bg-blue-500' : 'bg-amber-500'
+                                          rep.status === 'Approved' ? 'bg-blue-500' : 'bg-amber-500'
                                           }`}></span>
                                         {rep.status}
                                         <svg className="w-2.5 h-2.5 ml-0.5 opacity-60" fill="none" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                                       </span>
                                       {statusDropdownRepId === rep.id && (
                                         <>
-                                          <div className="fixed inset-0 z-[49]" onClick={() => setStatusDropdownRepId(null)} />
+                                          <div className="fixed inset-0 z-[49]" onClick={(e) => { e.stopPropagation(); setStatusDropdownRepId(null); }} />
                                           <div className="absolute top-full left-0 mt-1.5 z-50 bg-white border border-slate-100 rounded-2xl shadow-xl overflow-hidden min-w-[130px]">
                                             {[
-                                              { label: 'Generated', dot: 'bg-emerald-500', text: 'text-emerald-600', bg: 'hover:bg-emerald-50' },
-                                              { label: 'Reviewed',  dot: 'bg-blue-500',    text: 'text-blue-600',    bg: 'hover:bg-blue-50' },
-                                              { label: 'Pending',   dot: 'bg-amber-500',   text: 'text-amber-600',   bg: 'hover:bg-amber-50' },
-                                            ].map(opt => (
-                                              <button
-                                                key={opt.label}
-                                                onClick={() => {
-                                                  setReports(prev => prev.map(r => r.id === rep.id ? { ...r, status: opt.label } : r));
-                                                  setStatusDropdownRepId(null);
-                                                }}
-                                                className={`w-full flex items-center gap-2 px-4 py-2.5 text-[10px] font-black uppercase tracking-widest transition-colors ${opt.text} ${opt.bg} ${rep.status === opt.label ? 'opacity-40 cursor-default' : 'cursor-pointer'}`}
-                                              >
-                                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${opt.dot}`}></span>
-                                                {opt.label}
-                                              </button>
-                                            ))}
+                                              { label: 'Generated', dot: 'bg-emerald-500', text: 'text-emerald-600', activeBg: 'bg-emerald-50', hoverBg: 'hover:bg-emerald-50' },
+                                              { label: 'Approved',  dot: 'bg-blue-500',    text: 'text-blue-600',    activeBg: 'bg-blue-50',    hoverBg: 'hover:bg-blue-50' },
+                                              { label: 'Pending',   dot: 'bg-amber-500',   text: 'text-amber-600',   activeBg: 'bg-amber-50',   hoverBg: 'hover:bg-amber-50' },
+                                            ].map(opt => {
+                                              const isActive = rep.status === opt.label;
+                                              return (
+                                                <button
+                                                  key={opt.label}
+                                                  onClick={async (e) => {
+                                                    e.stopPropagation();
+                                                    const updatedRep = { ...rep, status: opt.label };
+                                                    if (rep._predefined) {
+                                                      setReports(prev => {
+                                                        if (prev.some(r => r.id === rep.id)) {
+                                                          return prev.map(r => r.id === rep.id ? updatedRep : r);
+                                                        } else {
+                                                          return [...prev, updatedRep];
+                                                        }
+                                                      });
+                                                    } else {
+                                                      setReports(prev => prev.map(r => r.id === rep.id ? updatedRep : r));
+                                                    }
+                                                    try {
+                                                      await fetch(`${API_BASE}/api/reports`, {
+                                                        method: 'POST',
+                                                        headers: {
+                                                          'Content-Type': 'application/json',
+                                                          'X-User-Id': user?.id
+                                                        },
+                                                        body: JSON.stringify(updatedRep)
+                                                      });
+                                                    } catch (err) {
+                                                      console.error('Error saving updated status:', err);
+                                                    }
+                                                    setStatusDropdownRepId(null);
+                                                  }}
+                                                  className={`w-full flex items-center justify-between px-4 py-2.5 text-[10px] font-black uppercase tracking-widest transition-colors cursor-pointer ${opt.text} ${isActive ? opt.activeBg : opt.hoverBg}`}
+                                                >
+                                                  <div className="flex items-center gap-2">
+                                                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${opt.dot}`}></span>
+                                                    {opt.label}
+                                                  </div>
+                                                  {isActive && <Check size={11} strokeWidth={3} />}
+                                                </button>
+                                              );
+                                            })}
                                           </div>
                                         </>
                                       )}
                                     </div>
-                                    <span className="text-[10px] font-black text-slate-400 tracking-widest uppercase bg-slate-50 px-3 py-1 rounded-full border border-slate-100">
-                                      {rep.date}
-                                    </span>
+                                    <div className="flex flex-col items-end gap-1 shrink-0">
+                                      {rep._predefined && (
+                                        <span className="px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest bg-indigo-100 text-indigo-600 border border-indigo-200">Template</span>
+                                      )}
+                                      <span className="text-[10px] font-black text-slate-400 tracking-widest uppercase bg-slate-50 px-3 py-1 rounded-full border border-slate-100 whitespace-nowrap">
+                                        {rep.date}
+                                      </span>
+                                    </div>
                                   </div>
 
                                   <div className="flex items-center gap-2 mb-3 text-indigo-600">
@@ -10936,6 +12085,7 @@ const spec = JSON.parse(response.text);
                               </div>
                             ))}
                         </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -11167,6 +12317,129 @@ const spec = JSON.parse(response.text);
 
             </div>
           </main>
+          {/* Brand History Modal */}
+          {showBrandHistoryModal && brandHistoryTarget && (
+            <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 animate-in fade-in duration-200">
+              <div className="absolute inset-0 bg-black/50" onClick={() => setShowBrandHistoryModal(false)} />
+              <div className={`relative rounded-3xl shadow-2xl w-full max-w-lg p-8 animate-in zoom-in-95 duration-200 flex flex-col gap-6 ${
+                darkMode ? 'bg-[#0f172a] border border-white/10 text-white' : 'bg-white border border-slate-200 text-slate-900'
+              }`}>
+                {/* Header */}
+                <div className="flex items-start justify-between">
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-2">
+                      <History size={16} className="text-indigo-500" />
+                      <span className={`text-[10px] font-black uppercase tracking-widest ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Tracking History</span>
+                    </div>
+                    <h2 className={`text-2xl font-black tracking-tight font-heading ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                      {brandHistoryTarget.name}
+                    </h2>
+                    <span className={`text-[10px] font-bold uppercase tracking-wider ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{brandHistoryTarget.region}</span>
+                  </div>
+                  <button onClick={() => setShowBrandHistoryModal(false)}
+                    className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${darkMode ? 'text-white/30 hover:text-white hover:bg-white/10' : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'}`}>
+                    <X size={16} />
+                  </button>
+                </div>
+
+                {brandHistoryLoading ? (
+                  <div className="flex flex-col items-center justify-center py-12 gap-3">
+                    <div className="w-8 h-8 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
+                    <span className={`text-xs font-medium ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Loading history...</span>
+                  </div>
+                ) : brandHistoryData ? (() => {
+                  const timeline = brandHistoryData.timeline || [];
+                  const maxCount = Math.max(...timeline.map(d => d.count), 1);
+                  const totalMentions = timeline.reduce((s, d) => s + d.count, 0);
+                  return (
+                    <div className="flex flex-col gap-5">
+                      {/* Stats row */}
+                      <div className="grid grid-cols-3 gap-3">
+                        {[
+                          { label: 'Total Mentions', value: brandHistoryTarget.mentions ?? 0 },
+                          { label: 'Last 60 Days', value: totalMentions },
+                          { label: 'Avg / Day', value: timeline.length ? Math.round(totalMentions / timeline.length) : 0 },
+                        ].map(s => (
+                          <div key={s.label} className={`rounded-2xl p-4 ${darkMode ? 'bg-white/5' : 'bg-slate-50'}`}>
+                            <div className={`text-2xl font-black tracking-tight ${darkMode ? 'text-white' : 'text-slate-900'}`}>{s.value}</div>
+                            <div className={`text-[9px] font-black uppercase tracking-widest mt-0.5 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{s.label}</div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Bar chart */}
+                      {timeline.length > 0 ? (
+                        <div className="flex flex-col gap-2">
+                          <span className={`text-[10px] font-black uppercase tracking-widest ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>Mentions — Last 60 Days</span>
+                          <div className="flex items-end gap-0.5 h-24">
+                            {timeline.map((d, i) => (
+                              <div key={i} className="flex-1 flex flex-col items-center justify-end group relative">
+                                <div
+                                  className="w-full rounded-t-sm bg-indigo-500 hover:bg-indigo-400 transition-colors cursor-default"
+                                  style={{ height: `${Math.max(2, (d.count / maxCount) * 88)}px` }}
+                                  title={`${d.date}: ${d.count}`}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                          <div className="flex justify-between">
+                            <span className={`text-[9px] ${darkMode ? 'text-slate-600' : 'text-slate-400'}`}>{timeline[0]?.date}</span>
+                            <span className={`text-[9px] ${darkMode ? 'text-slate-600' : 'text-slate-400'}`}>{timeline[timeline.length - 1]?.date}</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className={`text-center py-6 text-sm font-medium ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>No mention history yet</div>
+                      )}
+
+                      {/* Top Sources */}
+                      {brandHistoryData.topSources?.length > 0 && (
+                        <div className="flex flex-col gap-2">
+                          <span className={`text-[10px] font-black uppercase tracking-widest ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>Top Sources</span>
+                          <div className="flex flex-col gap-1.5">
+                            {brandHistoryData.topSources.slice(0, 5).map((s, i) => {
+                              const maxSrc = brandHistoryData.topSources[0].count;
+                              return (
+                                <div key={i} className="flex items-center gap-3">
+                                  <span className={`text-xs font-semibold w-32 truncate shrink-0 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>{s.source}</span>
+                                  <div className={`flex-1 h-1.5 rounded-full ${darkMode ? 'bg-white/5' : 'bg-slate-100'}`}>
+                                    <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${(s.count / maxSrc) * 100}%` }} />
+                                  </div>
+                                  <span className={`text-[10px] font-bold w-6 text-right shrink-0 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{s.count}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Footer actions */}
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-200/30">
+                        <button
+                          onClick={() => { handleToggleBrandActive(brandHistoryTarget.id, brandHistoryTarget.is_active === false); setShowBrandHistoryModal(false); }}
+                          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                            brandHistoryTarget.is_active === false
+                              ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                              : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
+                          }`}
+                        >
+                          {brandHistoryTarget.is_active === false ? <><Play size={12} /> Resume Tracking</> : <><Pause size={12} /> Stop Tracking</>}
+                        </button>
+                        <button
+                          onClick={() => { if (window.confirm(`Permanently delete "${brandHistoryTarget.name}" and all its history?`)) handleDeleteBrand(brandHistoryTarget.id); }}
+                          className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold bg-red-50 text-red-600 hover:bg-red-100 transition-all"
+                        >
+                          <Trash2 size={12} /> Delete Brand
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })() : (
+                  <div className={`text-center py-8 text-sm font-medium ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>Could not load history</div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Add Brand Modal */}
           {showAddBrandModal && (
             <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 animate-in fade-in duration-300">
@@ -11258,9 +12531,9 @@ const spec = JSON.parse(response.text);
 
           {/* Create Report Modal */}
           {showCreateReportModal && (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 animate-in fade-in duration-300">
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 animate-in fade-in duration-300">
               <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setShowCreateReportModal(false)}></div>
-              <div className="relative bg-white rounded-[2.5rem] shadow-2xl border border-slate-100 w-full max-w-xl overflow-hidden animate-in zoom-in-95 duration-500">
+              <div className="relative bg-white rounded-[2.5rem] shadow-2xl border border-slate-100 w-full max-w-xl flex flex-col animate-in zoom-in-95 duration-500" style={{maxHeight: 'calc(100vh - 2rem)'}}>
                 <div className="p-8 bg-slate-900 text-white flex items-center justify-between relative overflow-hidden">
                   <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/20 rounded-full blur-2xl pointer-events-none -mr-10 -mt-10"></div>
                   <div className="relative">
@@ -11278,7 +12551,7 @@ const spec = JSON.parse(response.text);
                   </button>
                 </div>
 
-                <form onSubmit={(e) => {
+                <form onSubmit={async (e) => {
                   e.preventDefault();
                   if (!newReportForm.title.trim()) return;
                   const generatedId = `rep-${Date.now()}`;
@@ -11299,20 +12572,73 @@ const spec = JSON.parse(response.text);
                     metrics: { accuracy: '99.8%', confidence: 'Very High', sourcesCount: Math.floor(Math.random() * 100) + 50 },
                     sections: [
                       {
-                        id: 'sec-1',
-                        title: '1. Document Title',
+                        id: `${generatedId}-s1`,
+                        title: '1. Brand Overview',
                         content: '',
-                        charts: [],
-                        images: []
+                        images: [],
+                        charts: [
+                          { id: `${generatedId}-c1`, type: 'KPI Card',    field: 'Total Mentions',    width: 'full', align: 'center', config: { field: 'Total Mentions',      groupBy: 'Brand', sort: 'Descending', maxItems: 'All' } },
+                          { id: `${generatedId}-c2`, type: 'Bar Chart',   field: 'Share of Voice',    width: 'full', align: 'center', config: { field: 'Share of Voice',      groupBy: 'Brand', sort: 'Descending', maxItems: 'All' } },
+                          { id: `${generatedId}-c3`, type: 'Pie Chart',   field: 'Share of Voice',    width: 'full', align: 'center', config: { field: 'Share of Voice',      groupBy: 'Brand', sort: 'Descending', maxItems: 'All' } },
+                        ]
+                      },
+                      {
+                        id: `${generatedId}-s2`,
+                        title: '2. Share of Voice Analysis',
+                        content: '',
+                        images: [],
+                        charts: [
+                          { id: `${generatedId}-c4`, type: 'Donut Chart', field: 'Articles Coverage', width: 'full', align: 'center', config: { field: 'Articles Coverage',  groupBy: 'Brand', sort: 'Descending', maxItems: 'All' } },
+                          { id: `${generatedId}-c5`, type: 'Area Chart',  field: 'Sentiment',         width: 'full', align: 'center', config: { field: 'Sentiment',           groupBy: 'Brand', sort: 'Descending', maxItems: 'All' } },
+                        ]
+                      },
+                      {
+                        id: `${generatedId}-s3`,
+                        title: '3. Sentiment Landscape',
+                        content: '',
+                        images: [],
+                        charts: [
+                          { id: `${generatedId}-c6`, type: 'Trend Chart', field: 'Sentiment',         width: 'full', align: 'center', config: { field: 'Sentiment',           groupBy: 'Brand', sort: 'Descending', maxItems: 'All' } },
+                          { id: `${generatedId}-c7`, type: 'Bar Chart',   field: 'Net Sentiment Index', width: 'full', align: 'center', config: { field: 'Net Sentiment Index', groupBy: 'Brand', sort: 'Descending', maxItems: 'All' } },
+                        ]
+                      },
+                      {
+                        id: `${generatedId}-s4`,
+                        title: '4. Coverage & Reach',
+                        content: '',
+                        images: [],
+                        charts: [
+                          { id: `${generatedId}-c8`, type: 'Radar Chart',  field: 'Articles Coverage', width: 'full', align: 'center', config: { field: 'Articles Coverage',  groupBy: 'Brand', sort: 'Descending', maxItems: 'All' } },
+                          { id: `${generatedId}-c9`, type: 'Scatter Plot', field: 'Articles Coverage', width: 'full', align: 'center', config: { field: 'Articles Coverage',  groupBy: 'Brand', sort: 'Descending', maxItems: 'All' } },
+                        ]
                       }
                     ]
                   };
+                  // Append AI Blueprint section if the user described any charts
+                  const aiLines = createReportAiPrompts.split('\n').map(l => l.trim()).filter(Boolean);
+                  if (aiLines.length > 0) {
+                    const aiCharts = aiLines.map((line, i) => {
+                      const { type, field } = generateChartFromPrompt(line);
+                      return { id: `${generatedId}-ai${i}`, type, field, label: line.slice(0, 60), width: 'full', align: 'center', config: { field, groupBy: 'Brand', sort: 'Descending', maxItems: 'All' } };
+                    });
+                    newRep.sections.push({ id: `${generatedId}-s5`, title: '5. AI Blueprint Charts', content: '', images: [], charts: aiCharts });
+                  }
                   setReports(prev => [newRep, ...prev]);
                   setSelectedReport(newRep);
                   setActiveSectionIndex(0);
                   setShowCreateReportModal(false);
+                  setCreateReportAiPrompts('');
                   setNewReportForm({ title: '', type: 'Brand Analysis', priority: 'High', topic: 'All', keywords: '', brandKeywords: '', competitorKeywords: '', tags: '' });
-                }} className="p-8 space-y-6">
+                  // Persist to server so it survives refresh
+                  try {
+                    await fetch(`${API_BASE}/api/reports`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json', 'X-User-Id': user?.id || 'default' },
+                      body: JSON.stringify(newRep)
+                    });
+                  } catch (_) {}
+                }} className="flex flex-col min-h-0 flex-1">
+                  <div className="overflow-y-auto flex-1 p-8 space-y-6 custom-scrollbar">
                   <div>
                     <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 block mb-2">Report Title</label>
                     <input
@@ -11408,7 +12734,44 @@ const spec = JSON.parse(response.text);
                     />
                   </div>
 
-                  <div className="pt-6 border-t border-slate-100 flex items-center justify-end gap-3">
+                  {/* AI Chart Blueprints */}
+                  <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-5 flex flex-col gap-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Sparkles size={14} className="text-indigo-500" />
+                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-700">AI Chart Blueprints</span>
+                      </div>
+                      <span className="text-[9px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full uppercase tracking-wider">Preview — API Key Needed</span>
+                    </div>
+                    <p className="text-[10px] text-indigo-600/70 font-medium leading-relaxed">
+                      Describe charts you want included — one per line. AI will auto-select the best chart type and data field. Connect an API key in Settings for advanced generation.
+                    </p>
+                    <textarea
+                      rows={3}
+                      placeholder={"Show sentiment trend over time\nCompare share of voice as a donut chart\nDisplay total mentions as a KPI metric"}
+                      value={createReportAiPrompts}
+                      onChange={(e) => setCreateReportAiPrompts(e.target.value)}
+                      className="w-full py-3 px-4 bg-white border border-indigo-200 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-400 transition-all resize-none"
+                    />
+                    {createReportAiPrompts.trim() && (
+                      <div className="flex flex-wrap gap-2">
+                        {createReportAiPrompts.split('\n').filter(l => l.trim()).map((line, i) => {
+                          const result = generateChartFromPrompt(line);
+                          return (
+                            <div key={i} className="flex items-center gap-1.5 bg-white border border-indigo-200 rounded-full px-3 py-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0" />
+                              <span className="text-[10px] font-bold text-slate-700">{result.type}</span>
+                              <span className="text-[9px] text-slate-400">·</span>
+                              <span className="text-[9px] text-slate-500 font-medium">{result.field}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                  </div>{/* end scrollable body */}
+
+                  <div className="shrink-0 px-8 py-5 border-t border-slate-100 bg-white rounded-b-[2.5rem] flex items-center justify-end gap-3">
                     <button
                       type="button"
                       onClick={() => setShowCreateReportModal(false)}
@@ -11466,83 +12829,117 @@ const spec = JSON.parse(response.text);
           )}
 
           {/* History Modal */}
-          {showHistoryModal && (
-            <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-6 animate-in fade-in duration-300">
-              <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-2xl w-full shadow-2xl flex flex-col overflow-hidden text-white font-sans max-h-[85vh]">
-                <div className="p-6 border-b border-slate-800 flex items-center justify-between bg-slate-900/50">
+          {showHistoryModal && ReactDOM.createPortal(
+            <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[9999] flex items-center justify-center p-6 animate-in fade-in duration-300">
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-5xl w-full shadow-2xl flex flex-col overflow-hidden text-white font-sans" style={{height: '88vh'}}>
+                {/* Header */}
+                <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-900/50 shrink-0">
                   <div className="flex items-center gap-3">
                     <div className="p-2.5 bg-indigo-500/20 text-indigo-400 rounded-2xl border border-indigo-500/30">
-                      <History size={22} />
+                      <History size={20} />
                     </div>
                     <div>
-                      <h2 className="text-lg font-black tracking-tight text-white">Audit & Change History Log</h2>
-                      <p className="text-xs text-slate-400">Time-stamped audit trail ready for database synchronization</p>
+                      <h2 className="text-base font-black tracking-tight text-white">Version History</h2>
+                      <p className="text-xs text-slate-400">{changeHistory.length} version{changeHistory.length !== 1 ? 's' : ''} · Auto-saves every 2 min while editing</p>
                     </div>
                   </div>
                   <button
-                    onClick={() => setShowHistoryModal(false)}
+                    onClick={() => { setShowHistoryModal(false); setPreviewHistoryEntry(null); }}
                     className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
                   >
                     <X size={20} />
                   </button>
                 </div>
 
-                <div className="p-6 overflow-y-auto space-y-3 custom-scrollbar bg-slate-950/40 flex-1">
-                  {changeHistory.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-12 text-slate-500">
-                      <History size={28} className="mb-3 opacity-30" />
-                      <p className="text-sm font-semibold">No changes recorded yet</p>
-                      <p className="text-xs mt-1 text-slate-600">Edit document content to start building the audit trail</p>
-                    </div>
-                  ) : changeHistory.map((item) => (
-                    <div key={item.id} className="p-4 bg-slate-900/80 border border-slate-800/80 rounded-2xl flex items-start justify-between gap-4 transition-all hover:border-slate-700">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="px-2.5 py-0.5 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded-md text-[10px] font-mono font-bold uppercase tracking-wider">
-                            {item.section}
-                          </span>
-                        </div>
-                        <p className="text-sm font-semibold text-slate-200">{item.action}</p>
+                {/* Two-panel body */}
+                <div className="flex flex-1 min-h-0">
+                  {/* Left: version list */}
+                  <div className="w-72 border-r border-slate-800 overflow-y-auto flex-shrink-0 bg-slate-950/30 custom-scrollbar">
+                    {changeHistory.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-16 px-6 text-center text-slate-500">
+                        <History size={28} className="mb-3 opacity-30" />
+                        <p className="text-sm font-semibold">No versions yet</p>
+                        <p className="text-xs mt-1 text-slate-600">Edit the document to create versions</p>
                       </div>
-                      <div className="text-right shrink-0">
-                        <span className="text-xs font-mono text-slate-400">
-                          {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                        </span>
-                        <div className="text-[10px] text-slate-500 font-mono mt-0.5">
-                          {new Date(item.timestamp).toLocaleDateString()}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="p-6 border-t border-slate-800 flex items-center justify-between bg-slate-900/50">
-                  <div className="text-xs text-slate-400 flex items-center gap-2 font-mono">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                    Telemetry Log Active & Synced
+                    ) : changeHistory.map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={() => setPreviewHistoryEntry(item)}
+                        className={`w-full text-left p-4 border-b border-slate-800/60 transition-all hover:bg-slate-800/50 cursor-pointer ${previewHistoryEntry?.id === item.id ? 'bg-indigo-500/10 border-l-2 border-l-indigo-500' : ''}`}
+                      >
+                        <p className="text-xs font-semibold text-slate-200 leading-snug line-clamp-2">{item.action}</p>
+                        <p className="text-[10px] text-slate-400 font-mono mt-1.5">{new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                        <p className="text-[10px] text-slate-500 font-mono">{new Date(item.timestamp).toLocaleDateString()}</p>
+                        {item.snapshot && item.snapshot.length > 0 && (
+                          <span className="text-[9px] text-indigo-400/70 mt-1 block">{item.snapshot.length} section{item.snapshot.length !== 1 ? 's' : ''} snapshotted</span>
+                        )}
+                      </button>
+                    ))}
                   </div>
-                  <button
-                    onClick={() => {
-                      if (changeHistory.length === 0) return;
-                      const blob = new Blob([JSON.stringify(changeHistory, null, 2)], { type: 'application/json' });
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement('a');
-                      a.href = url;
-                      a.download = 'cerebro-audit-log.json';
-                      document.body.appendChild(a);
-                      a.click();
-                      document.body.removeChild(a);
-                      URL.revokeObjectURL(url);
-                    }}
-                    disabled={changeHistory.length === 0}
-                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl font-bold text-xs shadow-lg transition-all flex items-center gap-2 cursor-pointer active:scale-95"
-                  >
-                    <Database size={15} /> Export Log
-                  </button>
+
+                  {/* Right: preview panel */}
+                  <div className="flex-1 overflow-y-auto custom-scrollbar">
+                    {!previewHistoryEntry ? (
+                      <div className="flex flex-col items-center justify-center h-full text-slate-500 py-16">
+                        <History size={36} className="mb-4 opacity-20" />
+                        <p className="text-sm font-semibold">Select a version to preview</p>
+                        <p className="text-xs mt-1 text-slate-600">Click any version on the left</p>
+                      </div>
+                    ) : (
+                      <div className="p-6 space-y-4">
+                        {/* Version meta + restore button */}
+                        <div className="flex items-start justify-between gap-4 pb-4 border-b border-slate-800">
+                          <div>
+                            <p className="text-sm font-bold text-white">{previewHistoryEntry.action}</p>
+                            <p className="text-xs text-slate-400 mt-0.5 font-mono">
+                              {new Date(previewHistoryEntry.timestamp).toLocaleDateString()} at {new Date(previewHistoryEntry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                            </p>
+                          </div>
+                          {previewHistoryEntry.snapshot && previewHistoryEntry.snapshot.length > 0 ? (
+                            <button
+                              onClick={() => handleRestoreVersion(previewHistoryEntry)}
+                              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold text-xs shadow-lg transition-all flex items-center gap-2 cursor-pointer active:scale-95 shrink-0"
+                            >
+                              <RotateCcw size={13} /> Restore this version
+                            </button>
+                          ) : (
+                            <span className="text-xs text-slate-500 italic shrink-0">No content snapshot</span>
+                          )}
+                        </div>
+
+                        {/* Section previews */}
+                        {previewHistoryEntry.snapshot && previewHistoryEntry.snapshot.length > 0 ? (
+                          previewHistoryEntry.snapshot.map((section, idx) => (
+                            <div key={section.id || idx} className="p-4 bg-slate-800/50 border border-slate-700/50 rounded-2xl space-y-2">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold text-slate-200">{section.title || `Section ${idx + 1}`}</span>
+                                <span className="text-[10px] text-slate-500 font-mono">
+                                  {section.content ? `~${Math.round(section.content.replace(/<[^>]*>/g, '').length / 5)} words` : 'empty'}
+                                </span>
+                              </div>
+                              {section.content ? (
+                                <div
+                                  className="text-xs text-slate-400 leading-relaxed line-clamp-4"
+                                  dangerouslySetInnerHTML={{ __html: section.content }}
+                                />
+                              ) : (
+                                <p className="text-xs text-slate-600 italic">No content</p>
+                              )}
+                            </div>
+                          ))
+                        ) : (
+                          <div className="text-center py-12 text-slate-500">
+                            <p className="text-sm">No content snapshot for this entry</p>
+                            <p className="text-xs mt-1 text-slate-600">This was recorded before version history was enabled</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
-          )}
+          , document.body)}
 
 
 
@@ -11782,6 +13179,458 @@ const spec = JSON.parse(response.text);
           </div>
 
         </div>
+
+          {/* ── Insert Link Modal ──────────────────────────────────────────── */}
+          {showLinkModal && ReactDOM.createPortal(
+            <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-6 animate-in fade-in duration-200">
+              <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 flex flex-col gap-5">
+                <div className="flex items-center gap-3 mb-1">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-slate-900 tracking-tight">Insert Hyperlink</h3>
+                    <p className="text-[11px] text-slate-500 font-medium mt-0.5">Enter the display text and URL</p>
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-500 block mb-1.5">Display Text</label>
+                    <input
+                      type="text"
+                      value={linkModalData.text}
+                      onChange={e => setLinkModalData(d => ({ ...d, text: e.target.value, isCustomInsert: true }))}
+                      placeholder="Text to display..."
+                      className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-semibold text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all"
+                      autoFocus
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-500 block mb-1.5">URL / Address</label>
+                    <input
+                      type="url"
+                      value={linkModalData.url}
+                      onChange={e => setLinkModalData(d => ({ ...d, url: e.target.value }))}
+                      placeholder="https://..."
+                      className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-semibold text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all"
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const editor = pendingLinkEditorRef.current;
+                          const { text, url, isCustomInsert } = linkModalData;
+                          if (editor && url && url !== 'https://') {
+                            if (isCustomInsert && text) {
+                              editor.chain().focus().insertContent(`<a href="${url}">${text}</a>`).run();
+                            } else {
+                              editor.chain().focus().setLink({ href: url }).run();
+                            }
+                          }
+                          setShowLinkModal(false);
+                          pendingLinkEditorRef.current = null;
+                        }
+                        if (e.key === 'Escape') { setShowLinkModal(false); pendingLinkEditorRef.current = null; }
+                      }}
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
+                  <button
+                    onClick={() => { setShowLinkModal(false); pendingLinkEditorRef.current = null; }}
+                    className="px-5 py-2.5 bg-slate-100 text-slate-600 rounded-full font-black uppercase tracking-widest text-xs hover:bg-slate-200 transition-all"
+                  >Cancel</button>
+                  <button
+                    onClick={() => {
+                      const editor = pendingLinkEditorRef.current;
+                      const { text, url, isCustomInsert } = linkModalData;
+                      if (editor && url && url !== 'https://') {
+                        if (isCustomInsert && text) {
+                          editor.chain().focus().insertContent(`<a href="${url}">${text}</a>`).run();
+                        } else {
+                          editor.chain().focus().setLink({ href: url }).run();
+                        }
+                        showToast('Link inserted', 'success');
+                      }
+                      setShowLinkModal(false);
+                      pendingLinkEditorRef.current = null;
+                    }}
+                    className="px-6 py-2.5 bg-indigo-600 text-white rounded-full font-black uppercase tracking-widest text-xs hover:bg-indigo-700 shadow-lg shadow-indigo-200 active:scale-95 transition-all"
+                  >Insert Link</button>
+                </div>
+              </div>
+            </div>
+          , document.body)}
+
+          {/* ── @Mention / Entity Tag Modal ────────────────────────────────── */}
+          {showMentionModal && ReactDOM.createPortal(
+            <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-6 animate-in fade-in duration-200">
+              <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-8 flex flex-col gap-5">
+                <div className="flex items-center gap-3 mb-1">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0 font-black text-lg">@</div>
+                  <div>
+                    <h3 className="text-base font-black text-slate-900 tracking-tight">Insert Entity Tag</h3>
+                    <p className="text-[11px] text-slate-500 font-medium mt-0.5">Select or type a source tag</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {['Cerebro AI', 'Chief Analyst', 'Maverick Team', 'Alpha Copilot', 'Financial Hub', 'Tech Pulse', 'SEC Regulatory', 'Global Index'].map(tag => (
+                    <button
+                      key={tag}
+                      onClick={() => {
+                        const editor = pendingMentionEditorRef.current;
+                        if (editor) {
+                          editor.chain().focus().insertContent({ type: 'mention', attrs: { id: tag, label: tag } }).run();
+                          showToast(`@${tag} inserted`, 'success');
+                        }
+                        setShowMentionModal(false);
+                        pendingMentionEditorRef.current = null;
+                      }}
+                      className="px-3 py-2.5 rounded-xl text-xs font-bold bg-slate-50 hover:bg-indigo-600 hover:text-white border border-slate-200 hover:border-indigo-600 text-slate-700 transition-all active:scale-95 text-left"
+                    >@{tag}</button>
+                  ))}
+                </div>
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-500 block mb-1.5">Custom Tag</label>
+                  <div className="flex gap-2">
+                    <input
+                      id="custom-mention-input"
+                      type="text"
+                      placeholder="Type custom tag..."
+                      className="flex-1 px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-semibold text-sm outline-none focus:border-indigo-400 transition-all"
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          const val = e.target.value.trim();
+                          if (val) {
+                            const editor = pendingMentionEditorRef.current;
+                            if (editor) editor.chain().focus().insertContent({ type: 'mention', attrs: { id: val, label: val } }).run();
+                            showToast(`@${val} inserted`, 'success');
+                          }
+                          setShowMentionModal(false);
+                          pendingMentionEditorRef.current = null;
+                        }
+                        if (e.key === 'Escape') { setShowMentionModal(false); pendingMentionEditorRef.current = null; }
+                      }}
+                    />
+                    <button
+                      onClick={() => {
+                        const input = document.getElementById('custom-mention-input');
+                        const val = input?.value?.trim();
+                        if (val) {
+                          const editor = pendingMentionEditorRef.current;
+                          if (editor) editor.chain().focus().insertContent({ type: 'mention', attrs: { id: val, label: val } }).run();
+                          showToast(`@${val} inserted`, 'success');
+                        }
+                        setShowMentionModal(false);
+                        pendingMentionEditorRef.current = null;
+                      }}
+                      className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all active:scale-95"
+                    >Add</button>
+                  </div>
+                </div>
+                <button
+                  onClick={() => { setShowMentionModal(false); pendingMentionEditorRef.current = null; }}
+                  className="w-full py-2.5 bg-slate-100 text-slate-600 rounded-full font-black uppercase tracking-widest text-xs hover:bg-slate-200 transition-all"
+                >Cancel</button>
+              </div>
+            </div>
+          , document.body)}
+
+          {/* ── Section Delete Confirmation Modal ─────────────────────────── */}
+          {sectionDeleteConfirm && ReactDOM.createPortal(
+            <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-[9999] flex items-center justify-center p-6 animate-in fade-in duration-200">
+              <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-8 flex flex-col gap-6">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-red-50 border border-red-100 flex items-center justify-center text-red-500 shrink-0">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-slate-900 tracking-tight">Delete Section</h3>
+                    <p className="text-xs text-slate-500 font-medium mt-0.5">This action cannot be undone</p>
+                  </div>
+                </div>
+                <p className="text-sm text-slate-600 font-semibold leading-relaxed">
+                  Remove <span className="font-black text-slate-900">"{sectionDeleteConfirm.sec.title.replace(/^\d+\.\s*/, '')}"</span>? All content in this section will be lost.
+                </p>
+                <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
+                  <button
+                    onClick={() => setSectionDeleteConfirm(null)}
+                    className="px-6 py-2.5 bg-slate-100 text-slate-600 rounded-full font-black uppercase tracking-widest text-xs hover:bg-slate-200 transition-all"
+                  >Cancel</button>
+                  <button
+                    onClick={() => {
+                      const { idx } = sectionDeleteConfirm;
+                      const updatedSecs = selectedReport.sections.filter((_, i) => i !== idx);
+                      const updated = { ...selectedReport, sections: updatedSecs };
+                      setSelectedReport(updated);
+                      setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
+                      setActiveSectionIndex(Math.max(0, idx - 1));
+                      handleSaveReport(updated);
+                      showToast('Section deleted', 'success');
+                      setSectionDeleteConfirm(null);
+                    }}
+                    className="px-6 py-2.5 bg-red-500 text-white rounded-full font-black uppercase tracking-widest text-xs hover:bg-red-600 shadow-lg shadow-red-200 active:scale-95 transition-all"
+                  >Delete</button>
+                </div>
+              </div>
+            </div>
+          , document.body)}
+
+          {/* ── Chart Remove Confirmation Modal ───────────────────────────── */}
+          {chartRemoveConfirm && ReactDOM.createPortal(
+            <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-[9999] flex items-center justify-center p-6 animate-in fade-in duration-200">
+              <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-8 flex flex-col gap-6">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-red-50 border border-red-100 flex items-center justify-center text-red-500 shrink-0">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9l6 6M15 9l-6 6"/></svg>
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-slate-900 tracking-tight">Remove Chart</h3>
+                    <p className="text-xs text-slate-500 font-medium mt-0.5">This will remove the chart from the section</p>
+                  </div>
+                </div>
+                <p className="text-sm text-slate-600 font-semibold leading-relaxed">
+                  Remove this <span className="font-black text-slate-900">{chartRemoveConfirm.type}</span> from the document?
+                </p>
+                <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
+                  <button
+                    onClick={() => setChartRemoveConfirm(null)}
+                    className="px-6 py-2.5 bg-slate-100 text-slate-600 rounded-full font-black uppercase tracking-widest text-xs hover:bg-slate-200 transition-all"
+                  >Cancel</button>
+                  <button
+                    onClick={() => {
+                      const { sIdx, cIdx, type: removedType } = chartRemoveConfirm;
+                      const updatedSecs = [...selectedReport.sections];
+                      const updatedCharts = updatedSecs[sIdx].charts.filter((_, i) => i !== cIdx);
+                      updatedSecs[sIdx] = { ...updatedSecs[sIdx], charts: updatedCharts };
+                      const updated = { ...selectedReport, sections: updatedSecs };
+                      setSelectedReport(updated);
+                      setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
+                      recordHistory(`Deleted ${removedType} chart from Section ${sIdx + 1}`, `Section ${sIdx + 1}`);
+                      handleSaveReport(updated);
+                      showToast('Chart removed', 'success');
+                      setChartRemoveConfirm(null);
+                    }}
+                    className="px-6 py-2.5 bg-red-500 text-white rounded-full font-black uppercase tracking-widest text-xs hover:bg-red-600 shadow-lg shadow-red-200 active:scale-95 transition-all"
+                  >Remove</button>
+                </div>
+              </div>
+            </div>
+          , document.body)}
+
+          {/* ── Tags Management Modal ─────────────────────────────────────── */}
+          {showTagsModal && selectedReport && ReactDOM.createPortal(
+            <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-6 animate-in fade-in duration-200">
+              <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 flex flex-col gap-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
+                      <Tag size={18} />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-black text-slate-900 tracking-tight">Document Tags</h3>
+                      <p className="text-xs text-slate-500 font-medium mt-0.5">Add labels to organise and filter reports</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setShowTagsModal(false)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-slate-600 transition-colors"><X size={16} /></button>
+                </div>
+
+                {/* Current tags */}
+                <div className="flex flex-wrap gap-2 min-h-[40px]">
+                  {(selectedReport.tags || []).length === 0 && (
+                    <p className="text-xs text-slate-400 font-medium italic">No tags yet. Add one below.</p>
+                  )}
+                  {(selectedReport.tags || []).map((t, i) => (
+                    <span key={i} className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 border border-indigo-200 text-indigo-800 rounded-full text-xs font-bold">
+                      {t}
+                      <button
+                        onClick={() => {
+                          const newTags = (selectedReport.tags || []).filter((_, ti) => ti !== i);
+                          const updated = { ...selectedReport, tags: newTags };
+                          setSelectedReport(updated);
+                          setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
+                          recordHistory(`Removed tag "${t}" from report`, 'Tags');
+                        }}
+                        className="text-indigo-400 hover:text-red-500 transition-colors"
+                      ><X size={11} /></button>
+                    </span>
+                  ))}
+                </div>
+
+                {/* Add tag input */}
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const trimmed = tagInput.trim();
+                    if (!trimmed) return;
+                    const existing = selectedReport.tags || [];
+                    if (existing.includes(trimmed)) { showToast('Tag already exists', 'error'); return; }
+                    const newTags = [...existing, trimmed];
+                    const updated = { ...selectedReport, tags: newTags };
+                    setSelectedReport(updated);
+                    setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
+                    recordHistory(`Added tag "${trimmed}" to report`, 'Tags');
+                    setTagInput('');
+                  }}
+                  className="flex gap-2"
+                >
+                  <input
+                    type="text"
+                    value={tagInput}
+                    onChange={e => setTagInput(e.target.value)}
+                    placeholder="e.g. Brand Health, Q2, Market Entry"
+                    className="flex-1 py-3 px-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-all shadow-inner"
+                    autoFocus
+                  />
+                  <button type="submit" className="px-5 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg shadow-indigo-200 active:scale-95 transition-all">Add</button>
+                </form>
+
+                <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
+                  <button
+                    onClick={() => setShowTagsModal(false)}
+                    className="px-6 py-2.5 bg-slate-100 text-slate-600 rounded-full font-black uppercase tracking-widest text-xs hover:bg-slate-200 transition-all"
+                  >Cancel</button>
+                  <button
+                    onClick={() => {
+                      handleSaveReport(selectedReport);
+                      setShowTagsModal(false);
+                      showToast('Tags saved', 'success');
+                    }}
+                    className="px-6 py-2.5 bg-indigo-600 text-white rounded-full font-black uppercase tracking-widest text-xs hover:bg-indigo-700 shadow-lg shadow-indigo-200 active:scale-95 transition-all"
+                  >Save Tags</button>
+                </div>
+              </div>
+            </div>
+          , document.body)}
+
+          {/* ── Export to Google Docs Modal ─────────────────────────────── */}
+          {showExportDocModal && ReactDOM.createPortal(
+            <div className="fixed inset-0 bg-black/55 z-[9999] flex items-center justify-center p-6 animate-in fade-in duration-200">
+              <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-7 flex flex-col gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 shrink-0">
+                    <FileText size={18} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-slate-900 tracking-tight">Export to Google Docs</h3>
+                    <p className="text-[11px] text-slate-500 font-medium mt-0.5">{exportTargetChart?.label || 'Chart'}</p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-3">
+                  <label className={`flex items-start gap-3 cursor-pointer p-3 rounded-2xl border-2 transition-all hover:bg-slate-50 ${exportDocMode === 'new' ? 'border-blue-600 bg-blue-50/50' : 'border-slate-200'}`}>
+                    <input type="radio" name="exportDocMode" value="new" checked={exportDocMode === 'new'} onChange={() => setExportDocMode('new')} className="mt-0.5 accent-blue-600" />
+                    <div>
+                      <p className="text-sm font-black text-slate-800">Create new document</p>
+                      <p className="text-xs text-slate-500 font-medium">Opens in a new tab after export</p>
+                    </div>
+                  </label>
+                  <label className={`flex items-start gap-3 cursor-pointer p-3 rounded-2xl border-2 transition-all hover:bg-slate-50 ${exportDocMode === 'existing' ? 'border-blue-600 bg-blue-50/50' : 'border-slate-200'}`}>
+                    <input type="radio" name="exportDocMode" value="existing" checked={exportDocMode === 'existing'} onChange={() => { setExportDocMode('existing'); if (!driveDocsList.length && !driveDocsLoading) fetchDriveDocs(); }} className="mt-0.5 accent-blue-600" />
+                    <div>
+                      <p className="text-sm font-black text-slate-800">Add to existing doc</p>
+                      <p className="text-xs text-slate-500 font-medium">Choose from your Google Drive</p>
+                    </div>
+                  </label>
+                </div>
+
+                {exportDocMode === 'new' && (
+                  <div>
+                    <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-1.5">Document Name</label>
+                    <input
+                      type="text"
+                      value={exportDocName}
+                      onChange={e => setExportDocName(e.target.value)}
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 transition-all"
+                      placeholder="e.g. Q3 Brand Report"
+                      autoFocus
+                    />
+                  </div>
+                )}
+
+                {exportDocMode === 'existing' && (
+                  <div className="flex flex-col gap-2.5">
+                    {driveDocsLoading ? (
+                      <div className="flex flex-col items-center justify-center gap-3 py-10 bg-slate-50 rounded-2xl border border-slate-200">
+                        <div className="w-6 h-6 border-[3px] border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+                        <span className="text-sm text-slate-600 font-semibold">Loading your Google Docs...</span>
+                      </div>
+                    ) : driveDocsList.length === 0 ? (
+                      <div className="flex flex-col items-center gap-3 py-10 bg-slate-50 rounded-2xl border border-slate-200">
+                        <FileText size={28} className="text-slate-300" />
+                        <p className="text-sm text-slate-500 font-semibold">No documents found</p>
+                        <p className="text-xs text-slate-400 text-center px-4">Connect your Google account to browse Drive docs</p>
+                        <button onClick={() => fetchDriveDocs()} className="mt-1 px-5 py-2 bg-blue-600 text-white rounded-full text-xs font-black hover:bg-blue-700 transition-all shadow">
+                          Load from Drive
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <input
+                          type="text"
+                          value={driveDocsSearch}
+                          onChange={e => setDriveDocsSearch(e.target.value)}
+                          placeholder="Search documents..."
+                          className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all"
+                          autoFocus
+                        />
+                        <div className="max-h-52 overflow-y-auto rounded-xl border border-slate-200 divide-y divide-slate-100">
+                          {(() => {
+                            const filtered = driveDocsList.filter(d => d.name.toLowerCase().includes(driveDocsSearch.toLowerCase()));
+                            if (!filtered.length) return (
+                              <p className="text-sm text-slate-400 text-center py-5 font-medium">No documents match</p>
+                            );
+                            return filtered.map(doc => (
+                              <button
+                                key={doc.id}
+                                onClick={() => { setSelectedDriveDocId(doc.id); setSelectedDriveDocTitle(doc.name); }}
+                                className={`flex items-center gap-3 px-4 py-3 w-full text-left transition-all ${
+                                  selectedDriveDocId === doc.id
+                                    ? 'bg-blue-600'
+                                    : 'bg-white hover:bg-blue-50'
+                                }`}
+                              >
+                                <FileText size={14} className={selectedDriveDocId === doc.id ? 'text-blue-200 shrink-0' : 'text-slate-400 shrink-0'} />
+                                <span className={`text-sm font-semibold truncate leading-snug ${selectedDriveDocId === doc.id ? 'text-white' : 'text-slate-800'}`}>
+                                  {doc.name}
+                                </span>
+                                {selectedDriveDocId === doc.id && (
+                                  <div className="ml-auto w-4 h-4 rounded-full bg-white/25 flex items-center justify-center shrink-0">
+                                    <div className="w-2 h-2 rounded-full bg-white" />
+                                  </div>
+                                )}
+                              </button>
+                            ));
+                          })()}
+                        </div>
+                        {selectedDriveDocId && (
+                          <div className="flex items-center gap-2 px-1 py-1">
+                            <div className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
+                            <p className="text-xs text-slate-700 font-bold truncate">{selectedDriveDocTitle}</p>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
+                  <button
+                    onClick={() => setShowExportDocModal(false)}
+                    className="px-5 py-2.5 bg-slate-100 text-slate-600 rounded-full font-black uppercase tracking-widest text-xs hover:bg-slate-200 transition-all"
+                  >Cancel</button>
+                  <button
+                    onClick={handleExportConfirm}
+                    disabled={isExportingChart || (exportDocMode === 'existing' && !selectedDriveDocId)}
+                    className="px-6 py-2.5 bg-blue-600 text-white rounded-full font-black uppercase tracking-widest text-xs hover:bg-blue-700 shadow-lg shadow-blue-200 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {isExportingChart
+                      ? <><div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Exporting...</>
+                      : 'Export →'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          , document.body)}
+
       </div>
     );
   }
@@ -12264,325 +14113,6 @@ const spec = JSON.parse(response.text);
             ))}
           </div>
 
-          {/* ── Insert Link Modal ──────────────────────────────────────────── */}
-          {showLinkModal && (
-            <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-[200] flex items-center justify-center p-6 animate-in fade-in duration-200">
-              <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 flex flex-col gap-5">
-                <div className="flex items-center gap-3 mb-1">
-                  <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
-                  </div>
-                  <div>
-                    <h3 className="text-base font-black text-slate-900 tracking-tight">Insert Hyperlink</h3>
-                    <p className="text-[11px] text-slate-500 font-medium mt-0.5">Enter the display text and URL</p>
-                  </div>
-                </div>
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-500 block mb-1.5">Display Text</label>
-                    <input
-                      type="text"
-                      value={linkModalData.text}
-                      onChange={e => setLinkModalData(d => ({ ...d, text: e.target.value, isCustomInsert: true }))}
-                      placeholder="Text to display..."
-                      className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-semibold text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all"
-                      autoFocus
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-500 block mb-1.5">URL / Address</label>
-                    <input
-                      type="url"
-                      value={linkModalData.url}
-                      onChange={e => setLinkModalData(d => ({ ...d, url: e.target.value }))}
-                      placeholder="https://..."
-                      className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-semibold text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all"
-                      onKeyDown={e => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          const editor = pendingLinkEditorRef.current;
-                          const { text, url, isCustomInsert } = linkModalData;
-                          if (editor && url && url !== 'https://') {
-                            if (isCustomInsert && text) {
-                              editor.chain().focus().insertContent(`<a href="${url}">${text}</a>`).run();
-                            } else {
-                              editor.chain().focus().setLink({ href: url }).run();
-                            }
-                          }
-                          setShowLinkModal(false);
-                          pendingLinkEditorRef.current = null;
-                        }
-                        if (e.key === 'Escape') { setShowLinkModal(false); pendingLinkEditorRef.current = null; }
-                      }}
-                    />
-                  </div>
-                </div>
-                <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
-                  <button
-                    onClick={() => { setShowLinkModal(false); pendingLinkEditorRef.current = null; }}
-                    className="px-5 py-2.5 bg-slate-100 text-slate-600 rounded-full font-black uppercase tracking-widest text-xs hover:bg-slate-200 transition-all"
-                  >Cancel</button>
-                  <button
-                    onClick={() => {
-                      const editor = pendingLinkEditorRef.current;
-                      const { text, url, isCustomInsert } = linkModalData;
-                      if (editor && url && url !== 'https://') {
-                        if (isCustomInsert && text) {
-                          editor.chain().focus().insertContent(`<a href="${url}">${text}</a>`).run();
-                        } else {
-                          editor.chain().focus().setLink({ href: url }).run();
-                        }
-                        showToast('Link inserted', 'success');
-                      }
-                      setShowLinkModal(false);
-                      pendingLinkEditorRef.current = null;
-                    }}
-                    className="px-6 py-2.5 bg-indigo-600 text-white rounded-full font-black uppercase tracking-widest text-xs hover:bg-indigo-700 shadow-lg shadow-indigo-200 active:scale-95 transition-all"
-                  >Insert Link</button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ── @Mention / Entity Tag Modal ────────────────────────────────── */}
-          {showMentionModal && (
-            <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-[200] flex items-center justify-center p-6 animate-in fade-in duration-200">
-              <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-8 flex flex-col gap-5">
-                <div className="flex items-center gap-3 mb-1">
-                  <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0 font-black text-lg">@</div>
-                  <div>
-                    <h3 className="text-base font-black text-slate-900 tracking-tight">Insert Entity Tag</h3>
-                    <p className="text-[11px] text-slate-500 font-medium mt-0.5">Select or type a source tag</p>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  {['Cerebro AI', 'Chief Analyst', 'Maverick Team', 'Alpha Copilot', 'Financial Hub', 'Tech Pulse', 'SEC Regulatory', 'Global Index'].map(tag => (
-                    <button
-                      key={tag}
-                      onClick={() => {
-                        const editor = pendingMentionEditorRef.current;
-                        if (editor) {
-                          editor.chain().focus().insertContent({ type: 'mention', attrs: { id: tag, label: tag } }).run();
-                          showToast(`@${tag} inserted`, 'success');
-                        }
-                        setShowMentionModal(false);
-                        pendingMentionEditorRef.current = null;
-                      }}
-                      className="px-3 py-2.5 rounded-xl text-xs font-bold bg-slate-50 hover:bg-indigo-600 hover:text-white border border-slate-200 hover:border-indigo-600 text-slate-700 transition-all active:scale-95 text-left"
-                    >@{tag}</button>
-                  ))}
-                </div>
-                <div>
-                  <label className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-500 block mb-1.5">Custom Tag</label>
-                  <div className="flex gap-2">
-                    <input
-                      id="custom-mention-input"
-                      type="text"
-                      placeholder="Type custom tag..."
-                      className="flex-1 px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-semibold text-sm outline-none focus:border-indigo-400 transition-all"
-                      onKeyDown={e => {
-                        if (e.key === 'Enter') {
-                          const val = e.target.value.trim();
-                          if (val) {
-                            const editor = pendingMentionEditorRef.current;
-                            if (editor) editor.chain().focus().insertContent({ type: 'mention', attrs: { id: val, label: val } }).run();
-                            showToast(`@${val} inserted`, 'success');
-                          }
-                          setShowMentionModal(false);
-                          pendingMentionEditorRef.current = null;
-                        }
-                        if (e.key === 'Escape') { setShowMentionModal(false); pendingMentionEditorRef.current = null; }
-                      }}
-                    />
-                    <button
-                      onClick={() => {
-                        const input = document.getElementById('custom-mention-input');
-                        const val = input?.value?.trim();
-                        if (val) {
-                          const editor = pendingMentionEditorRef.current;
-                          if (editor) editor.chain().focus().insertContent({ type: 'mention', attrs: { id: val, label: val } }).run();
-                          showToast(`@${val} inserted`, 'success');
-                        }
-                        setShowMentionModal(false);
-                        pendingMentionEditorRef.current = null;
-                      }}
-                      className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all active:scale-95"
-                    >Add</button>
-                  </div>
-                </div>
-                <button
-                  onClick={() => { setShowMentionModal(false); pendingMentionEditorRef.current = null; }}
-                  className="w-full py-2.5 bg-slate-100 text-slate-600 rounded-full font-black uppercase tracking-widest text-xs hover:bg-slate-200 transition-all"
-                >Cancel</button>
-              </div>
-            </div>
-          )}
-
-          {/* ── Section Delete Confirmation Modal ─────────────────────────── */}
-          {sectionDeleteConfirm && (
-            <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-[200] flex items-center justify-center p-6 animate-in fade-in duration-200">
-              <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-8 flex flex-col gap-6">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-red-50 border border-red-100 flex items-center justify-center text-red-500 shrink-0">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
-                  </div>
-                  <div>
-                    <h3 className="text-base font-black text-slate-900 tracking-tight">Delete Section</h3>
-                    <p className="text-xs text-slate-500 font-medium mt-0.5">This action cannot be undone</p>
-                  </div>
-                </div>
-                <p className="text-sm text-slate-600 font-semibold leading-relaxed">
-                  Remove <span className="font-black text-slate-900">"{sectionDeleteConfirm.sec.title.replace(/^\d+\.\s*/, '')}"</span>? All content in this section will be lost.
-                </p>
-                <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
-                  <button
-                    onClick={() => setSectionDeleteConfirm(null)}
-                    className="px-6 py-2.5 bg-slate-100 text-slate-600 rounded-full font-black uppercase tracking-widest text-xs hover:bg-slate-200 transition-all"
-                  >Cancel</button>
-                  <button
-                    onClick={() => {
-                      const { idx } = sectionDeleteConfirm;
-                      const updatedSecs = selectedReport.sections.filter((_, i) => i !== idx);
-                      const updated = { ...selectedReport, sections: updatedSecs };
-                      setSelectedReport(updated);
-                      setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
-                      setActiveSectionIndex(Math.max(0, idx - 1));
-                      showToast('Section deleted', 'success');
-                      setSectionDeleteConfirm(null);
-                    }}
-                    className="px-6 py-2.5 bg-red-500 text-white rounded-full font-black uppercase tracking-widest text-xs hover:bg-red-600 shadow-lg shadow-red-200 active:scale-95 transition-all"
-                  >Delete</button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ── Chart Remove Confirmation Modal ───────────────────────────── */}
-          {chartRemoveConfirm && (
-            <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-[200] flex items-center justify-center p-6 animate-in fade-in duration-200">
-              <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full p-8 flex flex-col gap-6">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-red-50 border border-red-100 flex items-center justify-center text-red-500 shrink-0">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9l6 6M15 9l-6 6"/></svg>
-                  </div>
-                  <div>
-                    <h3 className="text-base font-black text-slate-900 tracking-tight">Remove Chart</h3>
-                    <p className="text-xs text-slate-500 font-medium mt-0.5">This will remove the chart from the section</p>
-                  </div>
-                </div>
-                <p className="text-sm text-slate-600 font-semibold leading-relaxed">
-                  Remove this <span className="font-black text-slate-900">{chartRemoveConfirm.type}</span> from the document?
-                </p>
-                <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
-                  <button
-                    onClick={() => setChartRemoveConfirm(null)}
-                    className="px-6 py-2.5 bg-slate-100 text-slate-600 rounded-full font-black uppercase tracking-widest text-xs hover:bg-slate-200 transition-all"
-                  >Cancel</button>
-                  <button
-                    onClick={() => {
-                      const { sIdx, cIdx, type: removedType } = chartRemoveConfirm;
-                      const updatedSecs = [...selectedReport.sections];
-                      const updatedCharts = updatedSecs[sIdx].charts.filter((_, i) => i !== cIdx);
-                      updatedSecs[sIdx] = { ...updatedSecs[sIdx], charts: updatedCharts };
-                      const updated = { ...selectedReport, sections: updatedSecs };
-                      setSelectedReport(updated);
-                      setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
-                      recordHistory(`Deleted ${removedType} chart from Section ${sIdx + 1}`, `Section ${sIdx + 1}`);
-                      handleSaveReport(updated);
-                      showToast('Chart removed', 'success');
-                      setChartRemoveConfirm(null);
-                    }}
-                    className="px-6 py-2.5 bg-red-500 text-white rounded-full font-black uppercase tracking-widest text-xs hover:bg-red-600 shadow-lg shadow-red-200 active:scale-95 transition-all"
-                  >Remove</button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ── Tags Management Modal ─────────────────────────────────────── */}
-          {showTagsModal && selectedReport && (
-            <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-[200] flex items-center justify-center p-6 animate-in fade-in duration-200">
-              <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 flex flex-col gap-6">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
-                      <Tag size={18} />
-                    </div>
-                    <div>
-                      <h3 className="text-base font-black text-slate-900 tracking-tight">Document Tags</h3>
-                      <p className="text-xs text-slate-500 font-medium mt-0.5">Add labels to organise and filter reports</p>
-                    </div>
-                  </div>
-                  <button onClick={() => setShowTagsModal(false)} className="p-2 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-slate-600 transition-colors"><X size={16} /></button>
-                </div>
-
-                {/* Current tags */}
-                <div className="flex flex-wrap gap-2 min-h-[40px]">
-                  {(selectedReport.tags || []).length === 0 && (
-                    <p className="text-xs text-slate-400 font-medium italic">No tags yet. Add one below.</p>
-                  )}
-                  {(selectedReport.tags || []).map((t, i) => (
-                    <span key={i} className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 border border-indigo-200 text-indigo-800 rounded-full text-xs font-bold">
-                      {t}
-                      <button
-                        onClick={() => {
-                          const newTags = (selectedReport.tags || []).filter((_, ti) => ti !== i);
-                          const updated = { ...selectedReport, tags: newTags };
-                          setSelectedReport(updated);
-                          setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
-                          recordHistory(`Removed tag "${t}" from report`, 'Tags');
-                        }}
-                        className="text-indigo-400 hover:text-red-500 transition-colors"
-                      ><X size={11} /></button>
-                    </span>
-                  ))}
-                </div>
-
-                {/* Add tag input */}
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    const trimmed = tagInput.trim();
-                    if (!trimmed) return;
-                    const existing = selectedReport.tags || [];
-                    if (existing.includes(trimmed)) { showToast('Tag already exists', 'error'); return; }
-                    const newTags = [...existing, trimmed];
-                    const updated = { ...selectedReport, tags: newTags };
-                    setSelectedReport(updated);
-                    setReports(prev => prev.map(r => r.id === updated.id ? updated : r));
-                    recordHistory(`Added tag "${trimmed}" to report`, 'Tags');
-                    setTagInput('');
-                  }}
-                  className="flex gap-2"
-                >
-                  <input
-                    type="text"
-                    value={tagInput}
-                    onChange={e => setTagInput(e.target.value)}
-                    placeholder="e.g. Brand Health, Q2, Market Entry"
-                    className="flex-1 py-3 px-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-all shadow-inner"
-                    autoFocus
-                  />
-                  <button type="submit" className="px-5 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg shadow-indigo-200 active:scale-95 transition-all">Add</button>
-                </form>
-
-                <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
-                  <button
-                    onClick={() => setShowTagsModal(false)}
-                    className="px-6 py-2.5 bg-slate-100 text-slate-600 rounded-full font-black uppercase tracking-widest text-xs hover:bg-slate-200 transition-all"
-                  >Cancel</button>
-                  <button
-                    onClick={() => {
-                      handleSaveReport(selectedReport);
-                      setShowTagsModal(false);
-                      showToast('Tags saved', 'success');
-                    }}
-                    className="px-6 py-2.5 bg-indigo-600 text-white rounded-full font-black uppercase tracking-widest text-xs hover:bg-indigo-700 shadow-lg shadow-indigo-200 active:scale-95 transition-all"
-                  >Save Tags</button>
-                </div>
-              </div>
-            </div>
-          )}
 
     </div>
   );

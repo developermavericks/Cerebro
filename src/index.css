@@ -3,6 +3,11 @@
 @tailwind components;
 @tailwind utilities;
 
+@keyframes indeterminate {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+
 :root {
   --font-body: "Inter", system-ui, sans-serif;
   --font-heading: "New Science", "Science Gothic", "Oxanium", "Outfit", sans-serif;
@@ -77,6 +82,17 @@
 /* Specific Card Handling */
 .dark [class*="shadow-slate-"] {
   box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5) !important;
+}
+
+.dark [class*="shadow-indigo-"],
+.dark [class*="shadow-blue-"],
+.dark [class*="shadow-purple-"],
+.dark [class*="shadow-cyan-"],
+.dark [class*="shadow-pink-"],
+.dark [class*="shadow-emerald-"],
+.dark [class*="shadow-amber-"],
+.dark [class*="shadow-teal-"] {
+  box-shadow: none !important;
 }
 
 body {

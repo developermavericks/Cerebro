@@ -7,6 +7,11 @@ const poolConfig = {
   password: process.env.DB_PASSWORD || '',
   host: process.env.DB_HOST,
   database: process.env.DB_NAME,
+  keepAlive: true,
+  keepAliveInitialDelayMillis: 10000,
+  connectionTimeoutMillis: 15000,
+  idleTimeoutMillis: 60000,
+  max: 10,
 };
 
 if (process.env.DB_PORT) {
