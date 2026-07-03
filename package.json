@@ -41,6 +41,7 @@
     "@tiptap/starter-kit": "^3.23.4",
     "@tiptap/suggestion": "^3.23.4",
     "clsx": "^2.1.1",
+    "html2canvas": "^1.4.1",
     "lowlight": "^3.3.0",
     "lucide-react": "^0.454.0",
     "react": "^19.0.0",
