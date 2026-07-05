@@ -245,6 +245,9 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
 
   const displayBrands = [...targetBrands, "Others"];
   const results = {};
+  // Track which article URLs have already been added to any sentiment bucket per brand,
+  // so the same article never appears in both Positive and Neutral (or any two buckets).
+  const articleSeenPerBrand = {};
   for (const brand of displayBrands) {
     results[brand] = {
       mentions: 0,
@@ -254,6 +257,7 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
       sentiment: { Positive: 0, Neutral: 0, Negative: 0 },
       article_samples: { Positive: [], Neutral: [], Negative: [] }
     };
+    articleSeenPerBrand[brand] = new Set();
   }
 
   let totalKeywordArticles = 0;
@@ -326,7 +330,9 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
             results[brandName].sentiment[sentCat] += 1;
             const url = article['Resolved URL'] || article['URL'] || article['link'] || '';
             const titleToCheck = title || 'No Title';
-            if (!results[brandName].article_samples[sentCat].some(s => s.title === titleToCheck || (url && s.url === url))) {
+            const articleKey = (url && url !== '') ? url : titleToCheck;
+            if (!articleSeenPerBrand[brandName].has(articleKey)) {
+              articleSeenPerBrand[brandName].add(articleKey);
               results[brandName].article_samples[sentCat].push({ title: titleToCheck, source, url, published: dateKey });
             }
           }

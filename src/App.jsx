@@ -7376,8 +7376,12 @@ ${bodyHtml}
                               {/* Export to Excel */}
                               {(() => {
                                 const exportSamples = curatedAnalysisResults.brands?.[curatedDrillBrand]?.article_samples || {};
-                                const exportAll = [...(exportSamples.Positive || []), ...(exportSamples.Neutral || []), ...(exportSamples.Negative || [])]
-                                  .sort((a, b) => new Date(b.published) - new Date(a.published));
+                                const exportAll = (() => {
+                                  const seen = new Set();
+                                  return [...(exportSamples.Positive || []), ...(exportSamples.Neutral || []), ...(exportSamples.Negative || [])]
+                                    .filter(a => { const k = (a.url && a.url !== 'N/A') ? a.url : a.title; return seen.has(k) ? false : (seen.add(k), true); })
+                                    .sort((a, b) => new Date(b.published) - new Date(a.published));
+                                })();
                                 const exportFiltered = curatedDrillSentiment === 'All' ? exportAll : (exportSamples[curatedDrillSentiment] || []).slice().sort((a, b) => new Date(b.published) - new Date(a.published));
                                 return (
                                   <button onClick={() => {
@@ -7407,9 +7411,12 @@ ${bodyHtml}
                             {(() => {
                               const ITEMS_PER_PAGE = 15;
                               const samples = curatedAnalysisResults.brands?.[curatedDrillBrand]?.article_samples || {};
-                              const raw = curatedDrillSentiment === 'All'
-                                ? [...(samples.Positive || []), ...(samples.Neutral || []), ...(samples.Negative || [])]
-                                : samples[curatedDrillSentiment] || [];
+                              const raw = (() => {
+                                if (curatedDrillSentiment !== 'All') return samples[curatedDrillSentiment] || [];
+                                const seen = new Set();
+                                return [...(samples.Positive || []), ...(samples.Neutral || []), ...(samples.Negative || [])]
+                                  .filter(a => { const k = (a.url && a.url !== 'N/A') ? a.url : a.title; return seen.has(k) ? false : (seen.add(k), true); });
+                              })();
                               // Sort descending by publish date
                               const sorted = raw.slice().sort((a, b) => new Date(b.published) - new Date(a.published));
                               // Date filter
