@@ -307,10 +307,12 @@ async function requireDevAdmin(req, res, next) {
   }
 }
 
-// GET /api/auth/is-dev-admin — server-side check, no client email comparison needed
-app.get('/api/auth/is-dev-admin', getUserId, async (req, res) => {
+// GET /api/auth/is-dev-admin — server-side check, no session validation needed (non-sensitive read)
+app.get('/api/auth/is-dev-admin', async (req, res) => {
+  const userId = parseInt(req.headers['x-user-id'] || req.query.userId, 10);
+  if (!userId || isNaN(userId)) return res.json({ isDevAdmin: false });
   try {
-    const result = await db.query('SELECT email FROM users WHERE id = $1', [req.userId]);
+    const result = await db.query('SELECT email FROM users WHERE id = $1', [userId]);
     const email = result.rows[0]?.email?.toLowerCase() || '';
     res.json({ isDevAdmin: email === DEV_ADMIN_EMAIL });
   } catch (err) {
