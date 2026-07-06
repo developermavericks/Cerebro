@@ -292,14 +292,13 @@ async function verifyAdminKey(req, res, next) {
   }
 }
 
-// Middleware: only developerteam@themavericksindia.com with role=admin
+// Middleware: only developerteam@themavericksindia.com (any role, any login method)
 const DEV_ADMIN_EMAIL = 'developerteam@themavericksindia.com';
 async function requireDevAdmin(req, res, next) {
   try {
-    const result = await db.query('SELECT email, role FROM users WHERE id = $1', [req.userId]);
+    const result = await db.query('SELECT email FROM users WHERE id = $1', [req.userId]);
     if (!result.rows.length) return res.status(403).json({ error: 'Access denied.' });
-    const { email, role } = result.rows[0];
-    if (email.toLowerCase() !== DEV_ADMIN_EMAIL || role !== 'admin') {
+    if (result.rows[0].email.toLowerCase() !== DEV_ADMIN_EMAIL) {
       return res.status(403).json({ error: 'Access denied. Dev admin only.' });
     }
     next();

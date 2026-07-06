@@ -5885,7 +5885,7 @@ ${bodyHtml}
                 {[
                   { id: 'settings', label: 'Settings', icon: Settings },
                   { id: 'help', label: 'Help & Support', icon: HelpCircle },
-                  ...(user?.email?.toLowerCase() === 'developerteam@themavericksindia.com' && user?.role === 'admin'
+                  ...(user?.email?.toLowerCase() === 'developerteam@themavericksindia.com'
                     ? [{ id: 'admin-portal', label: 'Admin Portal', icon: ShieldCheck }]
                     : [])
                 ].map(item => (
@@ -12463,7 +12463,7 @@ const spec = JSON.parse(response.text);
                       </div>
                     </div>
                   </div>
-                ) : activeTab === 'admin-portal' && user?.email?.toLowerCase() === 'developerteam@themavericksindia.com' ? (
+                ) : activeTab === 'admin-portal' && user?.email?.toLowerCase() === 'developerteam@themavericksindia.com' && user ? (
                   <div className={`w-full ${sidebarCollapsed ? 'max-w-[1850px]' : 'max-w-[1700px]'} mx-auto animate-in fade-in duration-500 pt-10 pb-12 px-2`}>
                     {/* Header */}
                     <div className="flex items-center justify-between mb-8">
