@@ -44,6 +44,9 @@ const SECTOR_TO_DB = {
   'REAL_ESTATE': 'Real Estate',
   'GOOGLE':      'Google',
   'EDUCATION':   'Education',
+  'FINTECH':     'Fintech',
+  'AUTOMOBILE':  'Automobile',
+  'MEDIA':       'Media & Entertainment',
 };
 
 const BRAND_FAMILIES = {

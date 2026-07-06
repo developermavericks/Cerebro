@@ -45,19 +45,22 @@ async function fetchPage(params, retries = 3) {
 
 // Canonical sector names used throughout the app
 const SECTOR_VARIANTS = {
-  'Tech':          ['tech', 'TECH', 'Techhh'],
-  'AI':            ['ai', 'Ai'],
-  'Healthcare':    ['healthcare', 'HealthCare', 'HEALTHCARE', 'Health'],
-  'Stock Market':  ['stock market'],
-  'Real Estate':   ['real estate'],
-  'Lifestyle':     ['lifestyle', 'LifeStyle'],
-  'Foods & Drinks':['foods and drinks', 'Foods and Drinks', 'FOODS AND DRINKS', 'Foods'],
-  'Travel':        ['travel', 'Travell'],
-  'Policies':      ['policies'],
-  'Startups':      ['startups', 'StartUp'],
-  'Consultancies': ['consultancies'],
-  'Google':        ['google', 'google 2', 'Google3'],
-  'Education':     ['education'],
+  'Tech':                  ['tech', 'TECH', 'Techhh'],
+  'AI':                    ['ai', 'Ai'],
+  'Healthcare':            ['healthcare', 'HealthCare', 'HEALTHCARE', 'Health'],
+  'Stock Market':          ['stock market'],
+  'Real Estate':           ['real estate'],
+  'Lifestyle':             ['lifestyle', 'LifeStyle'],
+  'Foods & Drinks':        ['foods and drinks', 'Foods and Drinks', 'FOODS AND DRINKS', 'Foods'],
+  'Travel':                ['travel', 'Travell'],
+  'Policies':              ['policies'],
+  'Startups':              ['startups', 'StartUp'],
+  'Consultancies':         ['consultancies'],
+  'Google':                ['google', 'google 2', 'Google3'],
+  'Education':             ['education', 'Education', 'EDUCATION'],
+  'Fintech':               ['fintech', 'FinTech', 'FINTECH', 'fin tech', 'financial technology', 'Financial Technology'],
+  'Automobile':            ['automobile', 'Automobile', 'AUTOMOBILE', 'automotive', 'Automotive', 'AUTOMOTIVE', 'auto'],
+  'Media & Entertainment': ['media and entertainment', 'Media and Entertainment', 'media & entertainment', 'Media & Entertainment', 'media', 'Media', 'MEDIA', 'entertainment', 'Entertainment'],
 };
 // Reverse map: variant (lowercased) → canonical
 const _sectorLookup = {};

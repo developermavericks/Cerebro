@@ -2941,6 +2941,12 @@ function App() {
   const [adminTickets, setAdminTickets] = useState([]);
   const [replyingTicketId, setReplyingTicketId] = useState(null);
   const [replyText, setReplyText] = useState('');
+
+  // Admin Portal state
+  const [adminPortalData, setAdminPortalData] = useState(null);
+  const [adminActivityData, setAdminActivityData] = useState([]);
+  const [adminPortalLoading, setAdminPortalLoading] = useState(false);
+  const [adminPortalTab, setAdminPortalTab] = useState('users'); // 'users' | 'activity'
   useEffect(() => {
     if (user) {
       setSettingsName(user.name?.trim() || '');
@@ -3545,6 +3551,32 @@ function App() {
     return allKeywords.size + 15;
   };
 
+  // Fire-and-forget activity logger
+  const logActivity = (action, details = '', tab = activeTab) => {
+    if (!user?.id) return;
+    fetch(`${API_BASE}/api/activity/log`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-User-Id': user.id },
+      body: JSON.stringify({ action, details, tab })
+    }).catch(() => {});
+  };
+
+  const fetchAdminPortalData = async () => {
+    if (!user?.id) return;
+    setAdminPortalLoading(true);
+    try {
+      const [portalRes, activityRes] = await Promise.all([
+        fetch(`${API_BASE}/api/admin/portal-data`, { headers: { 'X-User-Id': user.id } }),
+        fetch(`${API_BASE}/api/admin/activity`, { headers: { 'X-User-Id': user.id } })
+      ]);
+      if (portalRes.ok) setAdminPortalData(await portalRes.json());
+      if (activityRes.ok) setAdminActivityData((await activityRes.json()).logs || []);
+    } catch (err) {
+      console.error('Admin portal fetch error:', err);
+    }
+    setAdminPortalLoading(false);
+  };
+
   useEffect(() => {
     if (!selectedReport) {
       setReportTelemetryData(null);
@@ -3973,13 +4005,15 @@ ${bodyHtml}
     }
   }, [selectedBrandForDetail, user]);
 
-  const handleSendCleoMessage = (e) => {
+  const handleSendCleoMessage = async (e) => {
     if (e) e.preventDefault();
     if (!cleoInput.trim()) return;
 
     const userMsg = { sender: 'user', text: cleoInput.trim() };
+    const currentInput = cleoInput.trim();
+    const currentHistory = [...cleoMessages];
+
     setCleoMessages(prev => [...prev, userMsg]);
-    const query = cleoInput.trim().toLowerCase();
     setCleoInput('');
 
     // Auto-scroll to bottom of Cleo chat
@@ -3988,50 +4022,132 @@ ${bodyHtml}
       if (container) container.scrollTop = container.scrollHeight;
     }, 100);
 
+    // Add a typing placeholder message for Cleo
+    const typingMsg = { sender: 'cleo', text: 'Thinking...', isTyping: true };
+    setCleoMessages(prev => [...prev, typingMsg]);
+
     setTimeout(() => {
-      let replyText = "I'm here to guide you! Ask me how to search keywords, create intelligence reports, check article reach, or manage brands.";
-      
-      if (query.includes('brand') || query.includes('company') || query.includes('companies')) {
-        if (trackedBrands.length > 0) {
-          replyText = `We are currently tracking ${trackedBrands.length} active brand(s):\n${trackedBrands.map((b, i) => `${i + 1}. ${b.name} (${b.region})`).join('\n')}\n\nYou can manage them on the Brand Tracker tab.`;
-        } else {
-          replyText = "We are not tracking any active brands right now. You can add one under the \"Brand Tracker\" tab!";
-        }
-      } else if (query.includes('report') || query.includes('analysis')) {
-        if (reports.length > 0) {
-          replyText = `Here are the latest briefing reports (${reports.length} total):\n${reports.map((r, i) => `${i + 1}. ${r.title} [${r.status}]`).join('\n')}\n\nYou can access them under the "Report Analysis" tab.`;
-        } else {
-          replyText = "No reports have been created yet. You can click 'Create Report' in the \"Report Analysis\" tab!";
-        }
-      } else if (query.includes('keyword') || query.includes('search')) {
-        const allKeywords = Array.from(new Set(reports.flatMap(r => [
-          ...(r.brandKeywords || '').split(','),
-          ...(r.competitorKeywords || '').split(',')
-        ]).map(k => k.trim()).filter(Boolean)));
+      const container = document.getElementById('cleo-messages-container');
+      if (container) container.scrollTop = container.scrollHeight;
+    }, 100);
 
-        if (allKeywords.length > 0) {
-          replyText = `Our system has analyzed the following key subjects recently:\n${allKeywords.map((k, i) => `- ${k}`).join('\n')}\n\nYou can also run dynamic keyword searches in the "Keyword Search" tab.`;
-        } else {
-          replyText = "You can track keywords in the 'Keyword Search' tab. Type in any keyword and search for articles!";
-        }
-      } else if (query.includes('reach') || query.includes('article')) {
-        replyText = "Use the 'Article Reach' tab to estimate the reach of any article URL. You can check single URLs or run batch scans.";
-      } else if (query.includes('competitor')) {
-        replyText = "The 'Competitor Analysis' tab helps you compare metrics against other industry players.";
-      } else if (query.includes('settings')) {
-        replyText = "You can toggle preferences, view credentials, and customize settings under the 'Settings' tab.";
-      } else if (query.includes('hi') || query.includes('hello') || query.includes('hey')) {
-        replyText = `Hello! I am Cleo. How can I help you analyze intelligence and coordinate PR today, ${user?.name || 'Maverick'}?`;
+    try {
+      // Summarize keyword analysis results if available
+      const keywordContext = curatedAnalysisResults ? (() => {
+        const brands = curatedAnalysisResults.brands || {};
+        const summary = Object.entries(brands)
+          .filter(([k]) => k !== 'Others')
+          .map(([name, d]) => `${name}: ${d.mentions} mentions, Positive=${d.sentiment?.Positive||0}, Neutral=${d.sentiment?.Neutral||0}, Negative=${d.sentiment?.Negative||0}`)
+          .join('; ');
+        return {
+          query: targetBrandsInput,
+          sector: analysisSector,
+          dateRange: analysisStartDate && analysisEndDate ? `${analysisStartDate} to ${analysisEndDate}` : 'All time',
+          brandsSummary: summary || 'No results',
+          totalSectorArticles: curatedAnalysisResults.totalSectorArticles || 0,
+          topIndianPublications: (curatedAnalysisResults.topIndianPublications || []).slice(0, 5).map(p => `${p.name}(${p.count})`).join(', ')
+        };
+      })() : null;
+
+      // Summarize competitor analysis if available
+      const competitorContext = compAnalysisData ? {
+        comp1: comp1,
+        comp2: comp2,
+        comp1Mentions: comp1Mentions,
+        comp2Mentions: comp2Mentions,
+        comp1Sentiment: compAnalysisData.comp1Sentiment || null,
+        comp2Sentiment: compAnalysisData.comp2Sentiment || null,
+        shareOfVoice: compAnalysisData.shareOfVoice || null
+      } : null;
+
+      // Summarize current open report
+      const reportContext = selectedReport ? {
+        title: selectedReport.title,
+        type: selectedReport.type,
+        status: selectedReport.status,
+        topic: selectedReport.topic,
+        keywords: selectedReport.keywords,
+        brandKeywords: selectedReport.brand_keywords,
+        competitorKeywords: selectedReport.competitor_keywords,
+        sections: Array.isArray(selectedReport.sections)
+          ? selectedReport.sections.map(s => `${s.title}: ${s.content ? String(s.content).slice(0, 200) : '(empty)'}`)
+          : []
+      } : null;
+
+      // Summarize current brand being viewed
+      const brandContext = selectedBrandForDetail ? {
+        name: selectedBrandForDetail.name,
+        region: selectedBrandForDetail.region,
+        mentions: selectedBrandForDetail.mentions,
+        status: selectedBrandForDetail.last_status,
+        isActive: selectedBrandForDetail.is_active !== false
+      } : null;
+
+      const res = await fetch(`${API_BASE}/api/cleo/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: currentInput,
+          history: currentHistory,
+          dashboardStats: {
+            totalKeywords: calculateTotalKeywordsAnalyzed(),
+            totalReports: reports.length,
+            activeBrands: trackedBrands.length
+          },
+          activeTab,
+          keywordContext,
+          competitorContext,
+          reportContext,
+          brandContext,
+          allBrands: trackedBrands.map(b => ({ name: b.name, region: b.region, mentions: b.mentions || 0, isActive: b.is_active !== false }))
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setCleoMessages(prev => {
+          const updated = [...prev];
+          const lastIdx = updated.length - 1;
+          if (updated[lastIdx]?.isTyping) {
+            updated[lastIdx] = { sender: 'cleo', text: data.reply };
+          } else {
+            updated.push({ sender: 'cleo', text: data.reply });
+          }
+          return updated;
+        });
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        const errorMsg = errorData.error || 'Oops! I encountered an issue. Please make sure the Groq API key is correctly configured on the backend.';
+        setCleoMessages(prev => {
+          const updated = [...prev];
+          const lastIdx = updated.length - 1;
+          if (updated[lastIdx]?.isTyping) {
+            updated[lastIdx] = { sender: 'cleo', text: errorMsg };
+          } else {
+            updated.push({ sender: 'cleo', text: errorMsg });
+          }
+          return updated;
+        });
       }
+    } catch (err) {
+      console.error('Cleo API connection error:', err);
+      setCleoMessages(prev => {
+        const updated = [...prev];
+        const lastIdx = updated.length - 1;
+        if (updated[lastIdx]?.isTyping) {
+          updated[lastIdx] = { sender: 'cleo', text: 'Connection failed. Please check if the backend server is running.' };
+        } else {
+          updated.push({ sender: 'cleo', text: 'Connection failed. Please check if the backend server is running.' });
+        }
+        return updated;
+      });
+    }
 
-      setCleoMessages(prev => [...prev, { sender: 'cleo', text: replyText }]);
-      
-      // Auto-scroll again after reply
-      setTimeout(() => {
-        const container = document.getElementById('cleo-messages-container');
-        if (container) container.scrollTop = container.scrollHeight;
-      }, 100);
-    }, 800);
+    // Auto-scroll again after reply
+    setTimeout(() => {
+      const container = document.getElementById('cleo-messages-container');
+      if (container) container.scrollTop = container.scrollHeight;
+    }, 100);
   };
 
   const handleAddBrand = async (name, region) => {
@@ -4044,6 +4160,7 @@ ${bodyHtml}
       });
       if (res.ok) {
         await fetchTrackedBrands();
+        logActivity('brand_added', name.trim(), 'brand-tracker');
         setNewBrandName('');
         setShowAddBrandModal(false);
         // Trigger immediate fetch for new brand, then refresh brand data
@@ -4350,6 +4467,14 @@ ${bodyHtml}
     }
     if (activeTab === 'help') {
       fetchSupportTickets();
+    }
+    if (activeTab === 'admin-portal') {
+      fetchAdminPortalData();
+    }
+    // Log tab visit for activity tracking (skip auth/landing tabs)
+    const trackableTabs = ['dashboard','keyword-search','brand-tracker','competitor-analysis','report-analysis','article-reach','settings'];
+    if (user?.id && trackableTabs.includes(activeTab)) {
+      logActivity('tab_visit', activeTab, activeTab);
     }
   }, [activeTab, user, userAdminKey]);
 
@@ -4698,6 +4823,7 @@ ${bodyHtml}
       if (res.ok) {
         const data = await res.json();
         setCuratedAnalysisResults(data);
+        logActivity('keyword_search', `brands:${targetBrandsInput} sector:${analysisSector}`, 'keyword-search');
         const analyzedBrands = Object.keys(data.brands || {});
         if (analyzedBrands.length > 0) setCuratedDrillBrand(analyzedBrands[0]);
         const today = new Date().toDateString();
@@ -4963,6 +5089,7 @@ ${bodyHtml}
           localStorage.setItem('cerebro_user', JSON.stringify(data.user));
           localStorage.setItem('cerebro_active_tab', 'dashboard');
           setActiveTab('dashboard');
+          fetch(`${API_BASE}/api/activity/log`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-User-Id': data.user.id }, body: JSON.stringify({ action: 'login', details: `google:${data.user.email}`, tab: 'auth' }) }).catch(() => {});
           const tabId = sessionStorage.getItem('cerebro_tab_id') || Math.random().toString(36).substring(2);
           localStorage.setItem('cerebro_active_tab_id', tabId);
           const claimChannel = new BroadcastChannel('cerebro_session_channel');
@@ -5006,6 +5133,7 @@ ${bodyHtml}
         localStorage.setItem('cerebro_user', JSON.stringify(data.user));
         localStorage.setItem('cerebro_active_tab', 'dashboard');
         setActiveTab('dashboard');
+        fetch(`${API_BASE}/api/activity/log`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-User-Id': data.user.id }, body: JSON.stringify({ action: 'login', details: `email:${data.user.email}`, tab: 'auth' }) }).catch(() => {});
         const tabId = sessionStorage.getItem('cerebro_tab_id') || Math.random().toString(36).substring(2);
         localStorage.setItem('cerebro_active_tab_id', tabId);
 
@@ -5757,6 +5885,9 @@ ${bodyHtml}
                 {[
                   { id: 'settings', label: 'Settings', icon: Settings },
                   { id: 'help', label: 'Help & Support', icon: HelpCircle },
+                  ...(user?.email?.toLowerCase() === 'developerteam@themavericksindia.com' && user?.role === 'admin'
+                    ? [{ id: 'admin-portal', label: 'Admin Portal', icon: ShieldCheck }]
+                    : [])
                 ].map(item => (
                   <button
                     key={item.id}
@@ -6512,6 +6643,9 @@ ${bodyHtml}
                                 { value: 'REAL_ESTATE',  label: 'Real Estate' },
                                 { value: 'GOOGLE',       label: 'Google' },
                                 { value: 'EDUCATION',    label: 'Education' },
+                                { value: 'FINTECH',      label: 'Fintech' },
+                                { value: 'AUTOMOBILE',   label: 'Automobile' },
+                                { value: 'MEDIA',        label: 'Media & Entertainment' },
                               ].map(({ value, label }) => (
                                 <option key={value} value={value} className={darkMode ? 'bg-[#151f32] text-white' : 'bg-white text-slate-800'}>{label}</option>
                               ))}
@@ -10762,8 +10896,9 @@ ${bodyHtml}
                                             <option value="EDUCATION">Education & Academia</option>
                                             <option value="ENERGY">Energy & Renewables</option>
                                             <option value="RETAIL">Retail & E-Commerce</option>
-                                            <option value="MEDIA">Media & Journalism</option>
-                                            <option value="AUTOMOTIVE">Automotive & EV</option>
+                                            <option value="MEDIA">Media & Entertainment</option>
+                                            <option value="AUTOMOBILE">Automobile</option>
+                                            <option value="FINTECH">Fintech</option>
                                           </select>
                                         </div>
                                         <div>
@@ -11243,7 +11378,21 @@ ${bodyHtml}
                               ) : (
                                 /* Build with AI Tab Content */
                                 <div className="space-y-6">
-                                  {/* Info Box */}
+                                  {/* Coming Soon Banner */}
+                                  <div className="flex flex-col items-center justify-center gap-4 py-10 px-4 text-center">
+                                    <div className="w-14 h-14 rounded-2xl bg-indigo-100 flex items-center justify-center">
+                                      <Sparkles size={26} className="text-indigo-400" />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                      <span className="inline-block px-3 py-1 bg-amber-100 text-amber-700 text-[9px] font-black uppercase tracking-widest rounded-full">Coming Soon</span>
+                                      <h3 className="text-sm font-black text-slate-800">AI Chart Builder</h3>
+                                      <p className="text-[11px] text-slate-500 font-medium leading-relaxed max-w-[220px]">
+                                        Describe a chart in plain English and AI will build it automatically from your data. API integration in progress.
+                                      </p>
+                                    </div>
+                                  </div>
+                                  {/* Hidden — logic preserved for future API key integration */}
+                                  <div className="hidden">
                                   <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 text-[11px] text-indigo-900 leading-relaxed space-y-1.5 shadow-sm">
                                     <div className="flex items-center gap-2 font-black uppercase tracking-wider text-[10px] text-indigo-700">
                                       <Sparkles size={14} className="animate-pulse" />
@@ -11356,7 +11505,7 @@ ${bodyHtml}
                                           Embed Chart
                                         </button>
                                       </div>
-                                      
+
                                       <p className="text-[10px] text-slate-500 font-medium leading-relaxed italic">
                                         "{generatedAiChart.reasoning}"
                                       </p>
@@ -11375,6 +11524,7 @@ const spec = JSON.parse(response.text);
                                       </div>
                                     </div>
                                   )}
+                                  </div>{/* end hidden */}
                                 </div>
                               )}
                             </div>
@@ -11434,13 +11584,12 @@ const spec = JSON.parse(response.text);
                             </div>
                           </div>
                           <div className="flex items-center gap-3">
-                            {/* Add Chart with AI */}
-                            <button
-                              onClick={() => { setShowAiChartPanel(true); setAiChartPanelResult(null); setAiChartPanelPrompt(''); }}
-                              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg shadow-indigo-600/20"
-                            >
-                              <Sparkles size={13} /> Add Chart with AI
-                            </button>
+                            {/* Add Chart with AI — Coming Soon */}
+                            <div className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-400 rounded-xl text-xs font-black uppercase tracking-widest cursor-not-allowed select-none border border-slate-200">
+                              <Sparkles size={13} />
+                              <span>Add Chart with AI</span>
+                              <span className="ml-1 px-1.5 py-0.5 bg-amber-100 text-amber-600 text-[8px] font-black uppercase tracking-wider rounded-full">Coming Soon</span>
+                            </div>
                             {currentExportDoc && (
                               <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-400 text-xs font-bold">
                                 <FileText size={13} />
@@ -12314,6 +12463,142 @@ const spec = JSON.parse(response.text);
                       </div>
                     </div>
                   </div>
+                ) : activeTab === 'admin-portal' && user?.email?.toLowerCase() === 'developerteam@themavericksindia.com' ? (
+                  <div className={`w-full ${sidebarCollapsed ? 'max-w-[1850px]' : 'max-w-[1700px]'} mx-auto animate-in fade-in duration-500 pt-10 pb-12 px-2`}>
+                    {/* Header */}
+                    <div className="flex items-center justify-between mb-8">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-200">
+                          <ShieldCheck size={22} className="text-white" />
+                        </div>
+                        <div>
+                          <h1 className={`text-3xl font-black tracking-tight ${darkMode ? 'text-white' : 'text-slate-900'}`}>Admin Portal</h1>
+                          <p className={`text-xs font-bold uppercase tracking-widest mt-0.5 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>developerteam@themavericksindia.com</p>
+                        </div>
+                      </div>
+                      <button onClick={fetchAdminPortalData} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-700 transition-all">
+                        <RotateCcw size={13} className={adminPortalLoading ? 'animate-spin' : ''} /> Refresh
+                      </button>
+                    </div>
+
+                    {adminPortalLoading && !adminPortalData ? (
+                      <div className="flex items-center justify-center py-24">
+                        <div className="w-8 h-8 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
+                      </div>
+                    ) : (
+                      <>
+                        {/* Stats Row */}
+                        {adminPortalData?.stats && (
+                          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                            {[
+                              { label: 'Total Users', value: adminPortalData.stats.total_users, color: 'indigo' },
+                              { label: 'Articles in DB', value: Number(adminPortalData.stats.total_articles).toLocaleString('en-IN'), color: 'emerald' },
+                              { label: 'Total Reports', value: adminPortalData.stats.total_reports, color: 'violet' },
+                              { label: 'Active Brands', value: adminPortalData.stats.active_brands, color: 'amber' },
+                            ].map(stat => (
+                              <div key={stat.label} className={`rounded-2xl p-5 border ${darkMode ? 'bg-white/5 border-white/10' : 'bg-white border-slate-200'} shadow-sm`}>
+                                <p className={`text-[10px] font-black uppercase tracking-widest mb-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{stat.label}</p>
+                                <p className={`text-3xl font-black ${darkMode ? 'text-white' : 'text-slate-900'}`}>{stat.value}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Tab Switcher */}
+                        <div className={`flex gap-1 p-1 rounded-2xl mb-6 w-fit ${darkMode ? 'bg-white/5' : 'bg-slate-100'}`}>
+                          {[{ id: 'users', label: 'Users' }, { id: 'activity', label: 'Activity Log' }].map(t => (
+                            <button key={t.id} onClick={() => setAdminPortalTab(t.id)}
+                              className={`px-5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${adminPortalTab === t.id
+                                ? 'bg-indigo-600 text-white shadow'
+                                : (darkMode ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-900')}`}>
+                              {t.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Users Table */}
+                        {adminPortalTab === 'users' && (
+                          <div className={`rounded-2xl border overflow-hidden ${darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'} shadow-sm`}>
+                            <div className={`px-6 py-4 border-b ${darkMode ? 'border-white/10' : 'border-slate-100'} flex items-center justify-between`}>
+                              <span className={`text-xs font-black uppercase tracking-widest ${darkMode ? 'text-white' : 'text-slate-900'}`}>All Users — {adminPortalData?.users?.length || 0}</span>
+                            </div>
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-xs">
+                                <thead>
+                                  <tr className={`border-b ${darkMode ? 'border-white/5 text-slate-400' : 'border-slate-100 text-slate-500'}`}>
+                                    {['Name', 'Email', 'Role', 'Joined', 'Last Active', 'IP Address', 'Brands', 'Reports'].map(h => (
+                                      <th key={h} className="text-left px-5 py-3 font-black uppercase tracking-wider text-[10px]">{h}</th>
+                                    ))}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {(adminPortalData?.users || []).map((u, i) => (
+                                    <tr key={u.id} className={`border-b transition-colors ${darkMode ? 'border-white/5 hover:bg-white/5' : 'border-slate-50 hover:bg-slate-50'}`}>
+                                      <td className={`px-5 py-3.5 font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{u.name || '—'}</td>
+                                      <td className={`px-5 py-3.5 font-mono text-[11px] ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{u.email}</td>
+                                      <td className="px-5 py-3.5">
+                                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${u.role === 'admin' ? 'bg-indigo-100 text-indigo-700' : u.role === 'employee' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{u.role || 'individual'}</span>
+                                      </td>
+                                      <td className={`px-5 py-3.5 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{u.created_at ? new Date(u.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</td>
+                                      <td className={`px-5 py-3.5 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{u.last_activity ? new Date(u.last_activity).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'Never'}</td>
+                                      <td className={`px-5 py-3.5 font-mono text-[11px] ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{u.ip_address || '—'}</td>
+                                      <td className={`px-5 py-3.5 font-black text-center ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>{u.brand_count}</td>
+                                      <td className={`px-5 py-3.5 font-black text-center ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>{u.report_count}</td>
+                                    </tr>
+                                  ))}
+                                  {(!adminPortalData?.users?.length) && (
+                                    <tr><td colSpan={8} className="px-5 py-8 text-center text-slate-400 font-medium text-xs">No users found</td></tr>
+                                  )}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Activity Log */}
+                        {adminPortalTab === 'activity' && (
+                          <div className={`rounded-2xl border overflow-hidden ${darkMode ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'} shadow-sm`}>
+                            <div className={`px-6 py-4 border-b ${darkMode ? 'border-white/10' : 'border-slate-100'} flex items-center justify-between`}>
+                              <span className={`text-xs font-black uppercase tracking-widest ${darkMode ? 'text-white' : 'text-slate-900'}`}>Recent Activity — {adminActivityData.length} events</span>
+                            </div>
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-xs">
+                                <thead>
+                                  <tr className={`border-b ${darkMode ? 'border-white/5 text-slate-400' : 'border-slate-100 text-slate-500'}`}>
+                                    {['Time', 'User', 'Email', 'Action', 'Details', 'Tab'].map(h => (
+                                      <th key={h} className="text-left px-5 py-3 font-black uppercase tracking-wider text-[10px]">{h}</th>
+                                    ))}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {adminActivityData.map((log, i) => (
+                                    <tr key={log.id} className={`border-b transition-colors ${darkMode ? 'border-white/5 hover:bg-white/5' : 'border-slate-50 hover:bg-slate-50'}`}>
+                                      <td className={`px-5 py-3 whitespace-nowrap ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{new Date(log.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
+                                      <td className={`px-5 py-3 font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{log.user_name || '—'}</td>
+                                      <td className={`px-5 py-3 font-mono text-[11px] ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{log.user_email}</td>
+                                      <td className="px-5 py-3">
+                                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                                          log.action === 'login' ? 'bg-emerald-100 text-emerald-700' :
+                                          log.action === 'keyword_search' ? 'bg-indigo-100 text-indigo-700' :
+                                          log.action === 'report_created' ? 'bg-violet-100 text-violet-700' :
+                                          log.action === 'brand_added' ? 'bg-amber-100 text-amber-700' :
+                                          'bg-slate-100 text-slate-600'}`}>{log.action}</span>
+                                      </td>
+                                      <td className={`px-5 py-3 max-w-xs truncate ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{log.details || '—'}</td>
+                                      <td className={`px-5 py-3 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{log.tab || '—'}</td>
+                                    </tr>
+                                  ))}
+                                  {!adminActivityData.length && (
+                                    <tr><td colSpan={6} className="px-5 py-8 text-center text-slate-400 font-medium text-xs">No activity logged yet — will populate as users use the app</td></tr>
+                                  )}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
                 ) : (
                   <div className="bg-white border-2 border-dashed border-slate-200 rounded-[2.5rem] h-full flex flex-col items-center justify-center text-center p-12">
                     <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-6">
@@ -12642,6 +12927,7 @@ const spec = JSON.parse(response.text);
                   setActiveSectionIndex(0);
                   setShowCreateReportModal(false);
                   setCreateReportAiPrompts('');
+                  logActivity('report_created', newRep.title, 'report-analysis');
                   setNewReportForm({ title: '', type: 'Brand Analysis', priority: 'High', topic: 'All', keywords: '', brandKeywords: '', competitorKeywords: '', tags: '' });
                   // Persist to server so it survives refresh
                   try {
@@ -12732,8 +13018,9 @@ const spec = JSON.parse(response.text);
                       <option value="EDUCATION">Education & Academia</option>
                       <option value="ENERGY">Energy & Renewables</option>
                       <option value="RETAIL">Retail & E-Commerce</option>
-                      <option value="MEDIA">Media & Journalism</option>
-                      <option value="AUTOMOTIVE">Automotive & EV</option>
+                      <option value="MEDIA">Media & Entertainment</option>
+                      <option value="AUTOMOBILE">Automobile</option>
+                      <option value="FINTECH">Fintech</option>
                     </select>
                   </div>
 
@@ -12748,18 +13035,20 @@ const spec = JSON.parse(response.text);
                     />
                   </div>
 
-                  {/* AI Chart Blueprints */}
-                  <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-5 flex flex-col gap-3">
+                  {/* AI Chart Blueprints — Coming Soon */}
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5 flex flex-col gap-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <Sparkles size={14} className="text-indigo-500" />
-                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-700">AI Chart Blueprints</span>
+                        <Sparkles size={14} className="text-slate-400" />
+                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">AI Chart Blueprints</span>
                       </div>
-                      <span className="text-[9px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full uppercase tracking-wider">Preview — API Key Needed</span>
+                      <span className="text-[9px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full uppercase tracking-wider">Coming Soon</span>
                     </div>
-                    <p className="text-[10px] text-indigo-600/70 font-medium leading-relaxed">
-                      Describe charts you want included — one per line. AI will auto-select the best chart type and data field. Connect an API key in Settings for advanced generation.
+                    <p className="text-[10px] text-slate-400 font-medium leading-relaxed">
+                      Describe charts in plain English and AI will auto-select chart types and data fields. API integration in progress — available soon.
                     </p>
+                    {/* Hidden — logic preserved for API key integration */}
+                    <div className="hidden">
                     <textarea
                       rows={3}
                       placeholder={"Show sentiment trend over time\nCompare share of voice as a donut chart\nDisplay total mentions as a KPI metric"}
@@ -12782,6 +13071,7 @@ const spec = JSON.parse(response.text);
                         })}
                       </div>
                     )}
+                    </div>{/* end hidden */}
                   </div>
                   </div>{/* end scrollable body */}
 
@@ -13133,7 +13423,15 @@ const spec = JSON.parse(response.text);
                                 : 'bg-slate-50 text-slate-800 rounded-tl-none border border-slate-100')
                         }`}
                       >
-                        <p className="whitespace-pre-wrap">{msg.text}</p>
+                        {msg.isTyping ? (
+                          <div className="flex gap-1.5 items-center py-1 px-0.5">
+                            <span className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce [animation-duration:0.8s]"></span>
+                            <span className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce [animation-duration:0.8s] [animation-delay:0.2s]"></span>
+                            <span className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce [animation-duration:0.8s] [animation-delay:0.4s]"></span>
+                          </div>
+                        ) : (
+                          <p className="whitespace-pre-wrap">{msg.text}</p>
+                        )}
                       </div>
                     </div>
                   ))}

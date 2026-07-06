@@ -11,11 +11,13 @@ const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
+const { Groq } = require('groq-sdk');
 
 const upload = multer({ dest: path.join(__dirname, 'uploads/') });
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY || '' });
 
 // Security Middleware: Cache-Control header setup to prevent back-button caching
 app.use((req, res, next) => {
@@ -289,6 +291,81 @@ async function verifyAdminKey(req, res, next) {
     res.status(500).json({ error: 'Internal server error' });
   }
 }
+
+// Middleware: only developerteam@themavericksindia.com with role=admin
+const DEV_ADMIN_EMAIL = 'developerteam@themavericksindia.com';
+async function requireDevAdmin(req, res, next) {
+  try {
+    const result = await db.query('SELECT email, role FROM users WHERE id = $1', [req.userId]);
+    if (!result.rows.length) return res.status(403).json({ error: 'Access denied.' });
+    const { email, role } = result.rows[0];
+    if (email.toLowerCase() !== DEV_ADMIN_EMAIL || role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied. Dev admin only.' });
+    }
+    next();
+  } catch (err) {
+    res.status(500).json({ error: 'Auth check failed.' });
+  }
+}
+
+// POST /api/activity/log — log a user action (any authenticated user, fire-and-forget)
+app.post('/api/activity/log', getUserId, async (req, res) => {
+  const { action, details, tab } = req.body;
+  if (!action) return res.status(400).json({ error: 'action required' });
+  try {
+    await db.query(
+      'INSERT INTO activity_logs (user_id, action, details, tab) VALUES ($1, $2, $3, $4)',
+      [req.userId, action, details || null, tab || null]
+    );
+    res.status(200).json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/admin/portal-data — all users + system stats (dev admin only)
+app.get('/api/admin/portal-data', getUserId, requireDevAdmin, async (req, res) => {
+  try {
+    const [usersRes, statsRes] = await Promise.all([
+      db.query(`
+        SELECT u.id, u.name, u.email, u.role, u.created_at,
+               s.last_activity, s.ip_address,
+               (SELECT COUNT(*) FROM companies WHERE user_id = u.id)::int AS brand_count,
+               (SELECT COUNT(*) FROM reports WHERE user_id = u.id)::int AS report_count
+        FROM users u
+        LEFT JOIN user_sessions s ON s.user_id = u.id
+        ORDER BY u.created_at DESC
+      `),
+      db.query(`
+        SELECT
+          (SELECT COUNT(*) FROM users)::int AS total_users,
+          (SELECT COUNT(*) FROM nexus_articles)::int AS total_articles,
+          (SELECT COUNT(*) FROM reports)::int AS total_reports,
+          (SELECT COUNT(*) FROM companies WHERE is_active = true OR is_active IS NULL)::int AS active_brands
+      `)
+    ]);
+    res.json({ users: usersRes.rows, stats: statsRes.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/admin/activity — recent activity logs (dev admin only)
+app.get('/api/admin/activity', getUserId, requireDevAdmin, async (req, res) => {
+  try {
+    const result = await db.query(`
+      SELECT al.id, al.action, al.details, al.tab, al.created_at,
+             u.name AS user_name, u.email AS user_email
+      FROM activity_logs al
+      JOIN users u ON u.id = al.user_id
+      ORDER BY al.created_at DESC
+      LIMIT 200
+    `);
+    res.json({ logs: result.rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // Get all license keys (Admin only)
 app.get('/api/admin/license-keys', getUserId, verifyAdminKey, async (req, res) => {
@@ -1467,6 +1544,176 @@ const BatchProcessor = require('./reach_lens/BatchProcessor');
 
 app.post('/api/analyze', analyzeUrl);
 
+// --- Cleo AI Chatbot Endpoint ---
+app.post('/api/cleo/chat', getUserId, async (req, res) => {
+  const { message, history, dashboardStats, activeTab, keywordContext, competitorContext, reportContext, brandContext } = req.body;
+  if (!message || !message.trim()) {
+    return res.status(400).json({ error: 'Message content is required.' });
+  }
+
+  try {
+    // 1. Fetch all tracked brands with sentiment breakdown
+    const companiesRes = await db.query(
+      'SELECT id, name, region, mentions, last_status, is_active FROM companies WHERE user_id = $1 ORDER BY mentions DESC',
+      [req.userId]
+    );
+    const companies = companiesRes.rows;
+
+    // 2. Fetch recent articles per brand with sentiment
+    const articlesRes = await db.query(
+      `SELECT a.title, a.source, a.sentiment, a.published_at, c.name as company_name
+       FROM articles a
+       JOIN companies c ON a.company_id = c.id
+       WHERE c.user_id = $1
+       ORDER BY a.created_at DESC LIMIT 30`,
+      [req.userId]
+    );
+    const articles = articlesRes.rows;
+
+    // 3. Fetch all reports with full content
+    const reportsRes = await db.query(
+      'SELECT id, title, type, status, topic, keywords, brand_keywords, competitor_keywords, summary, sections, created_at FROM reports WHERE user_id = $1 ORDER BY created_at DESC LIMIT 10',
+      [req.userId]
+    );
+    const reports = reportsRes.rows;
+
+    // 4. Sentiment breakdown per brand from articles
+    const brandSentiment = {};
+    for (const a of articles) {
+      if (!brandSentiment[a.company_name]) brandSentiment[a.company_name] = { Positive: 0, Neutral: 0, Negative: 0 };
+      if (a.sentiment) brandSentiment[a.company_name][a.sentiment] = (brandSentiment[a.company_name][a.sentiment] || 0) + 1;
+    }
+
+    // 5. Build tab context description
+    const tabDescriptions = {
+      'dashboard': 'Dashboard — overview of all metrics and activity',
+      'keyword-search': 'Keyword Analysis — searching and analyzing keyword exposure across news corpus',
+      'brand-tracker': 'Brand Tracker — monitoring tracked brands for mentions and sentiment',
+      'competitor-analysis': 'Competitor Analysis — comparing two brands head-to-head',
+      'report-analysis': 'Report Analysis — viewing and editing intelligence reports',
+      'article-reach': 'Article Reach — analyzing publication authority and reach scores',
+      'settings': 'Settings — account and platform configuration',
+      'help': 'Help — documentation and platform guide'
+    };
+    const currentTabDesc = activeTab ? (tabDescriptions[activeTab] || activeTab) : 'Unknown tab';
+
+    // 6. Build keyword analysis section
+    let keywordSection = 'No keyword analysis has been run in this session.';
+    if (keywordContext) {
+      keywordSection = `Last keyword search: Brands/Keywords="${keywordContext.query}", Sector=${keywordContext.sector}, Date Range=${keywordContext.dateRange}, Total Sector Articles=${keywordContext.totalSectorArticles}
+Results: ${keywordContext.brandsSummary}
+Top Indian Publications: ${keywordContext.topIndianPublications || 'None'}`;
+    }
+
+    // 7. Build competitor analysis section
+    let competitorSection = 'No competitor analysis has been run in this session.';
+    if (competitorContext) {
+      competitorSection = `Comparing: "${competitorContext.comp1}" vs "${competitorContext.comp2}"
+${competitorContext.comp1}: ${competitorContext.comp1Mentions} mentions
+${competitorContext.comp2}: ${competitorContext.comp2Mentions} mentions
+${competitorContext.shareOfVoice ? `Share of Voice: ${JSON.stringify(competitorContext.shareOfVoice)}` : ''}`;
+    }
+
+    // 8. Build current report section
+    let reportSection = 'No report is currently open.';
+    if (reportContext) {
+      reportSection = `Currently viewing report: "${reportContext.title}" (Type: ${reportContext.type}, Status: ${reportContext.status}, Topic: ${reportContext.topic || 'N/A'})
+Brand Keywords: ${reportContext.brandKeywords || 'N/A'} | Competitor Keywords: ${reportContext.competitorKeywords || 'N/A'}
+Sections: ${reportContext.sections?.length > 0 ? reportContext.sections.join(' | ') : 'No sections'}`;
+    }
+
+    // 9. Build brand detail section
+    let brandDetailSection = 'No brand is currently selected in Brand Tracker.';
+    if (brandContext) {
+      const sent = brandSentiment[brandContext.name];
+      brandDetailSection = `Currently viewing brand: "${brandContext.name}" (Region: ${brandContext.region}, Total Mentions: ${brandContext.mentions}, Status: ${brandContext.status}, Tracking: ${brandContext.isActive ? 'Active' : 'Paused'})
+Sentiment from recent articles: Positive=${sent?.Positive||0}, Neutral=${sent?.Neutral||0}, Negative=${sent?.Negative||0}`;
+    }
+
+    // 10. All reports summary
+    const reportsSummary = reports.length > 0
+      ? reports.map(r => `"${r.title}" (${r.type}, ${r.status}, Topic: ${r.topic || 'N/A'}, Keywords: ${r.brand_keywords || r.keywords || 'N/A'})`).join('\n  ')
+      : 'No reports created yet.';
+
+    // 11. All brands summary
+    const brandsSummary = companies.length > 0
+      ? companies.map(c => {
+          const sent = brandSentiment[c.name];
+          return `${c.name} (${c.region}, Mentions: ${c.mentions||0}, ${c.is_active !== false ? 'Active' : 'Paused'}, Pos=${sent?.Positive||0}/Neu=${sent?.Neutral||0}/Neg=${sent?.Negative||0})`;
+        }).join('\n  ')
+      : 'No brands tracked yet.';
+
+    // 12. Construct full system prompt
+    const systemMessage = {
+      role: 'system',
+      content: `You are Cleo, an autonomous PR and brand intelligence assistant for the Cerebro platform. You have full visibility into the user's workspace and can answer any question about their data, activity, and platform features.
+
+=== USER'S CURRENT LOCATION ===
+Active Tab: ${currentTabDesc}
+
+=== DASHBOARD STATS ===
+- Keywords Tracked: ${dashboardStats?.totalKeywords ?? 0}
+- Reports Created: ${dashboardStats?.totalReports ?? 0}
+- Active Brands: ${dashboardStats?.activeBrands ?? 0}
+
+=== ALL TRACKED BRANDS ===
+  ${brandsSummary}
+
+=== CURRENT BRAND DETAIL VIEW ===
+${brandDetailSection}
+
+=== KEYWORD ANALYSIS (current session) ===
+${keywordSection}
+
+=== COMPETITOR ANALYSIS (current session) ===
+${competitorSection}
+
+=== CURRENT OPEN REPORT ===
+${reportSection}
+
+=== ALL REPORTS (latest 10) ===
+  ${reportsSummary}
+
+=== RECENT BRAND ARTICLES (last 30) ===
+${articles.length > 0 ? articles.slice(0,20).map(a => `- "${a.title}" | Source: ${a.source} | Sentiment: ${a.sentiment} | Brand: ${a.company_name} | Date: ${a.published_at||'N/A'}`).join('\n') : 'No articles found.'}
+
+=== INSTRUCTIONS ===
+1. Answer any question about the user's workspace using the data above — brands, articles, reports, keyword analysis, competitor analysis, or platform navigation.
+2. Be concise, direct, and professional. Use bullet points for data-heavy answers.
+3. If asked about current tab activity, reference the Active Tab above.
+4. If asked how to do something in the app, give clear step-by-step guidance (e.g. "Go to Brand Tracker tab → click Add Brand").
+5. If asked about sentiment, mention counts, or coverage — pull from the live data above.
+6. Keep tone slightly witty, highly competent, and encouraging.
+7. If data is missing or empty, tell the user how to generate it (run a keyword search, add a brand, create a report).`
+    };
+
+    // 13. Build messages array
+    const messages = [systemMessage];
+    if (Array.isArray(history)) {
+      const recentHistory = history.slice(-10);
+      for (const h of recentHistory) {
+        if (h.isTyping) continue;
+        messages.push({ role: h.sender === 'user' ? 'user' : 'assistant', content: h.text });
+      }
+    }
+    messages.push({ role: 'user', content: message.trim() });
+
+    // 14. Call Groq API
+    const completion = await groq.chat.completions.create({
+      messages,
+      model: 'llama-3.1-8b-instant',
+      temperature: 0.7,
+      max_tokens: 700
+    });
+
+    const reply = completion.choices[0]?.message?.content || "I couldn't generate a response. Please try again.";
+    res.json({ reply });
+  } catch (err) {
+    console.error('[Cleo Chat Error]:', err);
+    res.status(500).json({ error: 'Failed to communicate with Cleo AI: ' + err.message });
+  }
+});
+
 app.post('/api/upload-sheet', upload.single('sheet'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded' });
@@ -1866,4 +2113,6 @@ if (process.env.NODE_ENV === 'production') {
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
+
+// Nodemon trigger reload
 
