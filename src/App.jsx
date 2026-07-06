@@ -2947,6 +2947,7 @@ function App() {
   const [adminActivityData, setAdminActivityData] = useState([]);
   const [adminPortalLoading, setAdminPortalLoading] = useState(false);
   const [adminPortalTab, setAdminPortalTab] = useState('users'); // 'users' | 'activity'
+  const [isDevAdmin, setIsDevAdmin] = useState(false);
   useEffect(() => {
     if (user) {
       setSettingsName(user.name?.trim() || '');
@@ -3560,6 +3561,15 @@ function App() {
       body: JSON.stringify({ action, details, tab })
     }).catch(() => {});
   };
+
+  // Check dev admin status from server whenever user changes
+  React.useEffect(() => {
+    if (!user?.id) { setIsDevAdmin(false); return; }
+    fetch(`${API_BASE}/api/auth/is-dev-admin`, { headers: { 'X-User-Id': user.id } })
+      .then(r => r.json())
+      .then(d => setIsDevAdmin(!!d.isDevAdmin))
+      .catch(() => setIsDevAdmin(false));
+  }, [user?.id]);
 
   const fetchAdminPortalData = async () => {
     if (!user?.id) return;
@@ -5885,7 +5895,7 @@ ${bodyHtml}
                 {[
                   { id: 'settings', label: 'Settings', icon: Settings },
                   { id: 'help', label: 'Help & Support', icon: HelpCircle },
-                  ...(user?.email?.toLowerCase() === 'developerteam@themavericksindia.com'
+                  ...(isDevAdmin
                     ? [{ id: 'admin-portal', label: 'Admin Portal', icon: ShieldCheck }]
                     : [])
                 ].map(item => (
@@ -12463,7 +12473,7 @@ const spec = JSON.parse(response.text);
                       </div>
                     </div>
                   </div>
-                ) : activeTab === 'admin-portal' && user?.email?.toLowerCase() === 'developerteam@themavericksindia.com' && user ? (
+                ) : activeTab === 'admin-portal' && isDevAdmin ? (
                   <div className={`w-full ${sidebarCollapsed ? 'max-w-[1850px]' : 'max-w-[1700px]'} mx-auto animate-in fade-in duration-500 pt-10 pb-12 px-2`}>
                     {/* Header */}
                     <div className="flex items-center justify-between mb-8">

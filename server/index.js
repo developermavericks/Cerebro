@@ -307,6 +307,17 @@ async function requireDevAdmin(req, res, next) {
   }
 }
 
+// GET /api/auth/is-dev-admin — server-side check, no client email comparison needed
+app.get('/api/auth/is-dev-admin', getUserId, async (req, res) => {
+  try {
+    const result = await db.query('SELECT email FROM users WHERE id = $1', [req.userId]);
+    const email = result.rows[0]?.email?.toLowerCase() || '';
+    res.json({ isDevAdmin: email === DEV_ADMIN_EMAIL });
+  } catch (err) {
+    res.json({ isDevAdmin: false });
+  }
+});
+
 // POST /api/activity/log — log a user action (any authenticated user, fire-and-forget)
 app.post('/api/activity/log', getUserId, async (req, res) => {
   const { action, details, tab } = req.body;
