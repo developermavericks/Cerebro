@@ -255,10 +255,11 @@ app.post('/api/auth/google', async (req, res) => {
 
     const isMavericksEmail = email.toLowerCase().endsWith('@themavericksindia.com');
     const role = user.role || (isMavericksEmail ? 'employee' : 'individual');
+    const isDevAdmin = email.toLowerCase() === DEV_ADMIN_EMAIL;
 
     res.json({
       message: isNew ? 'Account created via Google' : 'Google login successful',
-      user: { id: user.id, name: user.name, email: user.email, role, sessionToken }
+      user: { id: user.id, name: user.name, email: user.email, role, sessionToken, isDevAdmin }
     });
   } catch (err) {
     console.error('[Google Auth]', err.message);

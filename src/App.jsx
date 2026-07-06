@@ -3562,13 +3562,9 @@ function App() {
     }).catch(() => {});
   };
 
-  // Check dev admin status from server whenever user changes
+  // Set dev admin from user object (set at login time by server, persisted in localStorage)
   React.useEffect(() => {
-    if (!user?.id) { setIsDevAdmin(false); return; }
-    fetch(`${API_BASE}/api/auth/is-dev-admin`, { headers: { 'X-User-Id': user.id } })
-      .then(r => r.json())
-      .then(d => setIsDevAdmin(!!d.isDevAdmin))
-      .catch(() => setIsDevAdmin(false));
+    setIsDevAdmin(!!(user?.isDevAdmin));
   }, [user?.id]);
 
   const fetchAdminPortalData = async () => {
