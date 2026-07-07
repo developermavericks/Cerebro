@@ -349,19 +349,10 @@ git push origin satyam
 ## 🏆 Credits & Attribution
 
 > [!NOTE]
-> ### 💡 Built by The Mavericks Tech Team
-> Cerebro is designed, engineered, and maintained by the internal technology team at The Mavericks Communication LLP.
+> ### 💡 Developer Spotlight
+> Cerebro is designed, architected, and developed by:
 >
-> | Role | Responsibility |
-> |:--|:--|
-> | **Lead Architect & Full-Stack Developer** | System design, core platform, API architecture, AI integration, Cloud infrastructure |
-> | **Backend Developer** | Express API routes, database schema, NLP pipeline, data ingestion |
-> | **Frontend Developer** | React UI, report builder, chart system, dashboard components |
-> | **DevOps & Cloud Engineer** | GCP Cloud Run deployment, Docker containerisation, CI/CD pipeline |
-> | **Database Engineer** | PostgreSQL schema design, query optimisation, Cloud SQL management |
-> | **UI/UX Designer** | Product design, interaction flows, light/dark theme system |
->
-> **Satyam Kr. Singh** — Lead Architect & Full-Stack Developer  
+> **Satyam Kr. Singh**  
 > 🏢 *The Mavericks Communication LLP*
 >
 > Built to power modern, data-driven media intelligence workflows for brands, agencies, and communications teams across India.
