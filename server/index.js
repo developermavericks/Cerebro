@@ -1779,17 +1779,41 @@ ${brandSummary}`
       max_tokens: 1200
     });
 
-    const raw = (completion.choices[0]?.message?.content || '{}').trim();
-    const jsonStr = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+    const parseGroqJson = (content) => {
+      const raw = (content || '').trim();
+      // Try to find outermost { } in case model wraps with text/code fences
+      const start = raw.indexOf('{');
+      const end = raw.lastIndexOf('}');
+      if (start === -1 || end === -1) throw new Error('No JSON object found in response');
+      return JSON.parse(raw.slice(start, end + 1));
+    };
+
+    let config;
     try {
-      const config = JSON.parse(jsonStr);
-      if (!config.type || !config.data) {
-        return res.status(500).json({ error: 'AI returned invalid chart config' });
-      }
-      res.json({ config });
+      config = parseGroqJson(completion.choices[0]?.message?.content);
     } catch {
-      res.status(500).json({ error: 'Failed to parse AI chart config' });
+      // One retry on parse failure
+      const retry = await groq.chat.completions.create({
+        messages: [
+          { role: 'system', content: `Return ONLY raw JSON with keys: type, data, options. No markdown, no text. Chart.js v4 format. Brand data:\n${brandSummary}` },
+          { role: 'user', content: prompt }
+        ],
+        model: 'llama-3.1-8b-instant',
+        temperature: 0.1,
+        max_tokens: 1200
+      });
+      config = parseGroqJson(retry.choices[0]?.message?.content);
     }
+
+    if (!config.type || !config.data || !Array.isArray(config.data.datasets)) {
+      return res.status(500).json({ error: 'AI returned invalid chart config' });
+    }
+    // Ensure every dataset.data is an array
+    config.data.datasets = config.data.datasets.map(ds => ({
+      ...ds,
+      data: Array.isArray(ds.data) ? ds.data : [],
+    }));
+    res.json({ config });
   } catch (err) {
     console.error('[Dynamic Chart Error]:', err);
     res.status(500).json({ error: 'Failed to generate dynamic chart: ' + err.message });
@@ -1826,10 +1850,10 @@ Pick the chart type and data field that best matches the user's intent. Return O
         max_tokens: 150
       });
 
-      const raw = (completion.choices[0]?.message?.content || '{}').trim();
-      const jsonStr = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+      const content = completion.choices[0]?.message?.content || '';
+      const s = content.indexOf('{'), e = content.lastIndexOf('}');
       try {
-        const parsed = JSON.parse(jsonStr);
+        const parsed = s !== -1 && e !== -1 ? JSON.parse(content.slice(s, e + 1)) : {};
         return {
           type: VALID_TYPES.includes(parsed.type) ? parsed.type : 'Bar Chart',
           field: VALID_FIELDS.includes(parsed.field) ? parsed.field : 'Total Mentions',
@@ -2222,6 +2246,10 @@ if (process.env.NODE_ENV === 'production') {
 (async () => {
   try {
     await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(20)`);
+    await db.query(`ALTER TABLE reports ADD COLUMN IF NOT EXISTS brand_keywords TEXT DEFAULT ''`);
+    await db.query(`ALTER TABLE reports ADD COLUMN IF NOT EXISTS competitor_keywords TEXT DEFAULT ''`);
+    await db.query(`ALTER TABLE reports ADD COLUMN IF NOT EXISTS sections JSONB DEFAULT '[]'`);
+    await db.query(`ALTER TABLE reports ADD COLUMN IF NOT EXISTS bookmarks JSONB DEFAULT '[]'`);
     await db.query(`
       CREATE TABLE IF NOT EXISTS support_tickets (
         id SERIAL PRIMARY KEY,

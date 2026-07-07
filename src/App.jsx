@@ -150,23 +150,44 @@ ChartJS.register(
   BubbleController, ScatterController
 );
 
+class DynamicChartBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(e) { return { error: e.message || 'Render error' }; }
+  render() {
+    if (this.state.error) {
+      return <div className="text-xs text-red-400 py-6 text-center font-bold">Chart render error — try a different prompt</div>;
+    }
+    return this.props.children;
+  }
+}
+
 const DynamicChart = ({ config }) => {
   if (!config || !config.type || !config.data) {
     return <div className="text-xs text-slate-400 py-6 text-center">Invalid chart config</div>;
   }
   const safeConfig = {
     ...config,
+    data: {
+      ...config.data,
+      datasets: (config.data.datasets || []).map(ds => ({
+        ...ds,
+        data: Array.isArray(ds.data) ? ds.data : [],
+      })),
+    },
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      animation: false,
       plugins: { legend: { position: 'bottom' }, ...(config.options?.plugins || {}) },
       ...config.options,
     }
   };
   return (
-    <div style={{ height: 220, width: '100%' }}>
-      <Chart type={config.type} data={safeConfig.data} options={safeConfig.options} />
-    </div>
+    <DynamicChartBoundary>
+      <div style={{ height: 220, width: '100%' }}>
+        <Chart type={safeConfig.type} data={safeConfig.data} options={safeConfig.options} />
+      </div>
+    </DynamicChartBoundary>
   );
 };
 
@@ -4826,6 +4847,7 @@ ${bodyHtml}
   const [aiNewSectionName, setAiNewSectionName] = useState('');
   const [aiDynamicResult, setAiDynamicResult] = useState(null);
   const [isAiDynamicGenerating, setIsAiDynamicGenerating] = useState(false);
+  const [aiDynamicError, setAiDynamicError] = useState(null);
   const [aiDynamicPrompt, setAiDynamicPrompt] = useState('');
   // AI Chart Blueprints (create report modal)
   const [createReportAiPrompts, setCreateReportAiPrompts] = useState('');
@@ -11696,7 +11718,6 @@ const spec = JSON.parse(response.text);
                           {(selectedReport.sections || []).map((sec, sIdx) => (
                             <div key={sIdx} className="mb-10">
                               <div className="flex items-center gap-3 mb-5">
-                                <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-[11px] font-black shrink-0">{sIdx + 1}</div>
                                 <h3 className={`text-sm font-black uppercase tracking-widest ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{(sec.title || `Section ${sIdx + 1}`).replace(/^\d+\.\s*/, '')}</h3>
                               </div>
                               {(!sec.charts || sec.charts.length === 0) && (
@@ -11951,7 +11972,7 @@ const spec = JSON.parse(response.text);
                                           );
                                         })()}
                                       </div>
-                                      {/* Footer: type label + maximize + export */}
+                                      {/* Footer: type label + maximize + delete + export */}
                                       <div className="px-5 py-3 border-t border-slate-100 flex items-center justify-between bg-slate-50">
                                         <div className="flex items-center gap-2">
                                           <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{cfg.type}</span>
@@ -11960,6 +11981,11 @@ const spec = JSON.parse(response.text);
                                             title={expandedChartIds[chart.id] ? 'Minimize' : 'Maximize'}
                                             className="p-1 rounded-lg hover:bg-slate-200 text-slate-400 hover:text-slate-600 transition-all"
                                           >{expandedChartIds[chart.id] ? <Minimize2 size={11} /> : <Maximize2 size={11} />}</button>
+                                          <button
+                                            onClick={() => setChartRemoveConfirm({ sIdx, cIdx, type: chart.type || (chart.chartjsConfig ? 'dynamic' : 'static') })}
+                                            title="Delete Chart"
+                                            className="p-1 rounded-lg hover:bg-red-100 text-slate-400 hover:text-red-500 transition-all"
+                                          ><Trash2 size={11} /></button>
                                         </div>
                                         <button
                                           onClick={() => handleExportChartClick(sIdx, cIdx)}
@@ -12116,7 +12142,7 @@ const spec = JSON.parse(response.text);
                                       rows={4}
                                       placeholder="e.g. Show a bubble chart comparing mentions vs articles for each brand&#10;Create a stacked bar of positive, neutral, negative sentiment per brand&#10;Polar area chart of share of voice"
                                       value={aiDynamicPrompt}
-                                      onChange={e => { setAiDynamicPrompt(e.target.value); setAiDynamicResult(null); }}
+                                      onChange={e => { setAiDynamicPrompt(e.target.value); setAiDynamicResult(null); setAiDynamicError(null); }}
                                       className="w-full py-3 px-4 bg-slate-800 border border-slate-700 rounded-xl text-xs font-medium text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 resize-none transition-all"
                                     />
                                     <p className="text-[10px] text-slate-500 mt-1.5 font-medium">Supports any Chart.js type — no restrictions</p>
@@ -12126,6 +12152,7 @@ const spec = JSON.parse(response.text);
                                     onClick={async () => {
                                       setIsAiDynamicGenerating(true);
                                       setAiDynamicResult(null);
+                                      setAiDynamicError(null);
                                       const brandSummary = filteredBrandsObj
                                         ? Object.fromEntries(Object.entries(filteredBrandsObj).map(([name, d]) => [name, {
                                             mentions: d.mentions || 0,
@@ -12140,10 +12167,17 @@ const spec = JSON.parse(response.text);
                                           body: JSON.stringify({ prompt: aiDynamicPrompt, brandData: brandSummary })
                                         });
                                         const data = await res.json();
-                                        if (data.config) setAiDynamicResult(data.config);
-                                        else showToast('AI could not generate chart config', 'error');
+                                        if (data.config) {
+                                          setAiDynamicResult(data.config);
+                                        } else {
+                                          const errMsg = data.error || 'AI could not generate chart config';
+                                          setAiDynamicError(errMsg);
+                                          showToast(errMsg, 'error');
+                                        }
                                       } catch {
-                                        showToast('Failed to connect to AI service', 'error');
+                                        const errMsg = 'Failed to connect to AI service';
+                                        setAiDynamicError(errMsg);
+                                        showToast(errMsg, 'error');
                                       }
                                       setIsAiDynamicGenerating(false);
                                     }}
@@ -12153,6 +12187,12 @@ const spec = JSON.parse(response.text);
                                       ? <><div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Generating...</>
                                       : <><Sparkles size={13} /> Generate Chart</>}
                                   </button>
+
+                                  {aiDynamicError && (
+                                    <div className="px-4 py-3 bg-red-500/10 border border-red-500/20 rounded-xl flex items-start gap-2">
+                                      <span className="text-red-400 text-[10px] font-bold leading-relaxed">{aiDynamicError}</span>
+                                    </div>
+                                  )}
 
                                   {aiDynamicResult && (
                                     <div className="flex flex-col gap-3 animate-in fade-in duration-300">
