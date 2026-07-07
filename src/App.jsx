@@ -140,14 +140,16 @@ import {
   Chart as ChartJS,
   CategoryScale, LinearScale, BarElement, LineElement, PointElement,
   ArcElement, RadialLinearScale, Filler, Tooltip, Legend, Title,
-  BubbleController, ScatterController
+  BarController, LineController, PieController, DoughnutController,
+  RadarController, PolarAreaController, BubbleController, ScatterController
 } from 'chart.js';
 import { Chart } from 'react-chartjs-2';
 
 ChartJS.register(
   CategoryScale, LinearScale, BarElement, LineElement, PointElement,
   ArcElement, RadialLinearScale, Filler, Tooltip, Legend, Title,
-  BubbleController, ScatterController
+  BarController, LineController, PieController, DoughnutController,
+  RadarController, PolarAreaController, BubbleController, ScatterController
 );
 
 class DynamicChartBoundary extends React.Component {
@@ -165,22 +167,34 @@ const DynamicChart = ({ config }) => {
   if (!config || !config.type || !config.data) {
     return <div className="text-xs text-slate-400 py-6 text-center">Invalid chart config</div>;
   }
-  const safeConfig = {
-    ...config,
-    data: {
-      ...config.data,
-      datasets: (config.data.datasets || []).map(ds => ({
-        ...ds,
-        data: Array.isArray(ds.data) ? ds.data : [],
-      })),
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: false,
-      plugins: { legend: { position: 'bottom' }, ...(config.options?.plugins || {}) },
-      ...config.options,
+  const isCartesian = ['bar', 'line', 'scatter', 'bubble'].includes(config.type);
+  const isNonCartesian = ['pie', 'doughnut', 'polarArea'].includes(config.type);
+  const datasets = (config.data.datasets || []).map(ds => {
+    let data = Array.isArray(ds.data) ? ds.data : [];
+    if (['bar', 'line'].includes(config.type)) {
+      // Category scale expects plain numbers — flatten {x,y} point objects to y values
+      data = data.map(pt => (typeof pt === 'object' && pt !== null && 'y' in pt) ? pt.y : pt)
+                 .filter(pt => pt !== null && pt !== undefined);
     }
+    return { ...ds, data };
+  });
+  const mergedOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: false,
+    ...config.options,
+    // plugins after spread so our legend default always applies
+    plugins: {
+      ...(config.options?.plugins || {}),
+      legend: { position: 'bottom', ...(config.options?.plugins?.legend || {}) },
+    },
+  };
+  // Non-cartesian charts (pie/doughnut/polarArea) don't support scales — strip them
+  if (isNonCartesian) delete mergedOptions.scales;
+  const safeConfig = {
+    type: config.type,
+    data: { ...config.data, datasets },
+    options: mergedOptions,
   };
   return (
     <DynamicChartBoundary>

@@ -1852,9 +1852,12 @@ ${brandSummary}`
     }
     if (config.type === 'line' || config.type === 'bar') {
       const existing = config.options.scales.x || {};
-      if (!existing.type || existing.type === 'time') {
-        config.options.scales.x = { ...existing, type: 'category' };
-      }
+      config.options.scales.x = { ...existing, type: 'category' };
+    }
+
+    // Non-cartesian charts don't use scales — strip them to avoid Chart.js warnings/crashes
+    if (['pie', 'doughnut', 'polarArea'].includes(config.type)) {
+      delete config.options.scales;
     }
 
     // Scatter/bubble: fix common issue where model uses ratio values (0-1) instead of counts
