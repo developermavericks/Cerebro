@@ -136,6 +136,40 @@ import { createLowlight, all } from 'lowlight';
 import { Youtube } from '@tiptap/extension-youtube';
 import { HorizontalRule as TiptapHorizontalRule } from '@tiptap/extension-horizontal-rule';
 
+import {
+  Chart as ChartJS,
+  CategoryScale, LinearScale, BarElement, LineElement, PointElement,
+  ArcElement, RadialLinearScale, Filler, Tooltip, Legend, Title,
+  BubbleController, ScatterController
+} from 'chart.js';
+import { Chart } from 'react-chartjs-2';
+
+ChartJS.register(
+  CategoryScale, LinearScale, BarElement, LineElement, PointElement,
+  ArcElement, RadialLinearScale, Filler, Tooltip, Legend, Title,
+  BubbleController, ScatterController
+);
+
+const DynamicChart = ({ config }) => {
+  if (!config || !config.type || !config.data) {
+    return <div className="text-xs text-slate-400 py-6 text-center">Invalid chart config</div>;
+  }
+  const safeConfig = {
+    ...config,
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom' }, ...(config.options?.plugins || {}) },
+      ...config.options,
+    }
+  };
+  return (
+    <div style={{ height: 220, width: '100%' }}>
+      <Chart type={config.type} data={safeConfig.data} options={safeConfig.options} />
+    </div>
+  );
+};
+
 const lowlight = createLowlight(all);
 // In dev (any Vite port 5173-5180), proxy to the Express backend on 3001
 const _devPort = window.location.port;
@@ -3252,6 +3286,10 @@ function App() {
       processed = processed.slice(0, 5);
     } else if (maxItems === 'Top 10') {
       processed = processed.slice(0, 10);
+    } else if (maxItems === 'Top 15') {
+      processed = processed.slice(0, 15);
+    } else if (maxItems === 'Top 20') {
+      processed = processed.slice(0, 20);
     }
 
     return processed;
@@ -3745,6 +3783,7 @@ function App() {
   const handleSaveReport = async (reportToSave) => {
     const report = reportToSave || selectedReport;
     if (!report || !user || !user.id) return;
+    if (report._predefined || PREDEFINED_REPORTS.some(pre => pre.id === report.id)) return;
     try {
       // Embed chart visual configs into each chart so they persist after reload
       const reportWithChartConfigs = {
@@ -4073,10 +4112,13 @@ ${bodyHtml}
         status: selectedReport.status,
         topic: selectedReport.topic,
         keywords: selectedReport.keywords,
-        brandKeywords: selectedReport.brand_keywords,
-        competitorKeywords: selectedReport.competitor_keywords,
+        brandKeywords: selectedReport.brandKeywords || selectedReport.brand_keywords,
+        competitorKeywords: selectedReport.competitorKeywords || selectedReport.competitor_keywords,
         sections: Array.isArray(selectedReport.sections)
-          ? selectedReport.sections.map(s => `${s.title}: ${s.content ? String(s.content).slice(0, 200) : '(empty)'}`)
+          ? selectedReport.sections.map(s => s.title || 'Untitled')
+          : [],
+        charts: Array.isArray(selectedReport.sections)
+          ? selectedReport.sections.flatMap(s => (s.charts || []).map(c => `${c.type || 'Chart'}${c.field ? ' of ' + c.field : ''}${c.label ? ' ("' + c.label + '")' : ''} in "${s.title || 'Section'}"`))
           : []
       } : null;
 
@@ -4097,7 +4139,7 @@ ${bodyHtml}
           history: currentHistory,
           dashboardStats: {
             totalKeywords: calculateTotalKeywordsAnalyzed(),
-            totalReports: reports.length,
+            totalReports: reports.filter(r => !r._predefined && !PREDEFINED_REPORTS.some(pre => pre.id === r.id)).length,
             activeBrands: trackedBrands.length
           },
           activeTab,
@@ -4490,6 +4532,18 @@ ${bodyHtml}
 
   React.useEffect(() => { selectedReportRef.current = selectedReport; }, [selectedReport]);
 
+  // Auto-apply report date range to chart filters when a report is opened
+  React.useEffect(() => {
+    if (selectedReport?.metrics?.startDate || selectedReport?.metrics?.endDate) {
+      setReportFilters(prev => ({
+        ...prev,
+        dateRange: [selectedReport.metrics.startDate || '', selectedReport.metrics.endDate || '']
+      }));
+    } else {
+      setReportFilters(prev => ({ ...prev, dateRange: ['', ''] }));
+    }
+  }, [selectedReport?.id]);
+
   React.useEffect(() => {
     const interval = setInterval(() => {
       if (lastEditTimeRef.current > lastSnapshotTimeRef.current && selectedReportRef.current?.sections) {
@@ -4749,7 +4803,9 @@ ${bodyHtml}
     keywords: '',
     brandKeywords: '',
     competitorKeywords: '',
-    tags: ''
+    tags: '',
+    startDate: '',
+    endDate: ''
   });
   const [studioDrawerTab, setStudioDrawerTab] = useState('builder'); // 'builder', 'keyword-charts', 'ai-builder'
 
@@ -4764,10 +4820,15 @@ ${bodyHtml}
   const [generatedAiChart, setGeneratedAiChart] = useState(null);
   // AI Chart Panel (report detail view)
   const [showAiChartPanel, setShowAiChartPanel] = useState(false);
+  const [aiPanelTab, setAiPanelTab] = useState('builder'); // 'builder' | 'ai'
   const [aiChartPanelPrompt, setAiChartPanelPrompt] = useState('');
   const [isAiChartPanelGenerating, setIsAiChartPanelGenerating] = useState(false);
   const [aiChartPanelResult, setAiChartPanelResult] = useState(null);
   const [aiChartPanelSectionIdx, setAiChartPanelSectionIdx] = useState(0);
+  const [aiNewSectionName, setAiNewSectionName] = useState('');
+  const [aiDynamicResult, setAiDynamicResult] = useState(null);
+  const [isAiDynamicGenerating, setIsAiDynamicGenerating] = useState(false);
+  const [aiDynamicPrompt, setAiDynamicPrompt] = useState('');
   // AI Chart Blueprints (create report modal)
   const [createReportAiPrompts, setCreateReportAiPrompts] = useState('');
 
@@ -5092,9 +5153,11 @@ ${bodyHtml}
             return;
           }
           setUser(data.user);
+          setIsDevAdmin(!!(data.user.isDevAdmin));
           localStorage.setItem('cerebro_user', JSON.stringify(data.user));
-          localStorage.setItem('cerebro_active_tab', 'dashboard');
-          setActiveTab('dashboard');
+          const googleLandingTab = data.user.isDevAdmin ? 'admin-portal' : 'dashboard';
+          localStorage.setItem('cerebro_active_tab', googleLandingTab);
+          setActiveTab(googleLandingTab);
           fetch(`${API_BASE}/api/activity/log`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-User-Id': data.user.id }, body: JSON.stringify({ action: 'login', details: `google:${data.user.email}`, tab: 'auth' }) }).catch(() => {});
           const tabId = sessionStorage.getItem('cerebro_tab_id') || Math.random().toString(36).substring(2);
           localStorage.setItem('cerebro_active_tab_id', tabId);
@@ -5136,9 +5199,11 @@ ${bodyHtml}
           setUserAdminKey(adminKeyInput);
         }
         setUser(data.user);
+        setIsDevAdmin(!!(data.user.isDevAdmin));
         localStorage.setItem('cerebro_user', JSON.stringify(data.user));
-        localStorage.setItem('cerebro_active_tab', 'dashboard');
-        setActiveTab('dashboard');
+        const landingTab = data.user.isDevAdmin ? 'admin-portal' : 'dashboard';
+        localStorage.setItem('cerebro_active_tab', landingTab);
+        setActiveTab(landingTab);
         fetch(`${API_BASE}/api/activity/log`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-User-Id': data.user.id }, body: JSON.stringify({ action: 'login', details: `email:${data.user.email}`, tab: 'auth' }) }).catch(() => {});
         const tabId = sessionStorage.getItem('cerebro_tab_id') || Math.random().toString(36).substring(2);
         localStorage.setItem('cerebro_active_tab_id', tabId);
@@ -6005,7 +6070,7 @@ ${bodyHtml}
                 <div className="text-right hidden md:block">
                    <p className={`text-xs font-black leading-tight font-heading ${darkMode ? 'text-white' : 'text-slate-900'}`}>{user?.name?.trim() || 'Manvi'}</p>
                    <p className={`text-[10px] font-bold uppercase tracking-widest font-heading ${darkMode ? 'text-white/40' : 'text-slate-500'}`}>
-                     {user?.role === 'admin' ? 'Admin Access' : user?.role === 'employee' ? 'Maverick Access' : 'Individual Access'}
+                     {(user?.role === 'admin' || isDevAdmin) ? 'Admin Access' : user?.email?.toLowerCase().endsWith('@themavericksindia.com') ? 'Maverick Access' : 'Individual Access'}
                    </p>
                  </div>
                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white font-black shadow-lg font-heading ${darkMode ? 'bg-indigo-600 shadow-indigo-950/50' : 'bg-indigo-600 shadow-indigo-100'}`}>
@@ -6114,7 +6179,7 @@ ${bodyHtml}
                         {
                           title: 'Total Reports Created',
                           subtitle: 'Sovereign-grade executive briefs',
-                          value: reports.length,
+                          value: reports.filter(r => !r._predefined && !PREDEFINED_REPORTS.some(pre => pre.id === r.id)).length,
                           video: '/report.mp4',
                           action: () => setActiveTab('report-analysis')
                         },
@@ -11574,28 +11639,30 @@ const spec = JSON.parse(response.text);
                       {/* ═══════════════════════════════════════════════════════════
                           CHART EXPORT VIEW — replaces Studio while it is disabled
                           ═══════════════════════════════════════════════════════════ */}
-                      <div className="fixed inset-0 z-[100] bg-[#0B121F] flex flex-col font-sans relative">
+                      <div className={`fixed inset-0 z-[100] flex flex-col font-sans relative ${darkMode ? 'bg-[#0B121F]' : 'bg-slate-50'}`}>
                         {/* Header */}
-                        <div className="shrink-0 bg-slate-900 border-b border-slate-800 px-8 py-4 flex items-center justify-between">
+                        <div className={`shrink-0 border-b px-8 py-4 flex items-center justify-between ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
                           <div className="flex items-center gap-4">
                             <button
                               onClick={() => setSelectedReport(null)}
-                              className="p-2 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white transition-all"
+                              className={`p-2 rounded-xl transition-all ${darkMode ? 'hover:bg-slate-800 text-slate-400 hover:text-white' : 'hover:bg-slate-100 text-slate-500 hover:text-slate-900'}`}
                             ><ArrowLeft size={18} /></button>
                             <div>
-                              <h2 className="font-black text-white text-base tracking-tight">{selectedReport.title}</h2>
+                              <h2 className={`font-black text-base tracking-tight ${darkMode ? 'text-white' : 'text-slate-900'}`}>{selectedReport.title}</h2>
                               <p className="text-[11px] text-slate-400 font-medium mt-0.5">
                                 {selectedReport.type} · {selectedReport.sections?.length || 0} sections · {selectedReport.sections?.reduce((a, s) => a + (s.charts?.length || 0), 0)} charts
                               </p>
                             </div>
                           </div>
                           <div className="flex items-center gap-3">
-                            {/* Add Chart with AI — Coming Soon */}
-                            <div className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-400 rounded-xl text-xs font-black uppercase tracking-widest cursor-not-allowed select-none border border-slate-200">
+                            {/* Add Chart with AI */}
+                            <button
+                              onClick={() => setShowAiChartPanel(true)}
+                              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg shadow-indigo-500/20 active:scale-95"
+                            >
                               <Sparkles size={13} />
                               <span>Add Chart with AI</span>
-                              <span className="ml-1 px-1.5 py-0.5 bg-amber-100 text-amber-600 text-[8px] font-black uppercase tracking-wider rounded-full">Coming Soon</span>
-                            </div>
+                            </button>
                             {currentExportDoc && (
                               <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-400 text-xs font-bold">
                                 <FileText size={13} />
@@ -11632,7 +11699,7 @@ const spec = JSON.parse(response.text);
                             <div key={sIdx} className="mb-10">
                               <div className="flex items-center gap-3 mb-5">
                                 <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-[11px] font-black shrink-0">{sIdx + 1}</div>
-                                <h3 className="text-sm font-black uppercase tracking-widest text-slate-400">{sec.title || `Section ${sIdx + 1}`}</h3>
+                                <h3 className={`text-sm font-black uppercase tracking-widest ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{sec.title || `Section ${sIdx + 1}`}</h3>
                               </div>
                               {(!sec.charts || sec.charts.length === 0) && (
                                 <p className="text-xs text-slate-600 italic pl-10">No charts in this section.</p>
@@ -11653,7 +11720,9 @@ const spec = JSON.parse(response.text);
                                       {/* Capture area */}
                                       <div ref={el => { exportChartRefs.current[`${sIdx}-${cIdx}`] = el; }} className="p-5 bg-white flex-1">
                                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">{chart.label || cfg.field || cfg.type}</p>
-                                        {isFetchingTelemetry ? (
+                                        {chart.chartjsConfig ? (
+                                          <DynamicChart config={chart.chartjsConfig} />
+                                        ) : isFetchingTelemetry ? (
                                           <div className="flex items-center justify-center py-10">
                                             <div className="w-6 h-6 border-4 border-indigo-600/30 border-t-indigo-600 rounded-full animate-spin" />
                                           </div>
@@ -11893,130 +11962,233 @@ const spec = JSON.parse(response.text);
                           ))}
                         </div>
 
-                        {/* AI Chart Panel — slide in from right */}
+                        {/* Chart Panel — slide in from right */}
                         {showAiChartPanel && (
                           <div className="absolute inset-0 z-[110] flex pointer-events-none">
-                            {/* Backdrop */}
-                            <div className="flex-1 pointer-events-auto" onClick={() => setShowAiChartPanel(false)} />
-                            {/* Panel */}
-                            <div className="w-96 bg-slate-900 border-l border-slate-800 flex flex-col pointer-events-auto animate-in slide-in-from-right duration-300 h-full overflow-y-auto">
-                              {/* Panel Header */}
-                              <div className="px-6 py-5 border-b border-slate-800 flex items-center justify-between shrink-0">
+                            <div className="flex-1 pointer-events-auto" onClick={() => { setShowAiChartPanel(false); setAiChartPanelResult(null); setAiDynamicResult(null); }} />
+                            <div className="w-[420px] bg-slate-900 border-l border-slate-800 flex flex-col pointer-events-auto animate-in slide-in-from-right duration-300 h-full">
+
+                              {/* Header */}
+                              <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between shrink-0">
                                 <div className="flex items-center gap-2">
-                                  <Sparkles size={16} className="text-indigo-400" />
-                                  <span className="text-sm font-black text-white tracking-tight">Add Chart with AI</span>
+                                  <BarChart3 size={16} className="text-indigo-400" />
+                                  <span className="text-sm font-black text-white tracking-tight">Add Chart</span>
                                 </div>
-                                <button onClick={() => setShowAiChartPanel(false)} className="text-slate-500 hover:text-white transition-colors">
-                                  <X size={16} />
-                                </button>
+                                <button onClick={() => { setShowAiChartPanel(false); setAiChartPanelResult(null); setAiDynamicResult(null); }} className="text-slate-500 hover:text-white transition-colors"><X size={16} /></button>
                               </div>
 
-                              {/* API Key Notice */}
-                              <div className="mx-4 mt-4 px-4 py-3 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-start gap-2">
-                                <Sparkles size={13} className="text-amber-400 shrink-0 mt-0.5" />
-                                <div>
-                                  <p className="text-[10px] font-black text-amber-400 uppercase tracking-wider">AI Preview Mode</p>
-                                  <p className="text-[10px] text-slate-400 font-medium mt-0.5 leading-relaxed">Connect an API key in Settings for advanced AI generation. Currently using smart keyword matching.</p>
-                                </div>
-                              </div>
-
-                              {/* Panel Body */}
-                              <div className="px-4 py-5 flex flex-col gap-5 flex-1">
-                                {/* Target Section */}
-                                <div>
-                                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Add to Section</label>
-                                  <select
-                                    value={aiChartPanelSectionIdx}
-                                    onChange={e => setAiChartPanelSectionIdx(Number(e.target.value))}
-                                    className="w-full py-2.5 px-3 bg-slate-800 border border-slate-700 rounded-xl text-xs font-bold text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
-                                  >
-                                    {(selectedReport.sections || []).map((s, i) => (
-                                      <option key={i} value={i}>{s.title || `Section ${i + 1}`}</option>
-                                    ))}
-                                    <option value={(selectedReport.sections || []).length}>+ New AI Section</option>
-                                  </select>
-                                </div>
-
-                                {/* Prompt */}
-                                <div>
-                                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Describe Your Chart</label>
-                                  <textarea
-                                    rows={4}
-                                    placeholder={"e.g. Show sentiment trend over time\nCompare share of voice as a pie chart\nDisplay total mentions as a KPI"}
-                                    value={aiChartPanelPrompt}
-                                    onChange={e => { setAiChartPanelPrompt(e.target.value); setAiChartPanelResult(null); }}
-                                    className="w-full py-3 px-4 bg-slate-800 border border-slate-700 rounded-xl text-xs font-medium text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 resize-none transition-all"
-                                  />
-                                  <p className="text-[10px] text-slate-500 mt-1.5 font-medium">One chart per line — each line generates one chart</p>
-                                </div>
-
-                                {/* Generate Button */}
+                              {/* Tabs */}
+                              <div className="flex shrink-0 border-b border-slate-800">
                                 <button
-                                  disabled={!aiChartPanelPrompt.trim() || isAiChartPanelGenerating}
-                                  onClick={async () => {
-                                    setIsAiChartPanelGenerating(true);
-                                    setAiChartPanelResult(null);
-                                    await new Promise(r => setTimeout(r, 1200));
-                                    const lines = aiChartPanelPrompt.split('\n').filter(l => l.trim());
-                                    const charts = lines.map(line => generateChartFromPrompt(line));
-                                    setAiChartPanelResult(charts);
-                                    setIsAiChartPanelGenerating(false);
-                                  }}
-                                  className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+                                  onClick={() => setAiPanelTab('builder')}
+                                  className={`flex-1 py-3 text-[11px] font-black uppercase tracking-widest transition-all ${aiPanelTab === 'builder' ? 'text-white border-b-2 border-indigo-500' : 'text-slate-500 hover:text-slate-300'}`}
+                                >Builder</button>
+                                <button
+                                  onClick={() => setAiPanelTab('ai')}
+                                  className={`flex-1 py-3 text-[11px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 ${aiPanelTab === 'ai' ? 'text-white border-b-2 border-indigo-500' : 'text-slate-500 hover:text-slate-300'}`}
+                                ><Sparkles size={11} /> Build with AI</button>
+                              </div>
+
+                              {/* Section Selector — shared */}
+                              <div className="px-5 pt-4 shrink-0">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Add to Section</label>
+                                <select
+                                  value={aiChartPanelSectionIdx}
+                                  onChange={e => { setAiChartPanelSectionIdx(Number(e.target.value)); setAiNewSectionName(''); }}
+                                  className="w-full py-2.5 px-3 bg-slate-800 border border-slate-700 rounded-xl text-xs font-bold text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
                                 >
-                                  {isAiChartPanelGenerating ? (
-                                    <><div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Generating...</>
-                                  ) : (
-                                    <><Sparkles size={13} /> Generate Charts</>
-                                  )}
-                                </button>
-
-                                {/* Generated Preview */}
-                                {aiChartPanelResult && (
-                                  <div className="flex flex-col gap-3 animate-in fade-in duration-300">
-                                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Generated — {aiChartPanelResult.length} chart{aiChartPanelResult.length > 1 ? 's' : ''}</span>
-                                    {aiChartPanelResult.map((c, i) => (
-                                      <div key={i} className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex flex-col gap-1.5">
-                                        <div className="flex items-center gap-2">
-                                          <BarChart3 size={13} className="text-indigo-400 shrink-0" />
-                                          <span className="text-xs font-black text-white">{c.type}</span>
-                                        </div>
-                                        <div className="flex items-center gap-2 text-[10px] text-slate-400 font-medium">
-                                          <span className="bg-slate-700 px-2 py-0.5 rounded-full">{c.field}</span>
-                                          <span className="text-slate-600">·</span>
-                                          <span>{c.reasoning}</span>
-                                        </div>
-                                      </div>
-                                    ))}
-
-                                    <button
-                                      onClick={() => {
-                                        const newCharts = aiChartPanelResult.map((c, i) => {
-                                          const uid = `ai-${Date.now()}-${i}`;
-                                          return { id: uid, type: c.type, field: c.field, label: aiChartPanelPrompt.split('\n').filter(l => l.trim())[i]?.slice(0, 60) || c.label, width: 'full', align: 'center', config: { field: c.field, groupBy: 'Brand', sort: 'Descending', maxItems: 'All' } };
-                                        });
-                                        setSelectedReport(prev => {
-                                          const sections = [...(prev.sections || [])];
-                                          const targetIdx = aiChartPanelSectionIdx;
-                                          if (targetIdx >= sections.length) {
-                                            sections.push({ id: `ai-sec-${Date.now()}`, title: `${sections.length + 1}. AI Generated Charts`, content: '', images: [], charts: newCharts });
-                                          } else {
-                                            sections[targetIdx] = { ...sections[targetIdx], charts: [...(sections[targetIdx].charts || []), ...newCharts] };
-                                          }
-                                          return { ...prev, sections };
-                                        });
-                                        showToast(`${newCharts.length} chart${newCharts.length > 1 ? 's' : ''} added successfully`, 'success');
-                                        setShowAiChartPanel(false);
-                                        setAiChartPanelPrompt('');
-                                        setAiChartPanelResult(null);
-                                      }}
-                                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 active:scale-95"
-                                    >
-                                      <Plus size={13} /> Add to Report
-                                    </button>
-                                  </div>
+                                  {(selectedReport.sections || []).map((s, i) => (
+                                    <option key={i} value={i}>{s.title || `Section ${i + 1}`}</option>
+                                  ))}
+                                  <option value={(selectedReport.sections || []).length}>+ New Section</option>
+                                </select>
+                                {aiChartPanelSectionIdx >= (selectedReport.sections || []).length && (
+                                  <input
+                                    type="text"
+                                    placeholder="Section name (e.g. 6. Executive Summary)"
+                                    value={aiNewSectionName}
+                                    onChange={e => setAiNewSectionName(e.target.value)}
+                                    className="mt-2 w-full py-2.5 px-3 bg-slate-800 border border-indigo-500/50 rounded-xl text-xs font-bold text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                                  />
                                 )}
                               </div>
+
+                              {/* ── BUILDER TAB ── */}
+                              {aiPanelTab === 'builder' && (
+                                <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-4">
+                                  <div>
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Chart Type</label>
+                                    <select
+                                      value={selectedChartType}
+                                      onChange={e => setSelectedChartType(e.target.value)}
+                                      className="w-full py-2.5 px-3 bg-slate-800 border border-slate-700 rounded-xl text-xs font-bold text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                                    >
+                                      {['Bar Chart','Pie Chart','Donut Chart','Area Chart','Trend Chart','Radar Chart','Scatter Plot','KPI Card'].map(t => (
+                                        <option key={t} value={t}>{t}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  <div>
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Data Field</label>
+                                    <select
+                                      value={selectedDataField}
+                                      onChange={e => setSelectedDataField(e.target.value)}
+                                      className="w-full py-2.5 px-3 bg-slate-800 border border-slate-700 rounded-xl text-xs font-bold text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                                    >
+                                      {['Total Mentions','Total Articles','Share of Voice','Sentiment','Net Sentiment Index','Articles Coverage','Media Diversity Count','Publication'].map(f => (
+                                        <option key={f} value={f}>{f}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  <div>
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Group By</label>
+                                    <select
+                                      value={selectedDataField === 'Publication' ? 'Publication' : 'Brand'}
+                                      disabled
+                                      className="w-full py-2.5 px-3 bg-slate-800 border border-slate-700 rounded-xl text-xs font-bold text-slate-400"
+                                    >
+                                      <option>Brand</option>
+                                      <option>Publication</option>
+                                    </select>
+                                  </div>
+                                  <div className="bg-slate-800 rounded-xl p-3 flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-lg bg-indigo-600/20 flex items-center justify-center shrink-0">
+                                      <BarChart3 size={14} className="text-indigo-400" />
+                                    </div>
+                                    <div>
+                                      <p className="text-xs font-black text-white">{selectedChartType}</p>
+                                      <p className="text-[10px] text-slate-400 font-medium">{selectedDataField} · SVG renderer</p>
+                                    </div>
+                                  </div>
+                                  <button
+                                    onClick={() => {
+                                      const newChart = {
+                                        id: `chart-${Date.now()}`,
+                                        type: selectedChartType,
+                                        field: selectedDataField,
+                                        width: 'full', align: 'center',
+                                        config: { field: selectedDataField, groupBy: selectedDataField === 'Publication' ? 'Publication' : 'Brand', sort: 'Descending', maxItems: 'Top 10' }
+                                      };
+                                      setSelectedReport(prev => {
+                                        const sections = [...(prev.sections || [])];
+                                        const idx = aiChartPanelSectionIdx;
+                                        if (idx >= sections.length) {
+                                          const secTitle = aiNewSectionName.trim() || `${sections.length + 1}. New Section`;
+                                          sections.push({ id: `sec-${Date.now()}`, title: secTitle, content: '', images: [], charts: [newChart] });
+                                          setAiNewSectionName('');
+                                        } else {
+                                          sections[idx] = { ...sections[idx], charts: [...(sections[idx].charts || []), newChart] };
+                                        }
+                                        return { ...prev, sections };
+                                      });
+                                      showToast(`${selectedChartType} added`, 'success');
+                                      setShowAiChartPanel(false);
+                                    }}
+                                    className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 active:scale-95"
+                                  >
+                                    <Plus size={13} /> Add Chart
+                                  </button>
+                                </div>
+                              )}
+
+                              {/* ── BUILD WITH AI TAB ── */}
+                              {aiPanelTab === 'ai' && (
+                                <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-4">
+                                  <div className="px-3 py-2.5 bg-indigo-500/10 border border-indigo-500/20 rounded-xl flex items-start gap-2">
+                                    <Sparkles size={12} className="text-indigo-400 shrink-0 mt-0.5 animate-pulse" />
+                                    <p className="text-[10px] text-slate-400 font-medium leading-relaxed">Powered by Groq · llama-3.1-8b. Describe any chart — bubble, stacked bar, mixed, polar area — AI builds it with your real brand data.</p>
+                                  </div>
+                                  <div>
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Describe Your Chart</label>
+                                    <textarea
+                                      rows={4}
+                                      placeholder="e.g. Show a bubble chart comparing mentions vs articles for each brand&#10;Create a stacked bar of positive, neutral, negative sentiment per brand&#10;Polar area chart of share of voice"
+                                      value={aiDynamicPrompt}
+                                      onChange={e => { setAiDynamicPrompt(e.target.value); setAiDynamicResult(null); }}
+                                      className="w-full py-3 px-4 bg-slate-800 border border-slate-700 rounded-xl text-xs font-medium text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 resize-none transition-all"
+                                    />
+                                    <p className="text-[10px] text-slate-500 mt-1.5 font-medium">Supports any Chart.js type — no restrictions</p>
+                                  </div>
+                                  <button
+                                    disabled={!aiDynamicPrompt.trim() || isAiDynamicGenerating}
+                                    onClick={async () => {
+                                      setIsAiDynamicGenerating(true);
+                                      setAiDynamicResult(null);
+                                      const brandSummary = filteredBrandsObj
+                                        ? Object.fromEntries(Object.entries(filteredBrandsObj).map(([name, d]) => [name, {
+                                            mentions: d.mentions || 0,
+                                            articles: d.articles || 0,
+                                            sentiment: d.sentiment || {}
+                                          }]))
+                                        : {};
+                                      try {
+                                        const res = await fetch(`${API_BASE}/api/ai/chart-dynamic`, {
+                                          method: 'POST',
+                                          headers: { 'Content-Type': 'application/json', 'X-User-Id': user?.id || 'default' },
+                                          body: JSON.stringify({ prompt: aiDynamicPrompt, brandData: brandSummary })
+                                        });
+                                        const data = await res.json();
+                                        if (data.config) setAiDynamicResult(data.config);
+                                        else showToast('AI could not generate chart config', 'error');
+                                      } catch {
+                                        showToast('Failed to connect to AI service', 'error');
+                                      }
+                                      setIsAiDynamicGenerating(false);
+                                    }}
+                                    className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+                                  >
+                                    {isAiDynamicGenerating
+                                      ? <><div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Generating...</>
+                                      : <><Sparkles size={13} /> Generate Chart</>}
+                                  </button>
+
+                                  {aiDynamicResult && (
+                                    <div className="flex flex-col gap-3 animate-in fade-in duration-300">
+                                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Preview</span>
+                                      <div className="bg-white rounded-xl p-3">
+                                        <DynamicChart config={aiDynamicResult} />
+                                      </div>
+                                      <div className="bg-slate-800 rounded-xl px-3 py-2 flex items-center gap-2">
+                                        <span className="text-[10px] font-black text-indigo-400 uppercase tracking-wider">{aiDynamicResult.type}</span>
+                                        <span className="text-slate-600">·</span>
+                                        <span className="text-[10px] text-slate-400 font-medium truncate">{aiDynamicResult.options?.plugins?.title?.text || aiDynamicPrompt.slice(0, 50)}</span>
+                                      </div>
+                                      <button
+                                        onClick={() => {
+                                          const newChart = {
+                                            id: `dyn-${Date.now()}`,
+                                            type: 'dynamic',
+                                            label: aiDynamicPrompt.slice(0, 60),
+                                            chartjsConfig: aiDynamicResult,
+                                            width: 'full', align: 'center',
+                                            config: {}
+                                          };
+                                          setSelectedReport(prev => {
+                                            const sections = [...(prev.sections || [])];
+                                            const idx = aiChartPanelSectionIdx;
+                                            if (idx >= sections.length) {
+                                              const secTitle = aiNewSectionName.trim() || `${sections.length + 1}. New Section`;
+                                              sections.push({ id: `sec-${Date.now()}`, title: secTitle, content: '', images: [], charts: [newChart] });
+                                              setAiNewSectionName('');
+                                            } else {
+                                              sections[idx] = { ...sections[idx], charts: [...(sections[idx].charts || []), newChart] };
+                                            }
+                                            return { ...prev, sections };
+                                          });
+                                          showToast('Dynamic chart added to report', 'success');
+                                          setShowAiChartPanel(false);
+                                          setAiDynamicPrompt('');
+                                          setAiDynamicResult(null);
+                                        }}
+                                        className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 active:scale-95"
+                                      >
+                                        <Plus size={13} /> Add to Report
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
                             </div>
                           </div>
                         )}
@@ -12543,7 +12715,13 @@ const spec = JSON.parse(response.text);
                                       <td className={`px-5 py-3.5 font-bold ${darkMode ? 'text-white' : 'text-slate-900'}`}>{u.name || '—'}</td>
                                       <td className={`px-5 py-3.5 font-mono text-[11px] ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{u.email}</td>
                                       <td className="px-5 py-3.5">
-                                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${u.role === 'admin' ? 'bg-indigo-100 text-indigo-700' : u.role === 'employee' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{u.role || 'individual'}</span>
+                                        {(() => {
+                                          const isMav = u.email?.toLowerCase().endsWith('@themavericksindia.com');
+                                          const isAdm = u.role === 'admin';
+                                          const label = isAdm ? 'Admin' : isMav ? 'Maverick' : 'Individual';
+                                          const cls = isAdm ? 'bg-indigo-100 text-indigo-700' : isMav ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600';
+                                          return <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${cls}`}>{label}</span>;
+                                        })()}
                                       </td>
                                       <td className={`px-5 py-3.5 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{u.created_at ? new Date(u.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}</td>
                                       <td className={`px-5 py-3.5 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{u.last_activity ? new Date(u.last_activity).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'Never'}</td>
@@ -12874,7 +13052,7 @@ const spec = JSON.parse(response.text);
                     competitorKeywords: newReportForm.competitorKeywords || 'Unspecified Competitors',
                     summary: `Assessment for topic: ${newReportForm.topic || 'All'}${newReportForm.keywords ? ' (' + newReportForm.keywords + ')' : ''} covering brand: ${newReportForm.brandKeywords || 'N/A'} against competitor: ${newReportForm.competitorKeywords || 'N/A'}.`,
                     tags: newReportForm.tags ? newReportForm.tags.split(',').map(t => t.trim()) : ['Intelligence', 'Analysis'],
-                    metrics: { accuracy: '99.8%', confidence: 'Very High', sourcesCount: Math.floor(Math.random() * 100) + 50 },
+                    metrics: { accuracy: '99.8%', confidence: 'Very High', sourcesCount: Math.floor(Math.random() * 100) + 50, startDate: newReportForm.startDate || '', endDate: newReportForm.endDate || '' },
                     sections: [
                       {
                         id: `${generatedId}-s1`,
@@ -12916,16 +13094,43 @@ const spec = JSON.parse(response.text);
                           { id: `${generatedId}-c8`, type: 'Radar Chart',  field: 'Articles Coverage', width: 'full', align: 'center', config: { field: 'Articles Coverage',  groupBy: 'Brand', sort: 'Descending', maxItems: 'All' } },
                           { id: `${generatedId}-c9`, type: 'Scatter Plot', field: 'Articles Coverage', width: 'full', align: 'center', config: { field: 'Articles Coverage',  groupBy: 'Brand', sort: 'Descending', maxItems: 'All' } },
                         ]
+                      },
+                      {
+                        id: `${generatedId}-s5`,
+                        title: '5. Publication Intelligence',
+                        content: '',
+                        images: [],
+                        charts: [
+                          { id: `${generatedId}-c10`, type: 'Bar Chart',   field: 'Articles Coverage', width: 'full', align: 'center', config: { field: 'Articles Coverage', groupBy: 'Publication', sort: 'Descending', maxItems: 'Top 15' } },
+                          { id: `${generatedId}-c11`, type: 'Donut Chart', field: 'Articles Coverage', width: 'full', align: 'center', config: { field: 'Articles Coverage', groupBy: 'Publication', sort: 'Descending', maxItems: 'Top 10' } },
+                          { id: `${generatedId}-c12`, type: 'Pie Chart',   field: 'Articles Coverage', width: 'full', align: 'center', config: { field: 'Articles Coverage', groupBy: 'Publication', sort: 'Descending', maxItems: 'Top 10' } },
+                          { id: `${generatedId}-c13`, type: 'KPI Card',    field: 'Media Diversity Count', width: 'full', align: 'center', config: { field: 'Media Diversity Count', groupBy: 'Brand', sort: 'Descending', maxItems: 'All'   } },
+                        ]
                       }
                     ]
                   };
                   // Append AI Blueprint section if the user described any charts
                   const aiLines = createReportAiPrompts.split('\n').map(l => l.trim()).filter(Boolean);
                   if (aiLines.length > 0) {
-                    const aiCharts = aiLines.map((line, i) => {
-                      const { type, field } = generateChartFromPrompt(line);
-                      return { id: `${generatedId}-ai${i}`, type, field, label: line.slice(0, 60), width: 'full', align: 'center', config: { field, groupBy: 'Brand', sort: 'Descending', maxItems: 'All' } };
-                    });
+                    let aiResults = aiLines.map(line => generateChartFromPrompt(line)); // heuristic fallback
+                    try {
+                      const aiRes = await fetch(`${API_BASE}/api/ai/chart`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-User-Id': user?.id || 'default' },
+                        body: JSON.stringify({ prompts: aiLines })
+                      });
+                      const aiData = await aiRes.json();
+                      if (aiData.charts) aiResults = aiData.charts;
+                    } catch {}
+                    const aiCharts = aiResults.map((result, i) => ({
+                      id: `${generatedId}-ai${i}`,
+                      type: result.type,
+                      field: result.field,
+                      label: aiLines[i].slice(0, 60),
+                      width: 'full',
+                      align: 'center',
+                      config: { field: result.field, groupBy: 'Brand', sort: 'Descending', maxItems: 'All' }
+                    }));
                     newRep.sections.push({ id: `${generatedId}-s5`, title: '5. AI Blueprint Charts', content: '', images: [], charts: aiCharts });
                   }
                   setReports(prev => [newRep, ...prev]);
@@ -12934,7 +13139,7 @@ const spec = JSON.parse(response.text);
                   setShowCreateReportModal(false);
                   setCreateReportAiPrompts('');
                   logActivity('report_created', newRep.title, 'report-analysis');
-                  setNewReportForm({ title: '', type: 'Brand Analysis', priority: 'High', topic: 'All', keywords: '', brandKeywords: '', competitorKeywords: '', tags: '' });
+                  setNewReportForm({ title: '', type: 'Brand Analysis', priority: 'High', topic: 'All', keywords: '', brandKeywords: '', competitorKeywords: '', tags: '', startDate: '', endDate: '' });
                   // Persist to server so it survives refresh
                   try {
                     await fetch(`${API_BASE}/api/reports`, {
@@ -12980,6 +13185,27 @@ const spec = JSON.parse(response.text);
                         <option value="Urgent">Urgent</option>
                         <option value="Medium">Medium</option>
                       </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 block mb-2">Analysis Start Date</label>
+                      <input
+                        type="date"
+                        value={newReportForm.startDate}
+                        onChange={(e) => setNewReportForm({ ...newReportForm, startDate: e.target.value })}
+                        className="w-full py-3.5 px-5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-all shadow-inner"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 block mb-2">Analysis End Date</label>
+                      <input
+                        type="date"
+                        value={newReportForm.endDate}
+                        onChange={(e) => setNewReportForm({ ...newReportForm, endDate: e.target.value })}
+                        className="w-full py-3.5 px-5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-all shadow-inner"
+                      />
                     </div>
                   </div>
 
@@ -13041,20 +13267,18 @@ const spec = JSON.parse(response.text);
                     />
                   </div>
 
-                  {/* AI Chart Blueprints — Coming Soon */}
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5 flex flex-col gap-3">
+                  {/* AI Chart Blueprints */}
+                  <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-5 flex flex-col gap-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <Sparkles size={14} className="text-slate-400" />
-                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">AI Chart Blueprints</span>
+                        <Sparkles size={14} className="text-indigo-500" />
+                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-600">AI Chart Blueprints</span>
                       </div>
-                      <span className="text-[9px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full uppercase tracking-wider">Coming Soon</span>
+                      <span className="text-[9px] font-bold bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full uppercase tracking-wider">Powered by Groq</span>
                     </div>
-                    <p className="text-[10px] text-slate-400 font-medium leading-relaxed">
-                      Describe charts in plain English and AI will auto-select chart types and data fields. API integration in progress — available soon.
+                    <p className="text-[10px] text-slate-500 font-medium leading-relaxed">
+                      Describe charts in plain English — AI will auto-select the best chart types and data fields for your report.
                     </p>
-                    {/* Hidden — logic preserved for API key integration */}
-                    <div className="hidden">
                     <textarea
                       rows={3}
                       placeholder={"Show sentiment trend over time\nCompare share of voice as a donut chart\nDisplay total mentions as a KPI metric"}
@@ -13077,7 +13301,6 @@ const spec = JSON.parse(response.text);
                         })}
                       </div>
                     )}
-                    </div>{/* end hidden */}
                   </div>
                   </div>{/* end scrollable body */}
 

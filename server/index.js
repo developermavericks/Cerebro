@@ -381,7 +381,6 @@ app.get('/api/admin/activity', getUserId, requireDevAdmin, async (req, res) => {
       FROM activity_logs al
       JOIN users u ON u.id = al.user_id
       ORDER BY al.created_at DESC
-      LIMIT 200
     `);
     res.json({ logs: result.rows });
   } catch (err) {
@@ -1639,9 +1638,10 @@ ${competitorContext.shareOfVoice ? `Share of Voice: ${JSON.stringify(competitorC
     // 8. Build current report section
     let reportSection = 'No report is currently open.';
     if (reportContext) {
-      reportSection = `Currently viewing report: "${reportContext.title}" (Type: ${reportContext.type}, Status: ${reportContext.status}, Topic: ${reportContext.topic || 'N/A'})
+      reportSection = `Currently viewing report: "${reportContext.title}" (Type: ${reportContext.type}, Status: ${reportContext.status})
 Brand Keywords: ${reportContext.brandKeywords || 'N/A'} | Competitor Keywords: ${reportContext.competitorKeywords || 'N/A'}
-Sections: ${reportContext.sections?.length > 0 ? reportContext.sections.join(' | ') : 'No sections'}`;
+Sections: ${reportContext.sections?.length > 0 ? reportContext.sections.join(' | ') : 'No sections'}
+Charts in this report (${reportContext.charts?.length || 0}): ${reportContext.charts?.length > 0 ? reportContext.charts.join('; ') : 'None'}`;
     }
 
     // 9. Build brand detail section
@@ -1652,9 +1652,14 @@ Sections: ${reportContext.sections?.length > 0 ? reportContext.sections.join(' |
 Sentiment from recent articles: Positive=${sent?.Positive||0}, Neutral=${sent?.Neutral||0}, Negative=${sent?.Negative||0}`;
     }
 
-    // 10. All reports summary
+    // 10. All reports summary (with sections + charts)
     const reportsSummary = reports.length > 0
-      ? reports.map(r => `"${r.title}" (${r.type}, ${r.status}, Topic: ${r.topic || 'N/A'}, Keywords: ${r.brand_keywords || r.keywords || 'N/A'})`).join('\n  ')
+      ? reports.map((r, i) => {
+          const sections = Array.isArray(r.sections) ? r.sections : (typeof r.sections === 'string' ? JSON.parse(r.sections || '[]') : []);
+          const allCharts = sections.flatMap(s => (s.charts || []).map(c => `${c.type || 'Chart'}${c.field ? ' of ' + c.field : ''}${c.label ? ' ("' + c.label + '")' : ''} in "${s.title || 'Section'}"`));
+          const chartsLine = allCharts.length > 0 ? `\n     Charts (${allCharts.length}): ${allCharts.join('; ')}` : '\n     No charts yet.';
+          return `${i + 1}. "${r.title}" (${r.type}, ${r.status}, Keywords: ${r.brand_keywords || r.keywords || 'N/A'}, ${sections.length} sections)${chartsLine}`;
+        }).join('\n  ')
       : 'No reports created yet.';
 
     // 11. All brands summary
@@ -1733,6 +1738,112 @@ ${articles.length > 0 ? articles.slice(0,20).map(a => `- "${a.title}" | Source: 
   } catch (err) {
     console.error('[Cleo Chat Error]:', err);
     res.status(500).json({ error: 'Failed to communicate with Cleo AI: ' + err.message });
+  }
+});
+
+// Dynamic Chart Generation — Groq generates full Chart.js config with real brand data
+app.post('/api/ai/chart-dynamic', getUserId, async (req, res) => {
+  const { prompt, brandData } = req.body;
+  if (!prompt || typeof prompt !== 'string') {
+    return res.status(400).json({ error: 'prompt is required' });
+  }
+
+  const brandSummary = brandData
+    ? Object.entries(brandData).map(([name, d]) => {
+        const s = d.sentiment || {};
+        return `${name}: mentions=${d.mentions || 0}, articles=${d.articles || 0}, positive=${s.Positive || 0}, neutral=${s.Neutral || 0}, negative=${s.Negative || 0}`;
+      }).join('\n')
+    : 'No brand data provided';
+
+  try {
+    const completion = await groq.chat.completions.create({
+      messages: [
+        {
+          role: 'system',
+          content: `You are a Chart.js v4 expert for a media intelligence platform called Cerebro. Given a user request and brand data, generate a complete Chart.js configuration object.
+
+Return ONLY raw JSON — no markdown, no code fences, no explanation. The JSON must have exactly these top-level keys:
+- "type": one of: bar, line, pie, doughnut, radar, scatter, bubble, polarArea
+- "data": { "labels": [...], "datasets": [{ "label": "...", "data": [...], "backgroundColor": [...], "borderColor": [...], "borderWidth": 1 }] }
+- "options": { "responsive": true, "maintainAspectRatio": false, "plugins": { "legend": { "position": "bottom" }, "title": { "display": true, "text": "..." } } }
+
+For scatter/bubble charts, data items must be objects like { x: ..., y: ..., r: ... }.
+Use vibrant colors. Fill in real numbers from the brand data below.
+Brand data:
+${brandSummary}`
+        },
+        { role: 'user', content: prompt }
+      ],
+      model: 'llama-3.1-8b-instant',
+      temperature: 0.3,
+      max_tokens: 1200
+    });
+
+    const raw = (completion.choices[0]?.message?.content || '{}').trim();
+    const jsonStr = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+    try {
+      const config = JSON.parse(jsonStr);
+      if (!config.type || !config.data) {
+        return res.status(500).json({ error: 'AI returned invalid chart config' });
+      }
+      res.json({ config });
+    } catch {
+      res.status(500).json({ error: 'Failed to parse AI chart config' });
+    }
+  } catch (err) {
+    console.error('[Dynamic Chart Error]:', err);
+    res.status(500).json({ error: 'Failed to generate dynamic chart: ' + err.message });
+  }
+});
+
+// AI Chart Generation — Groq llama-3.1-8b
+app.post('/api/ai/chart', getUserId, async (req, res) => {
+  const { prompts } = req.body;
+  if (!Array.isArray(prompts) || prompts.length === 0) {
+    return res.status(400).json({ error: 'prompts array is required' });
+  }
+
+  const VALID_TYPES = ['Bar Chart', 'Pie Chart', 'Donut Chart', 'Area Chart', 'Trend Chart', 'Radar Chart', 'Scatter Plot', 'KPI Card'];
+  const VALID_FIELDS = ['Total Mentions', 'Total Articles', 'Share of Voice', 'Sentiment', 'Publication', 'Media Diversity Count', 'Net Sentiment Index'];
+
+  try {
+    const results = await Promise.all(prompts.map(async (prompt) => {
+      const completion = await groq.chat.completions.create({
+        messages: [
+          {
+            role: 'system',
+            content: `You are a data visualization expert for a media intelligence platform called Cerebro. Given a user's chart description, return a JSON object — raw JSON only, no markdown, no code fences — with exactly these fields:
+- "type": one of: ${VALID_TYPES.join(', ')}
+- "field": one of: ${VALID_FIELDS.join(', ')}
+- "reasoning": one concise sentence explaining your choice
+
+Pick the chart type and data field that best matches the user's intent. Return ONLY valid JSON, nothing else.`
+          },
+          { role: 'user', content: prompt }
+        ],
+        model: 'llama-3.1-8b-instant',
+        temperature: 0.2,
+        max_tokens: 150
+      });
+
+      const raw = (completion.choices[0]?.message?.content || '{}').trim();
+      const jsonStr = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+      try {
+        const parsed = JSON.parse(jsonStr);
+        return {
+          type: VALID_TYPES.includes(parsed.type) ? parsed.type : 'Bar Chart',
+          field: VALID_FIELDS.includes(parsed.field) ? parsed.field : 'Total Mentions',
+          reasoning: typeof parsed.reasoning === 'string' ? parsed.reasoning : `A ${parsed.type || 'Bar Chart'} best represents this metric.`
+        };
+      } catch {
+        return { type: 'Bar Chart', field: 'Total Mentions', reasoning: 'Default chart for media intelligence data.' };
+      }
+    }));
+
+    res.json({ charts: results });
+  } catch (err) {
+    console.error('[AI Chart Error]:', err);
+    res.status(500).json({ error: 'Failed to generate chart config: ' + err.message });
   }
 });
 
@@ -1827,7 +1938,7 @@ app.get('/api/reports', getUserId, async (req, res) => {
               brand_keywords as "brandKeywords", competitor_keywords as "competitorKeywords",
               summary, tags, metrics, sections, bookmarks
        FROM reports
-       WHERE user_id = $1
+       WHERE user_id = $1 AND id NOT LIKE 'predefined-%'
        ORDER BY created_at DESC`,
       [req.userId]
     );
@@ -2126,6 +2237,26 @@ if (process.env.NODE_ENV === 'production') {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    // Ensure system_settings table exists
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS system_settings (
+        key VARCHAR(100) PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    // Ensure users table has role column
+    await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(50) DEFAULT 'individual'`);
+    // Seed admin user and admin key
+    await db.query(
+      `INSERT INTO users (name, email, password, role) VALUES ($1, $2, $3, 'admin')
+       ON CONFLICT (email) DO UPDATE SET password = EXCLUDED.password, role = 'admin'`,
+      ['Developer Team', 'developerteam@themavericksindia.com', 'mavs12345']
+    );
+    await db.query(
+      `INSERT INTO system_settings (key, value) VALUES ('admin_key', 'mavs12345')
+       ON CONFLICT (key) DO UPDATE SET value = 'mavs12345'`
+    );
     console.log('[DB] Migrations applied');
   } catch (err) {
     console.error('[DB] Migration error:', err.message);
