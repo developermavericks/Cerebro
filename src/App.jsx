@@ -12235,7 +12235,7 @@ const spec = JSON.parse(response.text);
                                     <div className="flex flex-col gap-3 animate-in fade-in duration-300">
                                       <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Preview</span>
                                       <div className="bg-white rounded-xl p-3">
-                                        <DynamicChart config={aiDynamicResult} />
+                                        <DynamicChart key={JSON.stringify(aiDynamicResult?.type) + JSON.stringify(aiDynamicResult?.data?.labels?.length)} config={aiDynamicResult} />
                                       </div>
                                       <div className="bg-slate-800 rounded-xl px-3 py-2 flex items-center gap-2">
                                         <span className="text-[10px] font-black text-indigo-400 uppercase tracking-wider">{aiDynamicResult.type}</span>
