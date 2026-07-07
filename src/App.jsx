@@ -3638,17 +3638,15 @@ function App() {
     setIsFetchingTelemetry(true);
     fetch(`${API_BASE}/api/curated-search`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-User-Id': user?.id || '' },
       body: JSON.stringify({
         targetKeywords: combinedKeywords,
         excludedKeywords: [],
         topic: selectedReport.topic || 'All'
       })
     })
-      .then(r => r.json())
-      .then(data => {
-        setReportTelemetryData(data);
-      })
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then(data => { setReportTelemetryData(data); })
       .catch(err => console.error('Error fetching report telemetry:', err))
       .finally(() => setIsFetchingTelemetry(false));
   }, [selectedReport?.id, selectedReport?.brandKeywords, selectedReport?.competitorKeywords, selectedReport?.keywords, selectedReport?.topic]);
@@ -11699,7 +11697,7 @@ const spec = JSON.parse(response.text);
                             <div key={sIdx} className="mb-10">
                               <div className="flex items-center gap-3 mb-5">
                                 <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-[11px] font-black shrink-0">{sIdx + 1}</div>
-                                <h3 className={`text-sm font-black uppercase tracking-widest ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{sec.title || `Section ${sIdx + 1}`}</h3>
+                                <h3 className={`text-sm font-black uppercase tracking-widest ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{(sec.title || `Section ${sIdx + 1}`).replace(/^\d+\.\s*/, '')}</h3>
                               </div>
                               {(!sec.charts || sec.charts.length === 0) && (
                                 <p className="text-xs text-slate-600 italic pl-10">No charts in this section.</p>
@@ -11727,9 +11725,23 @@ const spec = JSON.parse(response.text);
                                             <div className="w-6 h-6 border-4 border-indigo-600/30 border-t-indigo-600 rounded-full animate-spin" />
                                           </div>
                                         ) : !filteredBrandsObj || Object.keys(filteredBrandsObj).length === 0 ? (
-                                          <div className="flex flex-col items-center justify-center py-8 text-slate-300 gap-2">
+                                          <div className="flex flex-col items-center justify-center py-8 text-slate-300 gap-3">
                                             <Activity size={22} className="opacity-40" />
-                                            <span className="text-xs font-bold">No data — select brands &amp; date range above</span>
+                                            <span className="text-xs font-bold text-slate-400">No articles found for these keywords</span>
+                                            <button
+                                              onClick={() => {
+                                                const bKeys = (selectedReport.brandKeywords || '').split(',').map(k => k.trim()).filter(Boolean);
+                                                const cKeys = (selectedReport.competitorKeywords || '').split(',').map(k => k.trim()).filter(Boolean);
+                                                const rKeys = (selectedReport.keywords || '').split(',').map(k => k.trim()).filter(Boolean);
+                                                const kws = [...new Set([...bKeys, ...cKeys, ...rKeys])];
+                                                if (!kws.length) return;
+                                                setIsFetchingTelemetry(true);
+                                                setReportTelemetryData(null);
+                                                fetch(`${API_BASE}/api/curated-search`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-User-Id': user?.id || '' }, body: JSON.stringify({ targetKeywords: kws, excludedKeywords: [], topic: selectedReport.topic || 'All' }) })
+                                                  .then(r => r.json()).then(data => setReportTelemetryData(data)).catch(console.error).finally(() => setIsFetchingTelemetry(false));
+                                              }}
+                                              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-black uppercase tracking-widest rounded-lg transition-all"
+                                            >Retry Load</button>
                                           </div>
                                         ) : cfg.type === 'KPI Card' ? (() => {
                                           const bNames = Object.keys(filteredBrandsObj);
