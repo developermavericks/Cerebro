@@ -1770,7 +1770,7 @@ STRICT RULES — read carefully:
 2. Horizontal bar → type "bar", add "indexAxis": "y" in options
 3. Stacked bar → type "bar", add options.scales = { "x": { "stacked": true }, "y": { "stacked": true } }
 4. Area chart → type "line", set "fill": true on EACH dataset
-5. Line/area time-series → use "category" axis: options.scales = { "x": { "type": "category" } }, labels = date strings from timeline
+5. For ANY chart with date/time labels (bar or line) → ALWAYS use "category" axis: options.scales.x = { "type": "category" }. NEVER set type:"time" on any axis — no time adapter is installed.
 6. scatter and bubble → create ONE dataset PER BRAND (each brand = separate dataset with its own "label" and "backgroundColor" string), each dataset has ONE data point: { "x": <actual_count>, "y": <actual_count>, "r": 8 }. NEVER put all brands in one dataset for scatter/bubble.
 7. All numbers must be ACTUAL counts from brand data — never use ratios, percentages, or values between 0 and 1 unless the metric is a ratio
 8. backgroundColor for scatter/bubble must be a single color STRING per dataset, not an array
@@ -1842,9 +1842,19 @@ ${brandSummary}`
     else if (['polararea','polarchart','polarareal','polar'].includes(t)) config.type = 'polarArea';
     else if (!VALID_TYPES.includes(rawType)) config.type = 'bar';
 
-    // Line/area charts: force category scale so date strings never trigger time adapter (not installed)
-    if (config.type === 'line') {
-      config.options.scales.x = { type: 'category', ...(config.options.scales.x || {}) };
+    // Bar and line/area charts with date labels: force category scale.
+    // Also nuke any explicit type:'time' on any axis — no time adapter is installed.
+    if (config.options.scales) {
+      for (const axisKey of Object.keys(config.options.scales)) {
+        const axis = config.options.scales[axisKey];
+        if (axis && axis.type === 'time') axis.type = 'category';
+      }
+    }
+    if (config.type === 'line' || config.type === 'bar') {
+      const existing = config.options.scales.x || {};
+      if (!existing.type || existing.type === 'time') {
+        config.options.scales.x = { ...existing, type: 'category' };
+      }
     }
 
     // Scatter/bubble: fix common issue where model uses ratio values (0-1) instead of counts
