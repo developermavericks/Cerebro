@@ -1762,22 +1762,21 @@ app.post('/api/ai/chart-dynamic', getUserId, async (req, res) => {
           role: 'system',
           content: `You are a Chart.js v4 config generator. Return ONLY a raw JSON object — no markdown, no text, no code fences.
 
-The JSON must have these exact keys:
-- "type": one of these EXACT strings only: bar, line, pie, doughnut, radar, scatter, bubble, polarArea
-- "data": { "labels": [...], "datasets": [{ "label": "...", "data": [...], "backgroundColor": [...], "borderColor": [...], "borderWidth": 1 }] }
-- "options": { "responsive": true, "maintainAspectRatio": false, "plugins": { "legend": { "position": "bottom" }, "title": { "display": true, "text": "..." } } }
+Required JSON structure:
+{ "type": "...", "data": { "labels": [...], "datasets": [...] }, "options": { "responsive": true, "maintainAspectRatio": false, "plugins": { "legend": { "position": "bottom" }, "title": { "display": true, "text": "..." } } } }
 
-STRICT RULES:
-- type must be one of: bar, line, pie, doughnut, radar, scatter, bubble, polarArea — nothing else
-- Horizontal bar: use type "bar" and set options.indexAxis to "y"
-- Stacked bar: use type "bar" and set options.scales.x.stacked=true, options.scales.y.stacked=true
-- Area chart: use type "line" and set fill=true on each dataset
-- scatter and bubble: every data item must be an object { "x": number, "y": number, "r": number }
-- backgroundColor: always an array of color strings (one per label or dataset)
-- Use only real numbers from the brand data below — never null or placeholder values
-- If brand data has a "timeline" field, use those date keys as labels for time-series charts
+STRICT RULES — read carefully:
+1. "type" must be exactly one of: bar, line, pie, doughnut, radar, scatter, bubble, polarArea
+2. Horizontal bar → type "bar", add "indexAxis": "y" in options
+3. Stacked bar → type "bar", add options.scales = { "x": { "stacked": true }, "y": { "stacked": true } }
+4. Area chart → type "line", set "fill": true on EACH dataset
+5. Line/area time-series → use "category" axis: options.scales = { "x": { "type": "category" } }, labels = date strings from timeline
+6. scatter and bubble → create ONE dataset PER BRAND (each brand = separate dataset with its own "label" and "backgroundColor" string), each dataset has ONE data point: { "x": <actual_count>, "y": <actual_count>, "r": 8 }. NEVER put all brands in one dataset for scatter/bubble.
+7. All numbers must be ACTUAL counts from brand data — never use ratios, percentages, or values between 0 and 1 unless the metric is a ratio
+8. backgroundColor for scatter/bubble must be a single color STRING per dataset, not an array
+9. Never use null, undefined, or empty arrays for data
 
-Brand data:
+Brand data (use these exact numbers):
 ${brandSummary}`
         },
         { role: 'user', content: prompt }
@@ -1822,11 +1821,14 @@ ${brandSummary}`
     const rawType = (config.type || '').toString().trim();
     const t = rawType.toLowerCase().replace(/[\s_-]/g, '');
     config.options = config.options || {};
+    config.options.scales = config.options.scales || {};
+
     if (t.includes('horizontal') || t === 'hbar') {
-      config.type = 'bar'; config.options.indexAxis = 'y';
+      config.type = 'bar';
+      config.options.indexAxis = 'y';
     } else if (t.includes('stacked')) {
       config.type = 'bar';
-      config.options.scales = { x: { stacked: true }, y: { stacked: true }, ...(config.options.scales || {}) };
+      config.options.scales = { x: { stacked: true }, y: { stacked: true } };
     } else if (t === 'area' || t === 'areachart') {
       config.type = 'line';
       config.data.datasets.forEach(ds => { ds.fill = true; });
@@ -1838,7 +1840,25 @@ ${brandSummary}`
     else if (['radarchart','spider','spiderchart','webchart'].includes(t)) config.type = 'radar';
     else if (['scatterchart','scatterplot','scattergraph'].includes(t)) config.type = 'scatter';
     else if (['polararea','polarchart','polarareal','polar'].includes(t)) config.type = 'polarArea';
-    else if (!VALID_TYPES.includes(rawType)) config.type = 'bar'; // safe fallback
+    else if (!VALID_TYPES.includes(rawType)) config.type = 'bar';
+
+    // Line/area charts: force category scale so date strings never trigger time adapter (not installed)
+    if (config.type === 'line') {
+      config.options.scales.x = { type: 'category', ...(config.options.scales.x || {}) };
+    }
+
+    // Scatter/bubble: fix common issue where model uses ratio values (0-1) instead of counts
+    // Also ensure each dataset has proper backgroundColor string (not array)
+    if (config.type === 'scatter' || config.type === 'bubble') {
+      config.data.datasets = config.data.datasets.map(ds => ({
+        ...ds,
+        backgroundColor: Array.isArray(ds.backgroundColor) ? ds.backgroundColor[0] : (ds.backgroundColor || '#6366f1'),
+        data: Array.isArray(ds.data) ? ds.data.map(pt => {
+          if (typeof pt === 'object' && pt !== null && 'x' in pt && 'y' in pt) return { x: pt.x, y: pt.y, r: pt.r || 8 };
+          return pt;
+        }) : [],
+      }));
+    }
 
     // Ensure every dataset.data is an array
     config.data.datasets = config.data.datasets.map(ds => ({
