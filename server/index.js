@@ -1760,15 +1760,23 @@ app.post('/api/ai/chart-dynamic', getUserId, async (req, res) => {
       messages: [
         {
           role: 'system',
-          content: `You are a Chart.js v4 expert for a media intelligence platform called Cerebro. Given a user request and brand data, generate a complete Chart.js configuration object.
+          content: `You are a Chart.js v4 config generator. Return ONLY a raw JSON object — no markdown, no text, no code fences.
 
-Return ONLY raw JSON — no markdown, no code fences, no explanation. The JSON must have exactly these top-level keys:
-- "type": one of: bar, line, pie, doughnut, radar, scatter, bubble, polarArea
+The JSON must have these exact keys:
+- "type": one of these EXACT strings only: bar, line, pie, doughnut, radar, scatter, bubble, polarArea
 - "data": { "labels": [...], "datasets": [{ "label": "...", "data": [...], "backgroundColor": [...], "borderColor": [...], "borderWidth": 1 }] }
 - "options": { "responsive": true, "maintainAspectRatio": false, "plugins": { "legend": { "position": "bottom" }, "title": { "display": true, "text": "..." } } }
 
-For scatter/bubble charts, data items must be objects like { x: ..., y: ..., r: ... }.
-Use vibrant colors. Fill in real numbers from the brand data below.
+STRICT RULES:
+- type must be one of: bar, line, pie, doughnut, radar, scatter, bubble, polarArea — nothing else
+- Horizontal bar: use type "bar" and set options.indexAxis to "y"
+- Stacked bar: use type "bar" and set options.scales.x.stacked=true, options.scales.y.stacked=true
+- Area chart: use type "line" and set fill=true on each dataset
+- scatter and bubble: every data item must be an object { "x": number, "y": number, "r": number }
+- backgroundColor: always an array of color strings (one per label or dataset)
+- Use only real numbers from the brand data below — never null or placeholder values
+- If brand data has a "timeline" field, use those date keys as labels for time-series charts
+
 Brand data:
 ${brandSummary}`
         },
@@ -1808,6 +1816,30 @@ ${brandSummary}`
     if (!config.type || !config.data || !Array.isArray(config.data.datasets)) {
       return res.status(500).json({ error: 'AI returned invalid chart config' });
     }
+
+    // Normalize type — model outputs many variants, map all to valid Chart.js v4 types
+    const VALID_TYPES = ['bar', 'line', 'pie', 'doughnut', 'radar', 'scatter', 'bubble', 'polarArea'];
+    const rawType = (config.type || '').toString().trim();
+    const t = rawType.toLowerCase().replace(/[\s_-]/g, '');
+    config.options = config.options || {};
+    if (t.includes('horizontal') || t === 'hbar') {
+      config.type = 'bar'; config.options.indexAxis = 'y';
+    } else if (t.includes('stacked')) {
+      config.type = 'bar';
+      config.options.scales = { x: { stacked: true }, y: { stacked: true }, ...(config.options.scales || {}) };
+    } else if (t === 'area' || t === 'areachart') {
+      config.type = 'line';
+      config.data.datasets.forEach(ds => { ds.fill = true; });
+    } else if (['bubblechart','bubbleplot','bubbles'].includes(t)) config.type = 'bubble';
+    else if (['linechart','linegraph'].includes(t)) config.type = 'line';
+    else if (['barchart','columnchart','column','bargraph'].includes(t)) config.type = 'bar';
+    else if (['piechart','pie_chart'].includes(t)) config.type = 'pie';
+    else if (['donut','doughnutchart','donutchart'].includes(t)) config.type = 'doughnut';
+    else if (['radarchart','spider','spiderchart','webchart'].includes(t)) config.type = 'radar';
+    else if (['scatterchart','scatterplot','scattergraph'].includes(t)) config.type = 'scatter';
+    else if (['polararea','polarchart','polarareal','polar'].includes(t)) config.type = 'polarArea';
+    else if (!VALID_TYPES.includes(rawType)) config.type = 'bar'; // safe fallback
+
     // Ensure every dataset.data is an array
     config.data.datasets = config.data.datasets.map(ds => ({
       ...ds,

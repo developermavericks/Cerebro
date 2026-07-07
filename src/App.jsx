@@ -12137,15 +12137,46 @@ const spec = JSON.parse(response.text);
                                     <p className="text-[10px] text-slate-400 font-medium leading-relaxed">Powered by Groq · llama-3.1-8b. Describe any chart — bubble, stacked bar, mixed, polar area — AI builds it with your real brand data.</p>
                                   </div>
                                   <div>
-                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Describe Your Chart</label>
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Describe Your Chart</label>
+                                      <div className="relative group">
+                                        <div className="w-4 h-4 rounded-full bg-slate-700 text-slate-400 flex items-center justify-center text-[9px] font-black cursor-help select-none">?</div>
+                                        <div className="absolute left-6 top-0 z-50 w-64 bg-slate-800 border border-slate-700 rounded-xl p-3 shadow-2xl hidden group-hover:flex flex-col gap-2 pointer-events-none">
+                                          <p className="text-[10px] font-black text-white uppercase tracking-wider">How to prompt</p>
+                                          <div className="flex flex-col gap-1.5">
+                                            {[
+                                              ['Chart type', 'bar, line, pie, doughnut, bubble, radar, scatter, polar area'],
+                                              ['Metric', 'mentions, articles, positive/neutral/negative sentiment'],
+                                              ['Group by', 'each brand, per publication, over time (daily)'],
+                                            ].map(([title, desc]) => (
+                                              <div key={title}>
+                                                <p className="text-[9px] font-black text-indigo-400 uppercase">{title}</p>
+                                                <p className="text-[9px] text-slate-400 font-medium">{desc}</p>
+                                              </div>
+                                            ))}
+                                          </div>
+                                          <div className="border-t border-slate-700 pt-2">
+                                            <p className="text-[9px] font-black text-slate-500 uppercase mb-1">Examples</p>
+                                            {[
+                                              'Bubble chart — mentions vs articles, bubble size = negative sentiment',
+                                              'Stacked bar of positive, neutral, negative per brand',
+                                              'Line chart of daily mention trend over time',
+                                              'Pie chart of share of voice by brand',
+                                            ].map(ex => (
+                                              <p key={ex} className="text-[9px] text-slate-500 font-medium leading-relaxed">· {ex}</p>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
                                     <textarea
                                       rows={4}
-                                      placeholder="e.g. Show a bubble chart comparing mentions vs articles for each brand&#10;Create a stacked bar of positive, neutral, negative sentiment per brand&#10;Polar area chart of share of voice"
+                                      placeholder="e.g. Bubble chart comparing mentions vs articles for each brand&#10;Stacked bar of positive, neutral, negative sentiment per brand&#10;Line chart of daily mention trend over time"
                                       value={aiDynamicPrompt}
                                       onChange={e => { setAiDynamicPrompt(e.target.value); setAiDynamicResult(null); setAiDynamicError(null); }}
                                       className="w-full py-3 px-4 bg-slate-800 border border-slate-700 rounded-xl text-xs font-medium text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 resize-none transition-all"
                                     />
-                                    <p className="text-[10px] text-slate-500 mt-1.5 font-medium">Supports any Chart.js type — no restrictions</p>
+                                    <p className="text-[10px] text-slate-500 mt-1.5 font-medium">Supports any chart type — hover ? for examples</p>
                                   </div>
                                   <button
                                     disabled={!aiDynamicPrompt.trim() || isAiDynamicGenerating}
@@ -12154,11 +12185,17 @@ const spec = JSON.parse(response.text);
                                       setAiDynamicResult(null);
                                       setAiDynamicError(null);
                                       const brandSummary = filteredBrandsObj
-                                        ? Object.fromEntries(Object.entries(filteredBrandsObj).map(([name, d]) => [name, {
-                                            mentions: d.mentions || 0,
-                                            articles: d.articles || 0,
-                                            sentiment: d.sentiment || {}
-                                          }]))
+                                        ? Object.fromEntries(Object.entries(filteredBrandsObj).map(([name, d]) => {
+                                            const timelineEntries = Object.entries(d.timeline || {})
+                                              .sort((a, b) => a[0].localeCompare(b[0]))
+                                              .slice(-15);
+                                            return [name, {
+                                              mentions: d.mentions || 0,
+                                              articles: d.articles || 0,
+                                              sentiment: d.sentiment || {},
+                                              timeline: Object.fromEntries(timelineEntries),
+                                            }];
+                                          }))
                                         : {};
                                       try {
                                         const res = await fetch(`${API_BASE}/api/ai/chart-dynamic`, {
