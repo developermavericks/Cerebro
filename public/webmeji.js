@@ -1,6 +1,11 @@
 // ✰ webmeji animation engine ✰
 
-window.addEventListener('DOMContentLoaded', () => {
+function initWebmeji() {
+  if (window.activeCreatures) {
+    window.activeCreatures.forEach(c => c.destroy());
+  }
+  window.activeCreatures = [];
+
   const configNames = [...new Set(
     window.SPAWNING.map(spawn => spawn.config)
   )];
@@ -15,13 +20,15 @@ window.addEventListener('DOMContentLoaded', () => {
       window.SPAWNING.forEach(({ id, config }) => {
         const cfg = window[config];
         if (!cfg) return;
-        new Creature(id, cfg);
+        window.activeCreatures.push(new Creature(id, cfg));
       });
     })
     .catch(error => {
       console.error("Error loading webmeji images:", error);
     });
-});
+}
+
+window.initWebmeji = initWebmeji;
 
 function preloadImages(config) {
   const imagePaths = Object.values(config)
@@ -36,11 +43,31 @@ function preloadImages(config) {
 }
 
 class Creature {
+  getLimits() {
+    const playground = document.getElementById('pets-playground');
+    if (playground) {
+      return {
+        width: playground.clientWidth || 800,
+        height: playground.clientHeight || 280
+      };
+    }
+    return {
+      width: window.innerWidth,
+      height: window.innerHeight
+    };
+  }
+
   constructor(containerId, spriteConfig) {
     this.currentEdge = 'bottom';
     this.container = document.createElement('div');
     this.container.className = 'webmeji-container';
-    document.body.appendChild(this.container);
+    
+    const playground = document.getElementById('pets-playground');
+    if (playground) {
+      playground.appendChild(this.container);
+    } else {
+      document.body.appendChild(this.container);
+    }
 
     this.img = document.createElement('img');
     this.img.id = containerId;
@@ -75,13 +102,14 @@ class Creature {
     this.containerWidth = 100;
     this.containerHeight = 100;
 
-    this.positionX = Math.random() * (window.innerWidth - this.containerWidth);
-    this.positionY = window.innerHeight - this.containerHeight;
+    const limits = this.getLimits();
+    this.positionX = Math.random() * (limits.width - this.containerWidth);
+    this.positionY = limits.height - this.containerHeight;
 
     this.container.style.left = `${this.positionX}px`;
     this.container.style.top = `${this.positionY}px`;
 
-    this.maxPos = window.innerWidth - this.containerWidth;
+    this.maxPos = limits.width - this.containerWidth;
     this.forceWalkAfter = false;
     this.forceThinkAfter = false;
 
@@ -94,10 +122,11 @@ class Creature {
     this.animationFrameId = requestAnimationFrame(this.animate);
 
     this.resizeHandler = () => {
-      this.maxPos = Math.max(0, window.innerWidth - this.containerWidth);
+      const currentLimits = this.getLimits();
+      this.maxPos = Math.max(0, currentLimits.width - this.containerWidth);
       this.positionX = Math.min(this.positionX, this.maxPos);
       if (!this.isDragging && this.currentEdge === 'bottom') {
-        this.positionY = window.innerHeight - this.containerHeight;
+        this.positionY = currentLimits.height - this.containerHeight;
         this.container.style.top = `${this.positionY}px`;
       }
       this.container.style.left = `${this.positionX}px`;
@@ -143,6 +172,14 @@ class Creature {
     }
   }
 
+  destroy() {
+    this.clearAllTimers();
+    if (this.container && this.container.parentNode) {
+      this.container.parentNode.removeChild(this.container);
+    }
+    window.removeEventListener('resize', this.resizeHandler);
+  }
+
   isSideEdge(edge) { return edge === 'left' || edge === 'right'; }
   isNonBottomEdge(edge) { return edge !== 'bottom'; }
 
@@ -185,18 +222,19 @@ class Creature {
     let endX = startX;
     let endY = startY;
 
+    const limits = this.getLimits();
     switch (targetEdge) {
       case 'top':
         endY = 0;
-        endX = Math.random() * (window.innerWidth - this.containerWidth);
+        endX = Math.random() * (limits.width - this.containerWidth);
         break;
       case 'left':
         endX = 0;
-        endY = Math.random() * (window.innerHeight - this.containerHeight);
+        endY = Math.random() * (limits.height - this.containerHeight);
         break;
       case 'right':
-        endX = window.innerWidth - this.containerWidth;
-        endY = Math.random() * (window.innerHeight - this.containerHeight);
+        endX = limits.width - this.containerWidth;
+        endY = Math.random() * (limits.height - this.containerHeight);
         break;
     }
 
@@ -293,8 +331,9 @@ class Creature {
       this.positionX = clientX - dragOffsetX;
       this.positionY = clientY - dragOffsetY;
 
-      this.positionX = Math.max(0, Math.min(this.positionX, window.innerWidth - this.containerWidth));
-      this.positionY = Math.max(0, Math.min(this.positionY, window.innerHeight - this.containerHeight));
+      const limits = this.getLimits();
+      this.positionX = Math.max(0, Math.min(this.positionX, limits.width - this.containerWidth));
+      this.positionY = Math.max(0, Math.min(this.positionY, limits.height - this.containerHeight));
 
       this.container.style.left = `${this.positionX}px`;
       this.container.style.top  = `${this.positionY}px`;
@@ -370,6 +409,7 @@ class Creature {
 
   fallToBottom(fallSpeed = this.spriteConfig.fallspeed) {
     if (this.isFalling) return;
+    const startY = this.positionY;
     this.tripAfterFallActive = false;
     this.isFalling = true;
     this.currentEdge = 'bottom';
@@ -386,8 +426,8 @@ class Creature {
       this.img.src = cfg.frames[frameIndex]; 
     }, cfg.interval);
 
-    const startY = this.positionY;
-    const endY = window.innerHeight - this.containerHeight;
+    const limits = this.getLimits();
+    const endY = limits.height - this.containerHeight;
     const distance = endY - startY;
 
     if (distance <= 0) { 
@@ -470,7 +510,8 @@ class Creature {
       return;
     }
 
-    if (!this.isJumping && this.positionY >= window.innerHeight - this.containerHeight) {
+    const limits = this.getLimits();
+    if (!this.isJumping && this.positionY >= limits.height - this.containerHeight) {
       if (Math.random() < this.spriteConfig.JUMP_CHANCE) {
         const edges = ['top', 'left', 'right'].filter(e => this.spriteConfig.ALLOWANCES.includes(e));
         if (edges.length) {
@@ -636,7 +677,8 @@ class Creature {
       else if (this.currentEdge === 'right') this.facing = 'right';
       this.updateImageDirection();
 
-      const maxY = window.innerHeight - this.containerHeight;
+      const limits = this.getLimits();
+      const maxY = limits.height - this.containerHeight;
       if (this.positionY <= 0) {
         this.positionY = 0;
         this.direction = 1;
