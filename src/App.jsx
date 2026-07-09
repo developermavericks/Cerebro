@@ -8665,9 +8665,9 @@ ${bodyHtml}
 
                                 {expandedArticleId === idx && (
                                   <div className="px-10 pb-10 pt-6 animate-in slide-in-from-top-8 duration-700 ease-out">
-                                    <div className="grid grid-cols-12 gap-10 pt-8 border-t border-slate-100">
-                                      {/* Content (Expanded) */}
-                                      <div className="col-span-9">
+                                    <div className="pt-8 border-t border-slate-100">
+                                      {/* Full Article Content — hidden for now */}
+                                      {/* <div className="col-span-9">
                                         <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-5">Full Article Content</h4>
                                         <div className="bg-slate-50/50 border border-slate-100 rounded-[2.5rem] p-10 h-64 overflow-y-auto custom-scrollbar shadow-inner">
                                           {loadingArticleContents[article.id] ? (
@@ -8681,45 +8681,39 @@ ${bodyHtml}
                                             </p>
                                           )}
                                         </div>
+                                        <button type="button" onClick={(e) => { e.stopPropagation(); window.open(resolveArticleUrl(article.link), '_blank'); }}
+                                          className="mt-8 flex items-center gap-2 text-[10px] font-black text-indigo-600 uppercase tracking-[0.2em] hover:translate-x-2 transition-transform group/link">
+                                          View Full Article
+                                          <ArrowRight size={14} className="group-hover/link:translate-x-1 transition-transform" />
+                                        </button>
+                                      </div> */}
+
+                                      {/* Details — full width horizontal row */}
+                                      <div className="flex flex-wrap items-center gap-4">
+                                        <div className="flex-1 min-w-[140px] p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Source</p>
+                                          <p className="text-xs font-black text-slate-900 truncate">{article.source || 'Google News'}</p>
+                                        </div>
+                                        <div className="flex-1 min-w-[140px] p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">IST Timestamp</p>
+                                          <p className="text-xs font-black text-slate-900">{formattedDate}</p>
+                                        </div>
+                                        <div className="flex-1 min-w-[140px] p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Relative Age</p>
+                                          <p className="text-xs font-black text-slate-900">{relativeAge}</p>
+                                        </div>
+                                        <div className={`p-4 rounded-2xl border flex items-center gap-2 ${sentBg}`}>
+                                          <div className={`w-2 h-2 rounded-full animate-pulse ${sentiment === 'Positive' ? 'bg-teal-500' : sentiment === 'Negative' ? 'bg-red-500' : 'bg-slate-400'}`}></div>
+                                          <span className="text-xs font-black uppercase tracking-widest">{sentiment}</span>
+                                        </div>
                                         <button
                                           type="button"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            window.open(resolveArticleUrl(article.link), '_blank');
-                                          }}
-                                          className="mt-8 flex items-center gap-2 text-[10px] font-black text-indigo-600 uppercase tracking-[0.2em] hover:translate-x-2 transition-transform group/link"
+                                          onClick={(e) => { e.stopPropagation(); window.open(resolveArticleUrl(article.link), '_blank'); }}
+                                          className="flex items-center gap-2 text-[10px] font-black text-indigo-600 uppercase tracking-[0.2em] hover:translate-x-1 transition-transform group/link px-4 py-4"
                                         >
                                           View Full Article
                                           <ArrowRight size={14} className="group-hover/link:translate-x-1 transition-transform" />
                                         </button>
-                                      </div>
-
-                                      {/* Sidebar: Details & Sentiment */}
-                                      <div className="col-span-3 space-y-8">
-                                        <div>
-                                          <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-5">Details</h4>
-                                          <div className="space-y-4">
-                                            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                                              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Source</p>
-                                              <p className="text-xs font-black text-slate-900 truncate">{article.source || 'Google News'}</p>
-                                            </div>
-                                            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                                              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">IST Timestamp</p>
-                                              <p className="text-xs font-black text-slate-900">{formattedDate}</p>
-                                            </div>
-                                            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                                              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Relative Age</p>
-                                              <p className="text-xs font-black text-slate-900">{relativeAge}</p>
-                                            </div>
-                                          </div>
-                                        </div>
-
-                                        <div className="pt-2">
-                                          <div className={`p-4 rounded-2xl border flex items-center gap-2 ${sentBg}`}>
-                                            <div className={`w-2 h-2 rounded-full animate-pulse ${sentiment === 'Positive' ? 'bg-teal-500' : sentiment === 'Negative' ? 'bg-red-500' : 'bg-slate-400'}`}></div>
-                                            <span className="text-xs font-black uppercase tracking-widest">{sentiment}</span>
-                                          </div>
-                                        </div>
                                       </div>
                                     </div>
                                   </div>
