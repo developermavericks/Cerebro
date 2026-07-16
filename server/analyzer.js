@@ -163,11 +163,12 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
 
   const targetTerms = Object.keys(normalizedTargetMap);
 
-  // SQL pre-filter: only fetch articles containing at least one target keyword
-  const brandParams = targetTerms.map(t => `%${t}%`);
-  const ilikeConds = targetTerms.map((_, i) => {
+  // SQL pre-filter using GIN full-text index (fast) — falls back to seq scan if index not built yet
+  const brandParams = targetTerms.map(t => t);
+  const searchConds = targetTerms.map((t, i) => {
     const p = i + 1;
-    return `(COALESCE(title,'') ILIKE $${p} OR COALESCE(summary,'') ILIKE $${p})`;
+    const fn = t.includes(' ') ? 'phraseto_tsquery' : 'plainto_tsquery';
+    return `to_tsvector('simple', coalesce(title,'') || ' ' || coalesce(summary,'')) @@ ${fn}('simple', $${p})`;
   }).join(' OR ');
 
   // Sector filter via DB field (accurate — uses normalized sector column)
@@ -205,7 +206,7 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
         COALESCE(full_body, '')                           AS "Summary",
         COALESCE(full_body, '')                           AS "Full Body"
       FROM nexus_articles
-      WHERE (${ilikeConds})${extraClauses}
+      WHERE (${searchConds})${extraClauses}
       ORDER BY published_at DESC
     `, sqlParams);
     articles = nexus.rows;
@@ -219,7 +220,7 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
     try {
       const countRes = await db.query(`
         SELECT COUNT(*) AS count FROM nexus_articles
-        WHERE NOT (${ilikeConds})${extraClauses}
+        WHERE NOT (${searchConds})${extraClauses}
       `, sqlParams);
       othersCount = parseInt(countRes.rows[0]?.count || 0, 10);
     } catch (err) {
