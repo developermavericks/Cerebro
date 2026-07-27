@@ -120,8 +120,10 @@ async function ensureSummaryTable() {
 }
 
 async function fetchSummaryPage(endpoint, params) {
+  const token = process.env.NEXUS_SUMMARY_TOKEN || '';
   const resp = await axios.get(`${BASE()}${endpoint}`, {
-    params: { api_key: KEY(), ...params },
+    params,
+    headers: { 'Authorization': `Bearer ${token}` },
     timeout: 30000,
     maxContentLength: 10 * 1024 * 1024,
   });
