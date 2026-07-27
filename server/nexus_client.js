@@ -102,6 +102,89 @@ async function insertArticles(articles) {
   return inserted;
 }
 
+async function ensureSummaryTable() {
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS nexus_sector_summaries (
+      id INTEGER,
+      date DATE NOT NULL,
+      sector VARCHAR(100) NOT NULL,
+      publication_region VARCHAR(50) NOT NULL DEFAULT 'overall',
+      summary_text TEXT,
+      top_topics JSONB,
+      headline_count INTEGER,
+      generated_at TIMESTAMP,
+      imported_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE (date, sector, publication_region)
+    )
+  `);
+}
+
+async function fetchSummaryPage(endpoint, params) {
+  const resp = await axios.get(`${BASE()}${endpoint}`, {
+    params: { api_key: KEY(), ...params },
+    timeout: 30000,
+    maxContentLength: 10 * 1024 * 1024,
+  });
+  return resp.data;
+}
+
+async function insertSummaries(summaries, isRegionEndpoint) {
+  let upserted = 0;
+  for (const s of summaries) {
+    try {
+      const region = isRegionEndpoint ? (s.publication_region || 'overall') : 'overall';
+      await db.query(`
+        INSERT INTO nexus_sector_summaries
+          (id, date, sector, publication_region, summary_text, top_topics, headline_count, generated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ON CONFLICT (date, sector, publication_region) DO UPDATE SET
+          summary_text  = EXCLUDED.summary_text,
+          top_topics    = EXCLUDED.top_topics,
+          headline_count = EXCLUDED.headline_count,
+          generated_at  = EXCLUDED.generated_at
+      `, [
+        s.id,
+        s.date,
+        s.sector,
+        region,
+        s.summary_text,
+        s.top_topics ? JSON.stringify(s.top_topics) : null,
+        s.headline_count,
+        s.generated_at ? new Date(s.generated_at) : null,
+      ]);
+      upserted++;
+    } catch (err) {
+      console.error('[NEXUS] Summary insert failed:', err.message);
+    }
+  }
+  return upserted;
+}
+
+async function syncSectorSummariesForDate(dateStr) {
+  const endpoints = [
+    { path: '/api/sector-summaries/',       isRegion: false },
+    { path: '/api/sector-summaries/region', isRegion: true  },
+  ];
+  let total = 0;
+  for (const { path, isRegion } of endpoints) {
+    let page = 1;
+    let totalPages = 1;
+    do {
+      try {
+        const data = await fetchSummaryPage(path, { date: dateStr, page, page_size: 50 });
+        totalPages = data.total_pages || 1;
+        total += await insertSummaries(data.summaries || [], isRegion);
+        page++;
+        if (page <= totalPages) await new Promise(r => setTimeout(r, 150));
+      } catch (err) {
+        console.error(`[NEXUS] Summary fetch failed (${path} ${dateStr}):`, err.message);
+        break;
+      }
+    } while (page <= totalPages);
+  }
+  return total;
+}
+
 async function syncDate(dateStr) {
   let page = 1;
   let totalPages = 1;
@@ -118,12 +201,14 @@ async function syncDate(dateStr) {
 
 async function syncDateRange(days = 7) {
   await ensureTable();
+  await ensureSummaryTable();
   if (!KEY()) {
     console.warn('[NEXUS] NEXUS_SERVICE_KEY not set — skipping sync');
-    return { synced: 0, days };
+    return { synced: 0, summaries: 0, days };
   }
 
   let totalInserted = 0;
+  let totalSummaries = 0;
   const today = new Date();
 
   for (let i = 1; i <= days; i++) {
@@ -133,14 +218,21 @@ async function syncDateRange(days = 7) {
     try {
       const count = await syncDate(dateStr);
       totalInserted += count;
-      console.log(`[NEXUS] Synced ${dateStr}: +${count} new articles`);
+      console.log(`[NEXUS] Articles ${dateStr}: +${count}`);
     } catch (err) {
       console.error(`[NEXUS] Error syncing ${dateStr}:`, err.message);
     }
+    try {
+      const summaryCount = await syncSectorSummariesForDate(dateStr);
+      totalSummaries += summaryCount;
+      console.log(`[NEXUS] Summaries ${dateStr}: +${summaryCount}`);
+    } catch (err) {
+      console.error(`[NEXUS] Summary sync error ${dateStr}:`, err.message);
+    }
   }
 
-  console.log(`[NEXUS] Sync complete — ${totalInserted} articles imported`);
-  return { synced: totalInserted, days };
+  console.log(`[NEXUS] Sync complete — ${totalInserted} articles, ${totalSummaries} summaries`);
+  return { synced: totalInserted, summaries: totalSummaries, days };
 }
 
-module.exports = { syncDateRange, syncDate, ensureTable };
+module.exports = { syncDateRange, syncDate, ensureTable, syncSectorSummariesForDate };
