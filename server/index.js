@@ -1565,6 +1565,85 @@ const BatchProcessor = require('./reach_lens/BatchProcessor');
 
 app.post('/api/analyze', analyzeUrl);
 
+// --- Cleo Sector Intent Helpers ---
+function detectSectorIntent(msg) {
+  const m = ' ' + msg.toLowerCase() + ' ';
+
+  // Time range
+  let days = 7;
+  if (/today|24 hour/.test(m))                                           days = 1;
+  else if (/yesterday/.test(m))                                          days = 2;
+  else if (/3 days|three days/.test(m))                                  days = 3;
+  else if (/last\s*14|two weeks|14 days/.test(m))                        days = 14;
+  else if (/last\s*month|this month|30 days|one month/.test(m))          days = 30;
+  else if (/week|7 days|seven days/.test(m))                             days = 7;
+
+  // Specific date range: "from july 21 to july 27" or "21 july to 27 july"
+  const monthMap = { jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12 };
+  const dateRangeMatch = m.match(/(?:from\s+)?(\d{1,2})\s*(?:st|nd|rd|th)?\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\s+(?:to|till|until|-)\s*(\d{1,2})\s*(?:st|nd|rd|th)?\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*/i)
+                    || m.match(/(?:from\s+)?(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\s+(\d{1,2})\s*(?:to|till|until|-)\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\s+(\d{1,2})/i);
+
+  let startDate = null, endDate = null;
+  if (dateRangeMatch) {
+    try {
+      const year = new Date().getFullYear();
+      const d1 = parseInt(dateRangeMatch[1]), m1 = monthMap[dateRangeMatch[2].toLowerCase().slice(0,3)];
+      const d2 = parseInt(dateRangeMatch[3]), m2 = monthMap[dateRangeMatch[4].toLowerCase().slice(0,3)];
+      startDate = `${year}-${String(m1).padStart(2,'0')}-${String(d1).padStart(2,'0')}`;
+      endDate   = `${year}-${String(m2).padStart(2,'0')}-${String(d2).padStart(2,'0')}`;
+    } catch(_) {}
+  }
+
+  // Sector detection
+  const sectorMap = [
+    { keys: [' tech ',' technology ',' software ',' it sector '],                  sector: 'Tech' },
+    { keys: [' ai ',' artificial intelligence ',' machine learning ',' llm '],      sector: 'AI' },
+    { keys: [' fintech ',' fin tech ',' financial tech ',' banking ',' payment '],  sector: 'Fintech' },
+    { keys: [' health ',' medical ',' pharma ',' hospital ',' healthcare '],        sector: 'Healthcare' },
+    { keys: [' travel ',' tourism ',' airline ',' hotel '],                         sector: 'Travel' },
+    { keys: [' food ',' drink ',' restaurant ',' beverage ',' fmcg '],             sector: 'Foods & Drinks' },
+    { keys: [' lifestyle ',' fashion ',' beauty ',' wellness '],                    sector: 'Lifestyle' },
+    { keys: [' polic ',' regulation ',' government ',' ministry '],                sector: 'Policies' },
+    { keys: [' startup ',' venture ',' seed round ',' funding '],                  sector: 'Startups' },
+    { keys: [' consult ',' advisory '],                                             sector: 'Consultancies' },
+    { keys: [' real estate ',' property ',' realty ',' housing '],                 sector: 'Real Estate' },
+    { keys: [' stock market ',' sensex ',' nifty ',' share market ',' equity '],   sector: 'Stock Market' },
+    { keys: [' education ',' edtech ',' learning ',' university ',' school '],     sector: 'Education' },
+    { keys: [' automobile ',' automotive ',' ev ',' electric vehicle ',' car '],   sector: 'Automobile' },
+    { keys: [' media ',' entertainment ',' ott ',' streaming ',' cinema '],        sector: 'Media & Entertainment' },
+  ];
+
+  for (const { keys, sector } of sectorMap) {
+    if (keys.some(k => m.includes(k))) return { sector, days, startDate, endDate };
+  }
+  return null;
+}
+
+async function fetchSectorSummariesForCleo(sector, days, region, startDate, endDate) {
+  try {
+    let query, params;
+    if (startDate && endDate) {
+      query = `SELECT date, summary_text, top_topics, headline_count
+               FROM nexus_sector_summaries
+               WHERE sector ILIKE $1 AND publication_region = $2
+                 AND date BETWEEN $3 AND $4
+               ORDER BY date DESC LIMIT 30`;
+      params = [sector, region, startDate, endDate];
+    } else {
+      query = `SELECT date, summary_text, top_topics, headline_count
+               FROM nexus_sector_summaries
+               WHERE sector ILIKE $1 AND publication_region = $2
+                 AND date >= CURRENT_DATE - ($3 || ' days')::INTERVAL
+               ORDER BY date DESC LIMIT 30`;
+      params = [sector, region, String(days)];
+    }
+    const result = await db.query(query, params);
+    return result.rows;
+  } catch (_) {
+    return [];
+  }
+}
+
 // --- Cleo AI Chatbot Endpoint ---
 app.post('/api/cleo/chat', getUserId, async (req, res) => {
   const { message, history, dashboardStats, activeTab, keywordContext, competitorContext, reportContext, brandContext } = req.body;
@@ -1670,7 +1749,30 @@ Sentiment from recent articles: Positive=${sent?.Positive||0}, Neutral=${sent?.N
         }).join('\n  ')
       : 'No brands tracked yet.';
 
-    // 12. Construct full system prompt
+    // 12. Detect sector intent and fetch live summaries
+    let sectorSummarySection = '';
+    const intent = detectSectorIntent(message);
+    if (intent) {
+      const msgLower = message.toLowerCase();
+      const region = msgLower.includes('india') || msgLower.includes('indian') ? 'india'
+                   : (msgLower.includes('global') || msgLower.includes('world') || msgLower.includes('international')) ? 'global'
+                   : 'overall';
+      const rows = await fetchSectorSummariesForCleo(intent.sector, intent.days, region, intent.startDate, intent.endDate);
+      if (rows.length > 0) {
+        const rangeLabel = intent.startDate && intent.endDate
+          ? `${intent.startDate} to ${intent.endDate}`
+          : `last ${intent.days} day(s)`;
+        const summaryText = rows.map(r => {
+          const topics = Array.isArray(r.top_topics)
+            ? r.top_topics.slice(0, 5).map(([t, c]) => `${t}(${c})`).join(', ')
+            : '';
+          return `[${r.date}] ${(r.summary_text || '').slice(0, 400)}${topics ? '\nTop topics: ' + topics : ''}`;
+        }).join('\n\n');
+        sectorSummarySection = `\n\n=== LIVE ${intent.sector.toUpperCase()} NEWS SUMMARIES (${rangeLabel}, region: ${region}) ===\n${summaryText}\n(Answer the user's sector question using ONLY the above data — do not guess or use training knowledge for current events.)`;
+      }
+    }
+
+    // 13. Construct full system prompt
     const systemMessage = {
       role: 'system',
       content: `You are Cleo, an autonomous PR and brand intelligence assistant for the Cerebro platform. You have full visibility into the user's workspace and can answer any question about their data, activity, and platform features.
@@ -1704,8 +1806,10 @@ ${reportSection}
 === RECENT BRAND ARTICLES (last 30) ===
 ${articles.length > 0 ? articles.slice(0,20).map(a => `- "${a.title}" | Source: ${a.source} | Sentiment: ${a.sentiment} | Brand: ${a.company_name} | Date: ${a.published_at||'N/A'}`).join('\n') : 'No articles found.'}
 
+${sectorSummarySection}
 === INSTRUCTIONS ===
 1. Answer any question about the user's workspace using the data above — brands, articles, reports, keyword analysis, competitor analysis, or platform navigation.
+1a. If LIVE SECTOR NEWS SUMMARIES are provided above, use them to answer sector/industry questions accurately with real recent data.
 2. Be concise, direct, and professional. Use bullet points for data-heavy answers.
 3. If asked about current tab activity, reference the Active Tab above.
 4. If asked how to do something in the app, give clear step-by-step guidance (e.g. "Go to Brand Tracker tab → click Add Brand").
