@@ -1762,13 +1762,45 @@ Sentiment from recent articles: Positive=${sent?.Positive||0}, Neutral=${sent?.N
         const rangeLabel = intent.startDate && intent.endDate
           ? `${intent.startDate} to ${intent.endDate}`
           : `last ${intent.days} day(s)`;
-        const summaryText = rows.map(r => {
-          const topics = Array.isArray(r.top_topics)
-            ? r.top_topics.slice(0, 5).map(([t, c]) => `${t}(${c})`).join(', ')
-            : '';
-          return `[${r.date}] ${(r.summary_text || '').slice(0, 400)}${topics ? '\nTop topics: ' + topics : ''}`;
-        }).join('\n\n');
-        sectorSummarySection = `\n\n=== LIVE ${intent.sector.toUpperCase()} NEWS SUMMARIES (${rangeLabel}, region: ${region}) ===\n${summaryText}\n(Answer the user's sector question using ONLY the above data — do not guess or use training knowledge for current events.)`;
+
+        let summaryText = '';
+
+        if (intent.days <= 7) {
+          // Daily view for short ranges
+          summaryText = rows.map(r => {
+            const topics = Array.isArray(r.top_topics)
+              ? r.top_topics.slice(0, 5).map(([t, c]) => `${t}(${c})`).join(', ')
+              : '';
+            return `[${r.date}] ${(r.summary_text || '').slice(0, 400)}${topics ? '\nTop topics: ' + topics : ''}`;
+          }).join('\n\n');
+        } else {
+          // Week-grouped view for longer ranges (14, 30 days)
+          const weeks = {};
+          for (const r of rows) {
+            const d = new Date(r.date);
+            const weekStart = new Date(d);
+            weekStart.setDate(d.getDate() - d.getDay());
+            const key = weekStart.toISOString().split('T')[0];
+            if (!weeks[key]) weeks[key] = { headlines: 0, topics: {}, snippet: '' };
+            weeks[key].headlines += r.headline_count || 0;
+            if (!weeks[key].snippet && r.summary_text) weeks[key].snippet = r.summary_text.slice(0, 300);
+            if (Array.isArray(r.top_topics)) {
+              for (const [topic, count] of r.top_topics) {
+                weeks[key].topics[topic] = (weeks[key].topics[topic] || 0) + count;
+              }
+            }
+          }
+          summaryText = Object.entries(weeks)
+            .sort((a, b) => b[0].localeCompare(a[0]))
+            .map(([weekStart, data]) => {
+              const topTopics = Object.entries(data.topics)
+                .sort((a, b) => b[1] - a[1]).slice(0, 5)
+                .map(([t, c]) => `${t}(${c})`).join(', ');
+              return `[Week of ${weekStart}] Total headlines: ${data.headlines}\nTop topics: ${topTopics}\nHighlight: ${data.snippet}`;
+            }).join('\n\n');
+        }
+
+        sectorSummarySection = `\n\n=== LIVE ${intent.sector.toUpperCase()} NEWS SUMMARIES (${rangeLabel}, region: ${region}) ===\n${summaryText}\n(Answer using ONLY the above data — do not guess or use training knowledge for current events.)`;
       }
     }
 
