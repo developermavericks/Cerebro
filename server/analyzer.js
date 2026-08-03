@@ -216,14 +216,19 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
     nexusTableExists = false;
   }
 
-  // Count non-matching articles in the same sector/date window (for "Others" share)
+  // Count non-matching articles: total_in_window - matched (avoids NOT on GIN index → seq scan)
   if (nexusTableExists) {
     try {
-      const countRes = await db.query(`
-        SELECT COUNT(*) AS count FROM nexus_articles
-        WHERE NOT (${searchConds})${extraClauses}
-      `, sqlParams);
-      othersCount = parseInt(countRes.rows[0]?.count || 0, 10);
+      const [matchedRes, totalRes] = await Promise.all([
+        db.query(`SELECT COUNT(*) AS count FROM nexus_articles WHERE (${searchConds})${extraClauses}`, sqlParams),
+        db.query(
+          `SELECT COUNT(*) AS count FROM nexus_articles${extraClauses ? ` WHERE 1=1${extraClauses}` : ''}`,
+          extraParams
+        )
+      ]);
+      const matchedCount = parseInt(matchedRes.rows[0]?.count || 0, 10);
+      const totalCount  = parseInt(totalRes.rows[0]?.count  || 0, 10);
+      othersCount = Math.max(0, totalCount - matchedCount);
     } catch (err) {
       console.error('[Analyzer] others COUNT failed:', err.message);
     }
