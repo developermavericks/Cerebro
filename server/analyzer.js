@@ -175,19 +175,28 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
   const dbSector = topic && topic !== 'All' ? (SECTOR_TO_DB[topic.toUpperCase()] || null) : null;
 
   // Build dynamic extra clauses + params
+  // extraClauses uses $-indices offset by brandParams.length (for sqlParams)
+  // totalClauses uses $-indices starting at $1 (for extraParams-only queries)
   const extraParams = [];
   let extraClauses = '';
+  let totalClauses = '';
   if (dbSector) {
     extraParams.push(dbSector);
-    extraClauses += ` AND sector = $${brandParams.length + extraParams.length}`;
+    const ep = extraParams.length;
+    extraClauses += ` AND sector = $${brandParams.length + ep}`;
+    totalClauses += ` AND sector = $${ep}`;
   }
   if (startDate) {
     extraParams.push(startDate);
-    extraClauses += ` AND published_at >= $${brandParams.length + extraParams.length}::date`;
+    const ep = extraParams.length;
+    extraClauses += ` AND published_at >= $${brandParams.length + ep}::date`;
+    totalClauses += ` AND published_at >= $${ep}::date`;
   }
   if (endDate) {
     extraParams.push(endDate);
-    extraClauses += ` AND published_at < ($${brandParams.length + extraParams.length}::date + INTERVAL '1 day')`;
+    const ep = extraParams.length;
+    extraClauses += ` AND published_at < ($${brandParams.length + ep}::date + INTERVAL '1 day')`;
+    totalClauses += ` AND published_at < ($${ep}::date + INTERVAL '1 day')`;
   }
   const sqlParams = [...brandParams, ...extraParams];
 
@@ -208,7 +217,7 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
       FROM nexus_articles
       WHERE (${searchConds})${extraClauses}
       ORDER BY published_at DESC
-      LIMIT 1000
+      LIMIT 200
     `, sqlParams);
     articles = nexus.rows;
   } catch (err) {
@@ -222,7 +231,7 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
       const [matchedRes, totalRes] = await Promise.all([
         db.query(`SELECT COUNT(*) AS count FROM nexus_articles WHERE (${searchConds})${extraClauses}`, sqlParams),
         db.query(
-          `SELECT COUNT(*) AS count FROM nexus_articles${extraClauses ? ` WHERE 1=1${extraClauses}` : ''}`,
+          `SELECT COUNT(*) AS count FROM nexus_articles${totalClauses ? ` WHERE 1=1${totalClauses}` : ''}`,
           extraParams
         )
       ]);
