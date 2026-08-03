@@ -736,12 +736,12 @@ app.get('/api/competitor-mentions', getUserId, async (req, res) => {
         return total;
       }
 
-      // Fallback: search the articles table globally for occurrences of the keyword in title or summary
+      // Fallback: full-body FTS search on nexus_articles using GIN index
       const articleRes = await db.query(
-        `SELECT COUNT(DISTINCT a.title) as count 
-         FROM articles a 
-         WHERE a.title ILIKE $1 OR a.summary ILIKE $1`,
-        [`%${cleanKeyword}%`]
+        `SELECT COUNT(*) as count
+         FROM nexus_articles a
+         WHERE to_tsvector('simple', coalesce(a.full_body,'')) @@ plainto_tsquery('simple', $1)`,
+        [cleanKeyword]
       );
       return parseInt(articleRes.rows[0].count, 10) || 0;
     };
@@ -810,15 +810,15 @@ app.get('/api/competitor-analysis', getUserId, async (req, res) => {
       } else {
         queryText = `
           SELECT DISTINCT ON (LOWER(a.title))
-                 a.title, a.link, a.source, a.sentiment, a.created_at, 
+                 a.title, a.url AS link, a.agency AS source, a.sentiment, a.published_at AS created_at,
                  d.page_rank_decimal, d.rank
-          FROM articles a
-          LEFT JOIN domain_authority_cache d 
-            ON d.domain = regexp_replace(substring(a.link from 'https?://([^/]+)'), '^www\\\\.', '')
-          WHERE a.title ILIKE $1 OR a.summary ILIKE $1
-          ORDER BY LOWER(a.title), a.created_at DESC
+          FROM nexus_articles a
+          LEFT JOIN domain_authority_cache d
+            ON d.domain = regexp_replace(substring(a.url from 'https?://([^/]+)'), '^www\\.', '')
+          WHERE to_tsvector('simple', coalesce(a.full_body,'')) @@ plainto_tsquery('simple', $1)
+          ORDER BY LOWER(a.title), a.published_at DESC
         `;
-        params = [`%${cleanKeyword}%`];
+        params = [cleanKeyword];
       }
 
       const articleRes = await db.query(queryText, params);
@@ -1053,27 +1053,31 @@ app.get('/api/brands/:id/history', getUserId, async (req, res) => {
     const brandRes = await db.query('SELECT name FROM companies WHERE id = $1 AND user_id = $2', [id, req.userId]);
     if (brandRes.rows.length === 0) return res.status(404).json({ error: 'Brand not found' });
 
+    const brandName = brandRes.rows[0].name;
+
     const history = await db.query(
-      `SELECT DATE(created_at) as date, COUNT(DISTINCT title)::int as count
-       FROM articles
-       WHERE company_id = $1 AND created_at >= NOW() - INTERVAL '60 days'
-       GROUP BY DATE(created_at)
+      `SELECT DATE(published_at) as date, COUNT(*)::int as count
+       FROM nexus_articles
+       WHERE to_tsvector('simple', coalesce(full_body,'')) @@ plainto_tsquery('simple', $1)
+         AND published_at >= NOW() - INTERVAL '60 days'
+       GROUP BY DATE(published_at)
        ORDER BY date ASC`,
-      [id]
+      [brandName]
     );
 
     const topSources = await db.query(
-      `SELECT source, COUNT(DISTINCT title)::int as count
-       FROM articles
-       WHERE company_id = $1 AND source IS NOT NULL
-       GROUP BY source
+      `SELECT agency AS source, COUNT(*)::int as count
+       FROM nexus_articles
+       WHERE to_tsvector('simple', coalesce(full_body,'')) @@ plainto_tsquery('simple', $1)
+         AND agency IS NOT NULL
+       GROUP BY agency
        ORDER BY count DESC
        LIMIT 8`,
-      [id]
+      [brandName]
     );
 
     res.status(200).json({
-      name: brandRes.rows[0].name,
+      name: brandName,
       timeline: history.rows,
       topSources: topSources.rows
     });
@@ -1127,7 +1131,6 @@ app.get('/api/brands/:id/articles', getUserId, async (req, res) => {
     // Full NEXUS pool — all articles mentioning this brand, no date cap, no row limit
     let nexusRows = [];
     try {
-      const brandPattern = `%${brandName}%`;
       const nexusRes = await db.query(
         `SELECT
            'nexus-' || id::text AS id,
@@ -1140,9 +1143,9 @@ app.get('/api/brands/:id/articles', getUserId, async (req, res) => {
            published_at AS created_at,
            NULL::timestamptz AS last_ping_time
          FROM nexus_articles
-         WHERE (title ILIKE $1 OR COALESCE(summary, '') ILIKE $1)
+         WHERE to_tsvector('simple', coalesce(full_body,'')) @@ plainto_tsquery('simple', $1)
          ORDER BY published_at DESC`,
-        [brandPattern]
+        [brandName]
       );
       nexusRows = nexusRes.rows;
     } catch (nexusErr) {
@@ -2491,6 +2494,48 @@ if (process.env.NODE_ENV === 'production') {
     console.error('[DB] Migration error:', err.message);
   }
 })();
+
+// ── Nexus Articles Export Endpoint ──────────────────────────────────────────
+app.get('/api/nexus/articles', async (req, res) => {
+  const apiKey = req.headers['x-api-key'];
+  if (!apiKey || apiKey !== process.env.NEXUS_EXPORT_API_KEY) {
+    return res.status(401).json({ error: 'Unauthorized — invalid or missing x-api-key header' });
+  }
+
+  const page  = Math.max(1, parseInt(req.query.page)  || 1);
+  const limit = Math.min(500, Math.max(1, parseInt(req.query.limit) || 100));
+  const offset = (page - 1) * limit;
+
+  try {
+    const [dataRes, countRes] = await Promise.all([
+      db.query(
+        `SELECT id, title, url, full_body, author, agency, published_at,
+                sector, region, summary, sentiment, tags, word_count,
+                scraped_at, imported_at
+         FROM nexus_articles
+         ORDER BY id
+         LIMIT $1 OFFSET $2`,
+        [limit, offset]
+      ),
+      db.query('SELECT COUNT(*) AS total FROM nexus_articles'),
+    ]);
+
+    const total      = parseInt(countRes.rows[0].total);
+    const totalPages = Math.ceil(total / limit);
+
+    res.json({
+      page,
+      limit,
+      total,
+      totalPages,
+      hasNextPage: page < totalPages,
+      articles: dataRes.rows,
+    });
+  } catch (err) {
+    console.error('[nexus/articles]', err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on http://localhost:${PORT}`);
