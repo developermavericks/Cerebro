@@ -199,12 +199,12 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
   try {
     const nexus = await db.query(`
       SELECT
-        title                                             AS "Title",
-        url                                               AS "Resolved URL",
-        published_at                                      AS "Published At",
-        agency                                            AS "Publisher/Agency",
-        COALESCE(full_body, '')                           AS "Summary",
-        COALESCE(full_body, '')                           AS "Full Body"
+        title                                                      AS "Title",
+        url                                                        AS "Resolved URL",
+        published_at                                               AS "Published At",
+        agency                                                     AS "Publisher/Agency",
+        LEFT(COALESCE(full_body, summary, ''), 1500)               AS "Summary",
+        LEFT(COALESCE(full_body, summary, ''), 1500)               AS "Full Body"
       FROM nexus_articles
       WHERE (${searchConds})${extraClauses}
       ORDER BY published_at DESC
