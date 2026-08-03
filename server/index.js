@@ -1070,6 +1070,7 @@ app.get('/api/brands/:id/history', getUserId, async (req, res) => {
        FROM nexus_articles
        WHERE to_tsvector('simple', coalesce(full_body,'')) @@ plainto_tsquery('simple', $1)
          AND agency IS NOT NULL
+         AND published_at >= NOW() - INTERVAL '60 days'
        GROUP BY agency
        ORDER BY count DESC
        LIMIT 8`,
@@ -1144,7 +1145,8 @@ app.get('/api/brands/:id/articles', getUserId, async (req, res) => {
            NULL::timestamptz AS last_ping_time
          FROM nexus_articles
          WHERE to_tsvector('simple', coalesce(full_body,'')) @@ plainto_tsquery('simple', $1)
-         ORDER BY published_at DESC`,
+         ORDER BY published_at DESC
+         LIMIT 500`,
         [brandName]
       );
       nexusRows = nexusRes.rows;
