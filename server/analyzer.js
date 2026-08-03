@@ -168,7 +168,7 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
   const searchConds = targetTerms.map((t, i) => {
     const p = i + 1;
     const fn = t.includes(' ') ? 'phraseto_tsquery' : 'plainto_tsquery';
-    return `to_tsvector('simple', coalesce(title,'') || ' ' || coalesce(summary,'')) @@ ${fn}('simple', $${p})`;
+    return `to_tsvector('simple', coalesce(full_body,'')) @@ ${fn}('simple', $${p})`;
   }).join(' OR ');
 
   // Sector filter via DB field (accurate — uses normalized sector column)
@@ -208,6 +208,7 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
       FROM nexus_articles
       WHERE (${searchConds})${extraClauses}
       ORDER BY published_at DESC
+      LIMIT 1000
     `, sqlParams);
     articles = nexus.rows;
   } catch (err) {
