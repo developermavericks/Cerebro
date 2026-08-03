@@ -200,79 +200,12 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
   }
   const sqlParams = [...brandParams, ...extraParams];
 
-  let articles = [];
-  let othersCount = 0;
-  let nexusTableExists = true;
-
-  // Fetch matching articles from nexus
-  try {
-    const nexus = await db.query(`
-      SELECT
-        title                                                      AS "Title",
-        url                                                        AS "Resolved URL",
-        published_at                                               AS "Published At",
-        agency                                                     AS "Publisher/Agency",
-        LEFT(COALESCE(full_body, summary, ''), 1500)               AS "Summary",
-        LEFT(COALESCE(full_body, summary, ''), 1500)               AS "Full Body"
-      FROM nexus_articles
-      WHERE (${searchConds})${extraClauses}
-      ORDER BY published_at DESC
-      LIMIT 200
-    `, sqlParams);
-    articles = nexus.rows;
-  } catch (err) {
-    console.error('[Analyzer] nexus SELECT failed:', err.message);
-    nexusTableExists = false;
-  }
-
-  // Count non-matching articles: total_in_window - matched (avoids NOT on GIN index → seq scan)
-  if (nexusTableExists) {
-    try {
-      const [matchedRes, totalRes] = await Promise.all([
-        db.query(`SELECT COUNT(*) AS count FROM nexus_articles WHERE (${searchConds})${extraClauses}`, sqlParams),
-        db.query(
-          `SELECT COUNT(*) AS count FROM nexus_articles${totalClauses ? ` WHERE 1=1${totalClauses}` : ''}`,
-          extraParams
-        )
-      ]);
-      const matchedCount = parseInt(matchedRes.rows[0]?.count || 0, 10);
-      const totalCount  = parseInt(totalRes.rows[0]?.count  || 0, 10);
-      othersCount = Math.max(0, totalCount - matchedCount);
-    } catch (err) {
-      console.error('[Analyzer] others COUNT failed:', err.message);
-    }
-  }
-
-  // Fallback to RSS articles table only if nexus table itself is unavailable (error, not empty)
-  if (!nexusTableExists) {
-    try {
-      const rss = await db.query(`
-        SELECT
-          title        AS "Title",
-          link         AS "Resolved URL",
-          published_at AS "Published At",
-          source       AS "Publisher/Agency",
-          summary      AS "Summary",
-          summary      AS "Full Body"
-        FROM articles
-      `);
-      articles = rss.rows;
-    } catch (err) {
-      console.error('[Analyzer] RSS fallback failed:', err.message);
-    }
-  }
-
   const displayBrands = [...targetBrands, "Others"];
   const results = {};
-  // Track which article URLs have already been added to any sentiment bucket per brand,
-  // so the same article never appears in both Positive and Neutral (or any two buckets).
   const articleSeenPerBrand = {};
   for (const brand of displayBrands) {
     results[brand] = {
-      mentions: 0,
-      articles: 0,
-      sources: {},
-      timeline: {},
+      mentions: 0, articles: 0, sources: {}, timeline: {},
       sentiment: { Positive: 0, Neutral: 0, Negative: 0 },
       article_samples: { Positive: [], Neutral: [], Negative: [] }
     };
@@ -280,113 +213,141 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
   }
 
   let totalKeywordArticles = 0;
+  let othersCount = 0;
 
-  // Compile regex patterns
-  const compiledPatterns = {};
-  for (const term of targetTerms) {
-    const normTerm = normalizeText(term);
-    const escapedParts = normTerm.split(/\s+/).map(escapeRegExp);
-    compiledPatterns[term] = new RegExp('\\b' + escapedParts.join('\\s+') + '\\b', 'gi');
-  }
+  // ── Per-brand DB aggregations (no large data transfer) ──────────────────────
+  // Run all queries for all brands in parallel then collect
+  const perTermFn = (t, i) => {
+    const p = i + 1;
+    const fn = t.includes(' ') ? 'phraseto_tsquery' : 'plainto_tsquery';
+    return `to_tsvector('simple', coalesce(full_body,'')) @@ ${fn}('simple', $${p})`;
+  };
 
-  const compiledExcluded = excludedTerms.map(term => {
-    const normTerm = normalizeText(term);
-    const escapedParts = normTerm.split(/\s+/).map(escapeRegExp);
-    return new RegExp('\\b' + escapedParts.join('\\s+') + '\\b', 'i');
-  });
+  try {
+    // Build per-term queries so each brand gets its own accurate count/timeline/sources
+    const perTermQueries = targetTerms.map((term, i) => {
+      const cond = perTermFn(term, i);
+      const p = [term, ...extraParams];
+      // shift extraClauses indices by 1 (term is $1, extras start at $2)
+      const termExtra = extraClauses.replace(/\$(\d+)/g, (_, n) => `$${parseInt(n) - brandParams.length + 1}`);
+      return { term, cond, p, termExtra };
+    });
 
-  for (const article of articles) {
-    const title = article['Title'] || '';
-    const summary = article['Summary'] || '';
-    const fullBody = article['Full Body'] || '';
-    const rawContent = [title, summary, fullBody].join(' ');
-    const content = normalizeText(rawContent);
+    const queryResults = await Promise.all(perTermQueries.map(({ cond, p, termExtra }) =>
+      Promise.all([
+        db.query(`SELECT COUNT(*) AS count FROM nexus_articles WHERE (${cond})${termExtra}`, p),
+        db.query(`SELECT DATE(published_at) AS date, COUNT(*) AS count FROM nexus_articles WHERE (${cond})${termExtra} GROUP BY DATE(published_at) ORDER BY date ASC`, p),
+        db.query(`SELECT COALESCE(agency,'Unknown') AS source, COUNT(*) AS count FROM nexus_articles WHERE (${cond})${termExtra} AND agency IS NOT NULL GROUP BY agency ORDER BY count DESC LIMIT 15`, p),
+      ])
+    ));
 
-    if (!content.trim()) continue;
+    queryResults.forEach(([countRes, timelineRes, sourcesRes], i) => {
+      const term = targetTerms[i];
+      const brandName = normalizedTargetMap[term];
+      const cnt = parseInt(countRes.rows[0]?.count || 0, 10);
+      results[brandName].articles += cnt;
+      results[brandName].mentions += cnt;
+      totalKeywordArticles += cnt;
+      for (const row of timelineRes.rows) {
+        const dk = new Date(row.date).toISOString().split('T')[0];
+        results[brandName].timeline[dk] = (results[brandName].timeline[dk] || 0) + parseInt(row.count, 10);
+      }
+      for (const row of sourcesRes.rows) {
+        const src = normalizePublicationName(row.source);
+        results[brandName].sources[src] = (results[brandName].sources[src] || 0) + parseInt(row.count, 10);
+      }
+    });
 
-    let isExcluded = false;
-    for (const regex of compiledExcluded) {
-      regex.lastIndex = 0;
-      if (regex.test(content)) { isExcluded = true; break; }
-    }
-    if (isExcluded) continue;
+    // Others count: total in window minus all matched brands
+    const [totalRes] = await Promise.all([
+      db.query(
+        `SELECT COUNT(*) AS count FROM nexus_articles${totalClauses ? ` WHERE 1=1${totalClauses}` : ''}`,
+        extraParams
+      )
+    ]);
+    const totalCount = parseInt(totalRes.rows[0]?.count || 0, 10);
+    othersCount = Math.max(0, totalCount - totalKeywordArticles);
 
-    const sourceRaw = article['Publisher/Agency'] || article['Publisher'] || article['Source Feed'] || 'Unknown';
-    const source = normalizePublicationName(sourceRaw);
+    // Small sample (50 rows) for sentiment + article_samples only
+    const sampleRes = await db.query(`
+      SELECT
+        title                                         AS "Title",
+        url                                           AS "Resolved URL",
+        published_at                                  AS "Published At",
+        agency                                        AS "Publisher/Agency",
+        LEFT(COALESCE(full_body, summary, ''), 800)   AS "Summary",
+        LEFT(COALESCE(full_body, summary, ''), 800)   AS "Full Body"
+      FROM nexus_articles
+      WHERE (${searchConds})${extraClauses}
+      ORDER BY published_at DESC
+      LIMIT 50
+    `, sqlParams);
 
-    let dateKey = '2026-06-01';
-    const pubRaw = article['Published At'] || article['Timestamp'];
-    if (pubRaw) {
-      try {
-        const dateObj = new Date(pubRaw);
-        if (!isNaN(dateObj.getTime())) dateKey = dateObj.toISOString().split('T')[0];
-      } catch (e) {}
-    }
-
-    let hasKeywordMatch = false;
-
+    const compiledPatterns = {};
     for (const term of targetTerms) {
-      const regex = compiledPatterns[term];
-      regex.lastIndex = 0;
-      const matches = content.match(regex);
-      if (matches && matches.length > 0) {
-        hasKeywordMatch = true;
+      const normTerm = normalizeText(term);
+      compiledPatterns[term] = new RegExp('\\b' + normTerm.split(/\s+/).map(escapeRegExp).join('\\s+') + '\\b', 'gi');
+    }
+    const compiledExcluded = excludedTerms.map(term =>
+      new RegExp('\\b' + normalizeText(term).split(/\s+/).map(escapeRegExp).join('\\s+') + '\\b', 'i')
+    );
+    const sRegexCache = {};
+
+    for (const article of sampleRes.rows) {
+      const title = article['Title'] || '';
+      const rawContent = [title, article['Summary'] || '', article['Full Body'] || ''].join(' ');
+      const content = normalizeText(rawContent);
+      if (!content.trim()) continue;
+      if (compiledExcluded.some(rx => { rx.lastIndex = 0; return rx.test(content); })) continue;
+
+      const source = normalizePublicationName(article['Publisher/Agency'] || 'Unknown');
+      let dateKey = '2026-01-01';
+      try { if (article['Published At']) dateKey = new Date(article['Published At']).toISOString().split('T')[0]; } catch(e){}
+
+      for (const term of targetTerms) {
+        const regex = compiledPatterns[term];
+        regex.lastIndex = 0;
+        if (!regex.test(content)) continue;
         const brandName = normalizedTargetMap[term];
-
-        results[brandName].mentions += matches.length;
-        results[brandName].articles += 1;
-        results[brandName].sources[source] = (results[brandName].sources[source] || 0) + matches.length;
-        results[brandName].timeline[dateKey] = (results[brandName].timeline[dateKey] || 0) + matches.length;
-
         const sentences = rawContent.split(/[.!?]+\s+/);
+        const sKey = term;
+        if (!sRegexCache[sKey]) sRegexCache[sKey] = new RegExp('\\b' + escapeRegExp(term) + '\\b', 'i');
+        const sr = sRegexCache[sKey];
         for (const sentence of sentences) {
-          const sentNorm = normalizeText(sentence);
-          const sRegex = new RegExp('\\b' + escapeRegExp(term) + '\\b', 'i');
-          if (sRegex.test(sentNorm)) {
-            const res = sentiment.analyze(sentence);
-            let sentCat = res.score > 1 ? "Positive" : res.score < -1 ? "Negative" : "Neutral";
-
-            results[brandName].sentiment[sentCat] += 1;
-            const url = article['Resolved URL'] || article['URL'] || article['link'] || '';
-            const titleToCheck = title || 'No Title';
-            const articleKey = (url && url !== '') ? url : titleToCheck;
-            if (!articleSeenPerBrand[brandName].has(articleKey)) {
-              articleSeenPerBrand[brandName].add(articleKey);
-              results[brandName].article_samples[sentCat].push({ title: titleToCheck, source, url, published: dateKey });
-            }
+          if (!sr.test(normalizeText(sentence))) continue;
+          const sc = sentiment.analyze(sentence);
+          const sentCat = sc.score > 1 ? 'Positive' : sc.score < -1 ? 'Negative' : 'Neutral';
+          results[brandName].sentiment[sentCat] += 1;
+          const url = article['Resolved URL'] || '';
+          const articleKey = url || title;
+          if (!articleSeenPerBrand[brandName].has(articleKey)) {
+            articleSeenPerBrand[brandName].add(articleKey);
+            results[brandName].article_samples[sentCat].push({ title: title || 'No Title', source, url, published: dateKey });
           }
         }
       }
     }
 
-    if (hasKeywordMatch) totalKeywordArticles++;
+  } catch (err) {
+    console.error('[Analyzer] DB queries failed:', err.message);
   }
 
-  // Populate Others from SQL COUNT (no JS loop needed)
   results["Others"].articles = othersCount;
   results["Others"].mentions = othersCount;
 
   const totalSectorArticles = totalKeywordArticles + othersCount;
 
   const indianSourceCounts = {};
-  for (const [brand, data] of Object.entries(results)) {
+  for (const [, data] of Object.entries(results)) {
     for (const [src, count] of Object.entries(data.sources)) {
-      if (isIndianSource(src)) {
-        indianSourceCounts[src] = (indianSourceCounts[src] || 0) + count;
-      }
+      if (isIndianSource(src)) indianSourceCounts[src] = (indianSourceCounts[src] || 0) + count;
     }
   }
   const topIndianPublications = Object.entries(indianSourceCounts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 20)
+    .sort((a, b) => b[1] - a[1]).slice(0, 20)
     .map(([name, count]) => ({ name, count }));
 
-  return {
-    brands: results,
-    topIndianPublications,
-    totalSectorArticles,
-    totalKeywordArticles
-  };
+  return { brands: results, topIndianPublications, totalSectorArticles, totalKeywordArticles };
 }
 
 module.exports = {
