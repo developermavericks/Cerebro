@@ -267,7 +267,7 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
     const totalCount = parseInt(totalRes.rows[0]?.count || 0, 10);
     othersCount = Math.max(0, totalCount - totalKeywordArticles);
 
-    // Full dataset for sentiment (npm sentiment package = pure JS, no AI cost)
+    // Sample up to 2000 articles for sentiment (statistically representative, avoids timeout)
     const sampleRes = await db.query(`
       SELECT
         title                                         AS "Title",
@@ -279,6 +279,7 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
       FROM nexus_articles
       WHERE (${searchConds})${extraClauses}
       ORDER BY published_at DESC
+      LIMIT 2000
     `, sqlParams);
 
     const compiledPatterns = {};
