@@ -2539,6 +2539,57 @@ app.get('/api/nexus/articles', async (req, res) => {
   }
 });
 
+// Paginated article list for keyword drill-down
+app.get('/api/keyword-articles', async (req, res) => {
+  const { keyword, page = '1', limit = '15', startDate, endDate, sector } = req.query;
+  if (!keyword) return res.status(400).json({ error: 'keyword required' });
+
+  const SECTOR_MAP = { AI:'AI', TECH:'Tech', FOODS_DRINKS:'Foods & Drinks', HEALTHCARE:'Healthcare',
+    TRAVEL:'Travel', CONSULTANCY:'Consultancies', STARTUP:'Startups', LIFESTYLE:'Lifestyle',
+    POLICIES:'Policies', STOCK_MARKET:'Stock Market', REAL_ESTATE:'Real Estate',
+    GOOGLE:'Google', EDUCATION:'Education', FINTECH:'Fintech', AUTOMOBILE:'Automobile', MEDIA:'Media & Entertainment' };
+
+  const cleanKeyword = keyword.trim();
+  const pageNum  = Math.max(1, parseInt(page)  || 1);
+  const limitNum = Math.min(50, Math.max(1, parseInt(limit) || 15));
+  const offset   = (pageNum - 1) * limitNum;
+
+  const fn = cleanKeyword.includes(' ') ? 'phraseto_tsquery' : 'plainto_tsquery';
+  const params = [cleanKeyword];
+  let extra = '';
+
+  const dbSector = sector && sector !== 'All' ? (SECTOR_MAP[sector.toUpperCase()] || null) : null;
+  if (dbSector)   { params.push(dbSector);   extra += ` AND sector = $${params.length}`; }
+  if (startDate)  { params.push(startDate);  extra += ` AND published_at >= $${params.length}::date`; }
+  if (endDate)    { params.push(endDate);     extra += ` AND published_at < ($${params.length}::date + INTERVAL '1 day')`; }
+
+  const ftsCond = `to_tsvector('simple', coalesce(full_body,'')) @@ ${fn}('simple', $1)`;
+
+  try {
+    const [countRes, articlesRes] = await Promise.all([
+      db.query(`SELECT COUNT(*) AS count FROM nexus_articles WHERE (${ftsCond})${extra}`, params),
+      db.query(`SELECT title, url, published_at, agency FROM nexus_articles WHERE (${ftsCond})${extra} ORDER BY published_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limitNum, offset])
+    ]);
+
+    const total = parseInt(countRes.rows[0]?.count || 0);
+    res.json({
+      articles: articlesRes.rows.map(r => ({
+        title:     r.title       || 'No Title',
+        url:       r.url         || '',
+        published: r.published_at ? new Date(r.published_at).toISOString().split('T')[0] : '',
+        source:    r.agency      || 'Unknown'
+      })),
+      total,
+      page:       pageNum,
+      totalPages: Math.max(1, Math.ceil(total / limitNum))
+    });
+  } catch (err) {
+    console.error('[keyword-articles]', err.message);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });

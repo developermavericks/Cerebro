@@ -2625,6 +2625,21 @@ function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [isTestEnv]);
 
+  // Fetch paginated articles for keyword drill-down (All sentiment tab)
+  React.useEffect(() => {
+    if (!curatedDrillBrand || curatedDrillSentiment !== 'All') return;
+    setKwArticlesLoading(true);
+    const params = new URLSearchParams({ keyword: curatedDrillBrand, page: kwArticlesPage, limit: 15 });
+    if (analysisStartDate) params.append('startDate', analysisStartDate);
+    if (analysisEndDate)   params.append('endDate',   analysisEndDate);
+    if (analysisSector && analysisSector !== 'All') params.append('sector', analysisSector);
+    fetch(`${API_BASE}/api/keyword-articles?${params}`)
+      .then(r => r.json())
+      .then(d => { setKwArticles(d.articles || []); setKwArticlesTotal(d.total || 0); setKwArticlesTotalPages(d.totalPages || 1); })
+      .catch(() => {})
+      .finally(() => setKwArticlesLoading(false));
+  }, [curatedDrillBrand, kwArticlesPage, curatedDrillSentiment, analysisStartDate, analysisEndDate, analysisSector]);
+
   const clearFormFields = () => {
     setEmail('');
     setPassword('');
@@ -2966,6 +2981,11 @@ function App() {
   const [brandArticlePage, setBrandArticlePage] = useState(1);
   const [brandArticleDateFrom, setBrandArticleDateFrom] = useState('');
   const [brandArticleDateTo, setBrandArticleDateTo] = useState('');
+  const [kwArticles, setKwArticles] = useState([]);
+  const [kwArticlesTotal, setKwArticlesTotal] = useState(0);
+  const [kwArticlesTotalPages, setKwArticlesTotalPages] = useState(1);
+  const [kwArticlesPage, setKwArticlesPage] = useState(1);
+  const [kwArticlesLoading, setKwArticlesLoading] = useState(false);
   const [keywordSearchError, setKeywordSearchError] = useState(null);
   const [keywordSearchCount, setKeywordSearchCount] = useState(() => {
     try {
@@ -7577,7 +7597,7 @@ ${bodyHtml}
                                 <p className={`text-[10px] font-semibold mt-1 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>Articles from tracked brands only</p>
                               </div>
                               <div className="flex items-center gap-3 flex-wrap">
-                                <select value={curatedDrillBrand} onChange={(e) => { setCuratedDrillBrand(e.target.value); setBrandArticlePage(1); }}
+                                <select value={curatedDrillBrand} onChange={(e) => { setCuratedDrillBrand(e.target.value); setBrandArticlePage(1); setKwArticlesPage(1); }}
                                   className={`px-4 py-2.5 rounded-xl text-xs font-bold outline-none border cursor-pointer ${darkMode ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-800'}`}>
                                   {Object.keys(curatedAnalysisResults.brands || {}).filter(b => b.toLowerCase() !== 'others').map(b => <option key={b} value={b}>{b}</option>)}
                                 </select>
@@ -7648,17 +7668,85 @@ ${bodyHtml}
                           </div>
                           <div className="overflow-x-auto">
                             {(() => {
+                              // "All" tab → API-driven pagination (all matching articles from DB)
+                              // Sentiment tabs → in-memory sample (50 analyzed articles)
+                              const useApi = curatedDrillSentiment === 'All';
+
+                              if (useApi) {
+                                const articles = kwArticles;
+                                const total = kwArticlesTotal;
+                                const totalPages = kwArticlesTotalPages;
+                                const page = kwArticlesPage;
+                                if (kwArticlesLoading) return (
+                                  <div className="text-center py-10 text-slate-400 font-bold text-xs animate-pulse">Loading articles…</div>
+                                );
+                                if (!articles.length) return (
+                                  <div className="text-center py-10 text-slate-400 font-bold text-xs">No articles found for <span className="text-indigo-400">{curatedDrillBrand}</span>.</div>
+                                );
+                                return (
+                                  <>
+                                    <table className="w-full text-left border-collapse">
+                                      <thead>
+                                        <tr className={`border-b text-[9px] font-black uppercase tracking-widest ${darkMode ? 'border-white/5 text-slate-500' : 'border-slate-100 text-slate-400'}`}>
+                                          <th className="py-3 px-4 w-10">#</th>
+                                          <th className="py-3 px-4">Headline</th>
+                                          <th className="py-3 px-4">Publication</th>
+                                          <th className="py-3 px-4">Date</th>
+                                          <th className="py-3 px-4 text-right">Link</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className={`divide-y text-xs font-semibold ${darkMode ? 'divide-white/5' : 'divide-slate-100'}`}>
+                                        {articles.map((art, idx) => (
+                                          <tr key={idx} className={`${darkMode ? 'hover:bg-white/5 text-slate-200' : 'hover:bg-slate-50 text-slate-700'} transition-colors`}>
+                                            <td className={`py-3 px-4 text-[10px] font-black ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{(page - 1) * 15 + idx + 1}</td>
+                                            <td className="py-3 px-4 font-bold max-w-xs truncate">{art.title}</td>
+                                            <td className="py-3 px-4 text-slate-400 whitespace-nowrap">{art.source}</td>
+                                            <td className="py-3 px-4 text-slate-400 whitespace-nowrap">{art.published}</td>
+                                            <td className="py-3 px-4 text-right">
+                                              {art.url && art.url !== 'N/A'
+                                                ? <a href={resolveArticleUrl(art.url)} target="_blank" rel="noreferrer"
+                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 font-black text-[9px] uppercase tracking-wider transition-colors">
+                                                    <Chrome size={11} /> Read
+                                                  </a>
+                                                : <span className="text-slate-400 text-[9px] font-black uppercase">No Link</span>
+                                              }
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                    <div className="flex flex-wrap items-center justify-between gap-3 mt-5 pt-4 border-t border-slate-100 dark:border-white/5">
+                                      <span className={`text-[10px] font-black uppercase tracking-widest ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                                        {total.toLocaleString()} articles · Page {page} of {totalPages.toLocaleString()}
+                                      </span>
+                                      <div className="flex items-center gap-2">
+                                        <button onClick={() => setKwArticlesPage(p => Math.max(1, p - 1))} disabled={page === 1}
+                                          className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-colors ${page === 1 ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'} ${darkMode ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'}`}>
+                                          <ChevronLeft size={12} /> Prev
+                                        </button>
+                                        <div className="flex items-center gap-1.5">
+                                          <span className={`text-[10px] font-black uppercase tracking-widest ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>Go</span>
+                                          <input type="number" min="1" max={totalPages} defaultValue={page} key={page}
+                                            onKeyDown={(e) => { if (e.key === 'Enter') { const v = parseInt(e.target.value); if (!isNaN(v)) setKwArticlesPage(Math.min(totalPages, Math.max(1, v))); }}}
+                                            onBlur={(e) => { const v = parseInt(e.target.value); if (!isNaN(v)) setKwArticlesPage(Math.min(totalPages, Math.max(1, v))); }}
+                                            className={`w-14 px-2 py-2 rounded-xl text-[10px] font-black text-center outline-none border ${darkMode ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-800'}`}
+                                          />
+                                        </div>
+                                        <button onClick={() => setKwArticlesPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+                                          className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-colors ${page === totalPages ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'} ${darkMode ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'}`}>
+                                          Next <ChevronRight size={12} />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </>
+                                );
+                              }
+
+                              // Sentiment-filtered view — uses the 50-article analyzed sample
                               const ITEMS_PER_PAGE = 15;
                               const samples = curatedAnalysisResults.brands?.[curatedDrillBrand]?.article_samples || {};
-                              const raw = (() => {
-                                if (curatedDrillSentiment !== 'All') return samples[curatedDrillSentiment] || [];
-                                const seen = new Set();
-                                return [...(samples.Positive || []), ...(samples.Neutral || []), ...(samples.Negative || [])]
-                                  .filter(a => { const k = (a.url && a.url !== 'N/A') ? a.url : a.title; return seen.has(k) ? false : (seen.add(k), true); });
-                              })();
-                              // Sort descending by publish date
+                              const raw = samples[curatedDrillSentiment] || [];
                               const sorted = raw.slice().sort((a, b) => new Date(b.published) - new Date(a.published));
-                              // Date filter
                               const filtered = sorted.filter(art => {
                                 if (!brandArticleDateFrom && !brandArticleDateTo) return true;
                                 const d = art.published;
@@ -7671,7 +7759,7 @@ ${bodyHtml}
                               const paginated = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
                               if (filtered.length === 0) return (
                                 <div className="text-center py-10 text-slate-400 font-bold text-xs">
-                                  No {curatedDrillSentiment.toLowerCase()} articles found{(brandArticleDateFrom || brandArticleDateTo) ? ' for the selected date range' : ''} for <span className="text-indigo-400">{curatedDrillBrand}</span>.
+                                  No {curatedDrillSentiment.toLowerCase()} articles found for <span className="text-indigo-400">{curatedDrillBrand}</span>.
                                 </div>
                               );
                               return (
@@ -7706,35 +7794,15 @@ ${bodyHtml}
                                       ))}
                                     </tbody>
                                   </table>
-                                  {/* Pagination controls */}
                                   <div className="flex flex-wrap items-center justify-between gap-3 mt-5 pt-4 border-t border-slate-100 dark:border-white/5">
                                     <span className={`text-[10px] font-black uppercase tracking-widest ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>
-                                      {filtered.length} articles · Page {page} of {totalPages}
+                                      {filtered.length} articles (sample) · Page {page} of {totalPages}
                                     </span>
                                     <div className="flex items-center gap-2">
                                       <button onClick={() => setBrandArticlePage(p => Math.max(1, p - 1))} disabled={page === 1}
                                         className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-colors ${page === 1 ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'} ${darkMode ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'}`}>
                                         <ChevronLeft size={12} /> Prev
                                       </button>
-                                      <div className="flex items-center gap-1.5">
-                                        <span className={`text-[10px] font-black uppercase tracking-widest ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>Go</span>
-                                        <input
-                                          type="number" min="1" max={totalPages}
-                                          defaultValue={page}
-                                          key={page}
-                                          onKeyDown={(e) => {
-                                            if (e.key === 'Enter') {
-                                              const v = parseInt(e.target.value);
-                                              if (!isNaN(v)) setBrandArticlePage(Math.min(totalPages, Math.max(1, v)));
-                                            }
-                                          }}
-                                          onBlur={(e) => {
-                                            const v = parseInt(e.target.value);
-                                            if (!isNaN(v)) setBrandArticlePage(Math.min(totalPages, Math.max(1, v)));
-                                          }}
-                                          className={`w-14 px-2 py-2 rounded-xl text-[10px] font-black text-center outline-none border ${darkMode ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-800'}`}
-                                        />
-                                      </div>
                                       <button onClick={() => setBrandArticlePage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
                                         className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-colors ${page === totalPages ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'} ${darkMode ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'}`}>
                                         Next <ChevronRight size={12} />
