@@ -217,16 +217,15 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
 
   // ── Per-brand DB aggregations (no large data transfer) ──────────────────────
   // Run all queries for all brands in parallel then collect
-  const perTermFn = (t, i) => {
-    const p = i + 1;
+  const perTermFn = (t) => {
     const fn = t.includes(' ') ? 'phraseto_tsquery' : 'plainto_tsquery';
-    return `to_tsvector('simple', coalesce(full_body,'')) @@ ${fn}('simple', $${p})`;
+    return `to_tsvector('simple', coalesce(full_body,'')) @@ ${fn}('simple', $1)`;
   };
 
   try {
     // Build per-term queries so each brand gets its own accurate count/timeline/sources
-    const perTermQueries = targetTerms.map((term, i) => {
-      const cond = perTermFn(term, i);
+    const perTermQueries = targetTerms.map((term) => {
+      const cond = perTermFn(term);
       const p = [term, ...extraParams];
       // shift extraClauses indices by 1 (term is $1, extras start at $2)
       const termExtra = extraClauses.replace(/\$(\d+)/g, (_, n) => `$${parseInt(n) - brandParams.length + 1}`);
