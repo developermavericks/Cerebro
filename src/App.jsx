@@ -2625,21 +2625,6 @@ function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [isTestEnv]);
 
-  // Fetch paginated articles for keyword drill-down (All sentiment tab)
-  React.useEffect(() => {
-    if (!curatedDrillBrand || curatedDrillSentiment !== 'All') return;
-    setKwArticlesLoading(true);
-    const params = new URLSearchParams({ keyword: curatedDrillBrand, page: kwArticlesPage, limit: 15 });
-    if (analysisStartDate) params.append('startDate', analysisStartDate);
-    if (analysisEndDate)   params.append('endDate',   analysisEndDate);
-    if (analysisSector && analysisSector !== 'All') params.append('sector', analysisSector);
-    fetch(`${API_BASE}/api/keyword-articles?${params}`)
-      .then(r => r.json())
-      .then(d => { setKwArticles(d.articles || []); setKwArticlesTotal(d.total || 0); setKwArticlesTotalPages(d.totalPages || 1); })
-      .catch(() => {})
-      .finally(() => setKwArticlesLoading(false));
-  }, [curatedDrillBrand, kwArticlesPage, curatedDrillSentiment, analysisStartDate, analysisEndDate, analysisSector]);
-
   const clearFormFields = () => {
     setEmail('');
     setPassword('');
@@ -2986,6 +2971,22 @@ function App() {
   const [kwArticlesTotalPages, setKwArticlesTotalPages] = useState(1);
   const [kwArticlesPage, setKwArticlesPage] = useState(1);
   const [kwArticlesLoading, setKwArticlesLoading] = useState(false);
+
+  // Fetch paginated articles for keyword drill-down (All sentiment tab)
+  React.useEffect(() => {
+    if (!curatedDrillBrand || curatedDrillSentiment !== 'All') return;
+    setKwArticlesLoading(true);
+    const params = new URLSearchParams({ keyword: curatedDrillBrand, page: kwArticlesPage, limit: 15 });
+    if (analysisStartDate) params.append('startDate', analysisStartDate);
+    if (analysisEndDate)   params.append('endDate',   analysisEndDate);
+    if (analysisSector && analysisSector !== 'All') params.append('sector', analysisSector);
+    fetch(`${API_BASE}/api/keyword-articles?${params}`)
+      .then(r => r.json())
+      .then(d => { setKwArticles(d.articles || []); setKwArticlesTotal(d.total || 0); setKwArticlesTotalPages(d.totalPages || 1); })
+      .catch(() => {})
+      .finally(() => setKwArticlesLoading(false));
+  }, [curatedDrillBrand, kwArticlesPage, curatedDrillSentiment, analysisStartDate, analysisEndDate, analysisSector]);
+
   const [keywordSearchError, setKeywordSearchError] = useState(null);
   const [keywordSearchCount, setKeywordSearchCount] = useState(() => {
     try {
