@@ -3242,12 +3242,11 @@ function App() {
       });
 
       const newMentions = Object.values(filteredTimeline).reduce((s, v) => s + v, 0);
-      const newArticles = filteredSamples.Positive.length + filteredSamples.Neutral.length + filteredSamples.Negative.length;
 
       filtered[brandName] = {
         ...brandData,
         mentions: newMentions,
-        articles: newArticles || brandData.articles,
+        articles: newMentions || brandData.articles,
         sources: filteredSources,
         timeline: filteredTimeline,
         sentiment: filteredSentiment,
@@ -11926,35 +11925,57 @@ const spec = JSON.parse(response.text);
                                             </div>
                                           );
                                         })() : cfg.type === 'Radar Chart' ? (() => {
-                                          const pd = processChartData(filteredBrandsObj, cfg).filter(d => d.name !== 'Others');
-                                          if (pd.length < 3) return <div className="text-xs text-slate-400 py-6 text-center">Need 3+ brands for radar</div>;
-                                          const max = Math.max(...pd.map(d => d.value), 1);
-                                          const n = Math.min(pd.length, 8);
-                                          const sliced = pd.slice(0, n);
-                                          const rcx = 110, rcy = 100, rr = 82;
+                                          // Multi-dimensional radar: axes = PR metrics, one polygon per brand
+                                          const allBrands = Object.keys(filteredBrandsObj).filter(b => b !== 'Others');
+                                          if (allBrands.length < 2) return <div className="text-xs text-slate-400 py-6 text-center">Need 2+ brands for radar</div>;
+                                          const radarBrands = allBrands.slice(0, 6);
+                                          // Compute raw values per brand per dimension
+                                          const totalAllArticles = radarBrands.reduce((s, b) => s + (filteredBrandsObj[b].articles || 0), 0) || 1;
+                                          const radarDims = ['Coverage', 'Sources', 'Positive %', 'SOV', 'Neutral %'];
+                                          const getRaw = (b) => {
+                                            const d = filteredBrandsObj[b];
+                                            const arts = Number(d.articles) || 0;
+                                            const srcs = Object.keys(d.sources || {}).length;
+                                            const s = d.sentiment || {};
+                                            const total = (s.Positive || 0) + (s.Neutral || 0) + (s.Negative || 0);
+                                            const posPct = total > 0 ? (s.Positive || 0) / total * 100 : 0;
+                                            const neuPct = total > 0 ? (s.Neutral || 0) / total * 100 : 0;
+                                            const sov = arts / totalAllArticles * 100;
+                                            return [arts, srcs, posPct, sov, neuPct];
+                                          };
+                                          const allRaws = radarBrands.map(getRaw);
+                                          // Normalize each dimension 0-1 relative to max across brands
+                                          const dimMaxes = radarDims.map((_, di) => Math.max(...allRaws.map(r => r[di]), 1));
+                                          const normalized = allRaws.map(r => r.map((v, di) => v / dimMaxes[di]));
+                                          const n = radarDims.length;
+                                          const rcx = 105, rcy = 92, rr = 70;
                                           const rang = (i) => i * (2 * Math.PI / n) - Math.PI / 2;
                                           const rpt = (i, frac) => [rcx + rr * frac * Math.cos(rang(i)), rcy + rr * frac * Math.sin(rang(i))];
-                                          const dataPath = sliced.map((d, i) => { const p = rpt(i, d.value / max); return (i === 0 ? "M" : "L") + p[0].toFixed(2) + "," + p[1].toFixed(2); }).join(" ") + "Z";
+                                          const makePath = (fracs) => fracs.map((f, i) => { const p = rpt(i, f); return (i === 0 ? 'M' : 'L') + p[0].toFixed(2) + ',' + p[1].toFixed(2); }).join(' ') + 'Z';
                                           return (
-                                            <div className="flex flex-col gap-3 py-1">
-                                              <svg viewBox="0 0 220 205" className="w-full">
-                                                {[0.25, 0.5, 0.75, 1].map(f => {
-                                                  const rp = sliced.map((_, i) => rpt(i, f));
-                                                  return <path key={f} d={rp.map((p, i) => (i === 0 ? "M" : "L") + p[0].toFixed(2) + "," + p[1].toFixed(2)).join(" ") + "Z"} fill="none" stroke={f === 1 ? "#cbd5e1" : "#e2e8f0"} strokeWidth={f === 1 ? "1" : "0.7"} />;
-                                                })}
-                                                {sliced.map((_, i) => { const e = rpt(i, 1); return <line key={i} x1={rcx} y1={rcy} x2={e[0].toFixed(2)} y2={e[1].toFixed(2)} stroke="#e2e8f0" strokeWidth="0.8" />; })}
-                                                <path d={dataPath} fill="#6366f1" fillOpacity="0.2" stroke="#6366f1" strokeWidth="2" strokeLinejoin="round" />
-                                                {sliced.map((d, i) => { const p = rpt(i, d.value / max); return <circle key={i} cx={p[0].toFixed(2)} cy={p[1].toFixed(2)} r="3.5" fill={BRAND_COLORS[i % BRAND_COLORS.length]} stroke="white" strokeWidth="1.5" />; })}
-                                                {sliced.map((d, i) => { const p = rpt(i, 1.28); return <text key={i} x={p[0].toFixed(2)} y={p[1].toFixed(2)} fontSize="8.5" textAnchor="middle" dominantBaseline="central" fill="#475569" fontWeight="700">{d.name.length > 9 ? d.name.slice(0, 8) + "…" : d.name}</text>; })}
-                                              </svg>
-                                              <div className="flex flex-wrap gap-x-4 gap-y-1.5 px-1">
-                                                {sliced.map((d, i) => (
-                                                  <div key={i} className="flex items-center gap-1.5 text-[9px]">
-                                                    <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: BRAND_COLORS[i % BRAND_COLORS.length] }} />
-                                                    <span className="text-slate-600 font-semibold">{d.name}</span>
-                                                    <span className="text-slate-400 font-bold">{d.value.toLocaleString()}</span>
-                                                  </div>
+                                            <div className="flex flex-col gap-2 py-1">
+                                              <svg viewBox="0 0 210 190" className="w-full">
+                                                {[0.25, 0.5, 0.75, 1].map(f => (
+                                                  <path key={f} d={makePath(radarDims.map(() => f))} fill="none" stroke={f === 1 ? '#cbd5e1' : '#e2e8f0'} strokeWidth={f === 1 ? '1' : '0.7'} />
                                                 ))}
+                                                {radarDims.map((_, i) => { const e = rpt(i, 1); return <line key={i} x1={rcx} y1={rcy} x2={e[0].toFixed(2)} y2={e[1].toFixed(2)} stroke="#e2e8f0" strokeWidth="0.8" />; })}
+                                                {radarDims.map((dim, i) => { const p = rpt(i, 1.25); return <text key={i} x={p[0].toFixed(2)} y={p[1].toFixed(2)} fontSize="7" textAnchor="middle" dominantBaseline="central" fill="#64748b" fontWeight="700">{dim}</text>; })}
+                                                {normalized.map((fracs, bi) => (
+                                                  <path key={bi} d={makePath(fracs)} fill={BRAND_COLORS[bi % BRAND_COLORS.length]} fillOpacity="0.12" stroke={BRAND_COLORS[bi % BRAND_COLORS.length]} strokeWidth="1.8" strokeLinejoin="round" />
+                                                ))}
+                                                {normalized.map((fracs, bi) => fracs.map((f, di) => { const p = rpt(di, f); return <circle key={di} cx={p[0].toFixed(2)} cy={p[1].toFixed(2)} r="2.5" fill={BRAND_COLORS[bi % BRAND_COLORS.length]} stroke="white" strokeWidth="1" />; }))}
+                                              </svg>
+                                              <div className="flex flex-wrap gap-x-3 gap-y-1 px-1">
+                                                {radarBrands.map((b, i) => {
+                                                  const raw = allRaws[i];
+                                                  return (
+                                                    <div key={i} className="flex items-center gap-1 text-[8px]">
+                                                      <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: BRAND_COLORS[i % BRAND_COLORS.length] }} />
+                                                      <span className="text-slate-600 font-semibold">{b}</span>
+                                                      <span className="text-slate-400">{raw[0].toLocaleString()} arts · {raw[1]} src · {raw[2].toFixed(0)}% pos</span>
+                                                    </div>
+                                                  );
+                                                })}
                                               </div>
                                             </div>
                                           );
@@ -11963,14 +11984,16 @@ const spec = JSON.parse(response.text);
                                           if (!scBrands.length) return <div className="text-xs text-slate-400 py-6 text-center">No data</div>;
                                           const scPoints = scBrands.map((b, i) => {
                                             const d = filteredBrandsObj[b];
-                                            const x = Number(d.articles) || 0;
+                                            const x = Object.keys(d.sources || {}).length; // unique sources = reach/breadth
+                                            const y = Number(d.articles) || 0;             // total articles = coverage volume
                                             const s = d.sentiment || {};
-                                            const y = (s.Positive || 0) + (s.Neutral || 0) + (s.Negative || 0);
-                                            return { name: b, x, y, color: BRAND_COLORS[i % BRAND_COLORS.length] };
+                                            const total = (s.Positive || 0) + (s.Neutral || 0) + (s.Negative || 0);
+                                            const posPct = total > 0 ? (s.Positive || 0) / total : 0; // 0-1
+                                            return { name: b, x, y, posPct, color: BRAND_COLORS[i % BRAND_COLORS.length] };
                                           });
                                           const scMaxX = Math.max(...scPoints.map(p => p.x), 1);
                                           const scMaxY = Math.max(...scPoints.map(p => p.y), 1);
-                                          const sW = 210, sH = 115, spl = 30, spr = 10, spt = 10, spb = 22;
+                                          const sW = 210, sH = 130, spl = 34, spr = 10, spt = 10, spb = 28;
                                           const scW = sW - spl - spr, scH = sH - spt - spb;
                                           const toSC = (px, py) => [spl + (px / scMaxX) * scW, spt + scH - (py / scMaxY) * scH];
                                           return (
@@ -11979,23 +12002,38 @@ const spec = JSON.parse(response.text);
                                                 {[0, 0.25, 0.5, 0.75, 1].map(f => (
                                                   <g key={f}>
                                                     <line x1={spl} y1={spt + scH * (1 - f)} x2={sW - spr} y2={spt + scH * (1 - f)} stroke="#f1f5f9" strokeWidth="0.8" />
-                                                    <text x={spl - 3} y={spt + scH * (1 - f)} fontSize="5" textAnchor="end" dominantBaseline="central" fill="#cbd5e1">{Math.round(scMaxY * f / 100) * 100}</text>
+                                                    <text x={spl - 3} y={spt + scH * (1 - f)} fontSize="4.5" textAnchor="end" dominantBaseline="central" fill="#cbd5e1">
+                                                      {scMaxY >= 10000 ? Math.round(scMaxY * f / 1000) + 'k' : Math.round(scMaxY * f)}
+                                                    </text>
                                                   </g>
+                                                ))}
+                                                {[0, 0.25, 0.5, 0.75, 1].map(f => (
+                                                  <text key={f} x={spl + scW * f} y={spt + scH + 8} fontSize="4.5" textAnchor="middle" fill="#cbd5e1">{Math.round(scMaxX * f)}</text>
                                                 ))}
                                                 <line x1={spl} y1={spt} x2={spl} y2={spt + scH} stroke="#e2e8f0" strokeWidth="0.8" />
                                                 <line x1={spl} y1={spt + scH} x2={sW - spr} y2={spt + scH} stroke="#e2e8f0" strokeWidth="0.8" />
-                                                <text x={spl + scW / 2} y={sH - 3} fontSize="5.5" textAnchor="middle" fill="#94a3b8" fontWeight="700">Articles</text>
-                                                <text x="8" y={spt + scH / 2} fontSize="5.5" textAnchor="middle" fill="#94a3b8" fontWeight="700" transform={"rotate(-90,8," + (spt + scH / 2) + ")"}>Mentions</text>
+                                                <text x={spl + scW / 2} y={sH - 4} fontSize="5.5" textAnchor="middle" fill="#94a3b8" fontWeight="700">Sources Reached</text>
+                                                <text x="7" y={spt + scH / 2} fontSize="5.5" textAnchor="middle" fill="#94a3b8" fontWeight="700" transform={"rotate(-90,7," + (spt + scH / 2) + ")"}>Articles</text>
                                                 {scPoints.map((p, i) => {
                                                   const [sx, sy] = toSC(p.x, p.y);
+                                                  const r = 3.5 + p.posPct * 5; // 3.5–8.5px, bigger = more positive
                                                   return (
                                                     <g key={i}>
-                                                      <circle cx={sx} cy={sy} r="4.5" fill={p.color} fillOpacity="0.85" stroke="white" strokeWidth="1.2" />
-                                                      <text x={sx} y={sy - 7} fontSize="5.5" textAnchor="middle" fill="#475569" fontWeight="700">{p.name.length > 7 ? p.name.slice(0, 6) + "…" : p.name}</text>
+                                                      <circle cx={sx} cy={sy} r={r} fill={p.color} fillOpacity="0.85" stroke="white" strokeWidth="1.2" />
+                                                      <text x={sx} y={sy - r - 2} fontSize="5.5" textAnchor="middle" fill="#475569" fontWeight="700">{p.name.length > 7 ? p.name.slice(0, 6) + "…" : p.name}</text>
                                                     </g>
                                                   );
                                                 })}
                                               </svg>
+                                              <div className="flex flex-wrap gap-x-3 gap-y-1 px-1 mt-1">
+                                                {scPoints.map((p, i) => (
+                                                  <div key={i} className="flex items-center gap-1 text-[8px]">
+                                                    <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
+                                                    <span className="text-slate-600 font-semibold">{p.name}</span>
+                                                    <span className="text-slate-400">{p.y.toLocaleString()} arts · {p.x} src · {Math.round(p.posPct * 100)}% pos</span>
+                                                  </div>
+                                                ))}
+                                              </div>
                                             </div>
                                           );
                                         })() : cfg.type === 'Trend Chart' ? (() => {

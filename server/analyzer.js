@@ -267,7 +267,7 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
     const totalCount = parseInt(totalRes.rows[0]?.count || 0, 10);
     othersCount = Math.max(0, totalCount - totalKeywordArticles);
 
-    // Small sample (50 rows) for sentiment + article_samples only
+    // Full dataset for sentiment (npm sentiment package = pure JS, no AI cost)
     const sampleRes = await db.query(`
       SELECT
         title                                         AS "Title",
@@ -279,7 +279,6 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
       FROM nexus_articles
       WHERE (${searchConds})${extraClauses}
       ORDER BY published_at DESC
-      LIMIT 50
     `, sqlParams);
 
     const compiledPatterns = {};
@@ -321,7 +320,8 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
           const articleKey = url || title;
           if (!articleSeenPerBrand[brandName].has(articleKey)) {
             articleSeenPerBrand[brandName].add(articleKey);
-            results[brandName].article_samples[sentCat].push({ title: title || 'No Title', source, url, published: dateKey });
+            if (results[brandName].article_samples[sentCat].length < 50)
+              results[brandName].article_samples[sentCat].push({ title: title || 'No Title', source, url, published: dateKey });
           }
         }
       }
