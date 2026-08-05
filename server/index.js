@@ -2464,8 +2464,8 @@ app.get('/api/keyword-articles', async (req, res) => {
 
   try {
     const [countRes, articlesRes] = await Promise.all([
-      db.query(`SELECT COUNT(*) AS count FROM nexus_articles WHERE (${ftsCond})${extra}`, params),
-      db.query(`SELECT title, url, published_at, agency FROM nexus_articles WHERE (${ftsCond})${extra} ORDER BY published_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      db.query(`SELECT COUNT(*) FROM (SELECT DISTINCT ON (LOWER(title)) title FROM nexus_articles WHERE (${ftsCond})${extra} ORDER BY LOWER(title)) deduped`, params),
+      db.query(`SELECT title, url, published_at, agency FROM (SELECT DISTINCT ON (LOWER(title)) title, url, published_at, agency FROM nexus_articles WHERE (${ftsCond})${extra} ORDER BY LOWER(title), published_at DESC) deduped ORDER BY published_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
         [...params, limitNum, offset])
     ]);
 

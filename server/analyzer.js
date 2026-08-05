@@ -267,18 +267,22 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
     const totalCount = parseInt(totalRes.rows[0]?.count || 0, 10);
     othersCount = Math.max(0, totalCount - totalKeywordArticles);
 
-    // Sample up to 2000 articles for sentiment (statistically representative, avoids timeout)
+    // Sample up to 2000 deduplicated articles for sentiment (dedup by title to avoid sector overlap dupes)
     const sampleRes = await db.query(`
-      SELECT
-        title                                         AS "Title",
-        url                                           AS "Resolved URL",
-        published_at                                  AS "Published At",
-        agency                                        AS "Publisher/Agency",
-        LEFT(COALESCE(full_body, summary, ''), 800)   AS "Summary",
-        LEFT(COALESCE(full_body, summary, ''), 800)   AS "Full Body"
-      FROM nexus_articles
-      WHERE (${searchConds})${extraClauses}
-      ORDER BY published_at DESC
+      SELECT "Title", "Resolved URL", "Published At", "Publisher/Agency", "Summary", "Full Body"
+      FROM (
+        SELECT DISTINCT ON (LOWER(title))
+          title                                         AS "Title",
+          url                                           AS "Resolved URL",
+          published_at                                  AS "Published At",
+          agency                                        AS "Publisher/Agency",
+          LEFT(COALESCE(full_body, summary, ''), 800)   AS "Summary",
+          LEFT(COALESCE(full_body, summary, ''), 800)   AS "Full Body"
+        FROM nexus_articles
+        WHERE (${searchConds})${extraClauses}
+        ORDER BY LOWER(title), published_at DESC
+      ) deduped
+      ORDER BY "Published At" DESC
       LIMIT 2000
     `, sqlParams);
 
@@ -318,7 +322,7 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
           const sentCat = sc.score > 1 ? 'Positive' : sc.score < -1 ? 'Negative' : 'Neutral';
           results[brandName].sentiment[sentCat] += 1;
           const url = article['Resolved URL'] || '';
-          const articleKey = url || title;
+          const articleKey = title.toLowerCase().trim() || url;
           if (!articleSeenPerBrand[brandName].has(articleKey)) {
             articleSeenPerBrand[brandName].add(articleKey);
             if (results[brandName].article_samples[sentCat].length < 50)
