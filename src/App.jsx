@@ -2898,6 +2898,9 @@ function App() {
   const [comp2, setComp2] = useState('');
   const [search1, setSearch1] = useState('');
   const [search2, setSearch2] = useState('');
+  const [compStartDate, setCompStartDate] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 29); return d.toISOString().split('T')[0]; });
+  const [compEndDate, setCompEndDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [compSector, setCompSector] = useState('All');
   const [history, setHistory] = useState(() => {
     try {
       const saved = localStorage.getItem('cerebro_competitor_history');
@@ -5135,7 +5138,11 @@ ${bodyHtml}
       setIsAnalysing(true);
       setIsLoadingAnalysis(true);
       try {
-        const res = await fetch(`${API_BASE}/api/competitor-analysis?keyword1=${encodeURIComponent(comp1)}&keyword2=${encodeURIComponent(comp2)}`, {
+        const compParams = new URLSearchParams({ keyword1: comp1, keyword2: comp2 });
+        if (compStartDate) compParams.append('startDate', compStartDate);
+        if (compEndDate)   compParams.append('endDate',   compEndDate);
+        if (compSector && compSector !== 'All') compParams.append('sector', compSector);
+        const res = await fetch(`${API_BASE}/api/competitor-analysis?${compParams}`, {
           headers: { 'X-User-Id': user?.id }
         });
         if (res.ok) {
@@ -7937,7 +7944,11 @@ ${bodyHtml}
                                   setIsAnalysing(true);
                                   setIsLoadingAnalysis(true);
                                   try {
-                                    const res = await fetch(`${API_BASE}/api/competitor-analysis?keyword1=${encodeURIComponent(item.comp1)}&keyword2=${encodeURIComponent(item.comp2)}`, {
+                                    const histParams = new URLSearchParams({ keyword1: item.comp1, keyword2: item.comp2 });
+                                    if (compStartDate) histParams.append('startDate', compStartDate);
+                                    if (compEndDate)   histParams.append('endDate',   compEndDate);
+                                    if (compSector && compSector !== 'All') histParams.append('sector', compSector);
+                                    const res = await fetch(`${API_BASE}/api/competitor-analysis?${histParams}`, {
                                       headers: { 'X-User-Id': user?.id }
                                     });
                                     if (res.ok) {
@@ -7986,7 +7997,40 @@ ${bodyHtml}
                         </div>
                       ) : (() => {
                         const suggestionItems = globalCompanies.length > 0 ? globalCompanies : ["Google", "Apple", "Nvidia", "Microsoft", "Amazon", "Meta", "Netflix", "Tesla"];
+                        const compSectorOptions = [
+                          { value: 'All', label: 'All Sectors' },
+                          { value: 'AI', label: 'AI' }, { value: 'TECH', label: 'Tech' },
+                          { value: 'GOOGLE', label: 'Google' }, { value: 'HEALTHCARE', label: 'Healthcare' },
+                          { value: 'STOCK_MARKET', label: 'Stock Market' }, { value: 'FINTECH', label: 'Fintech' },
+                          { value: 'STARTUPS', label: 'Startups' }, { value: 'POLICIES', label: 'Policies' },
+                          { value: 'FOODS_DRINKS', label: 'Foods & Drinks' }, { value: 'TRAVEL', label: 'Travel' },
+                          { value: 'REAL_ESTATE', label: 'Real Estate' }, { value: 'LIFESTYLE', label: 'Lifestyle' },
+                          { value: 'MEDIA', label: 'Media & Entertainment' }, { value: 'EDUCATION', label: 'Education' },
+                          { value: 'CONSULTANCY', label: 'Consultancies' }, { value: 'AUTOMOBILE', label: 'Automobile' },
+                        ];
                         return (
+                          <>
+                          <div className={`flex flex-wrap items-center gap-3 mb-8 px-1 py-3 rounded-2xl border ${darkMode ? 'bg-slate-800/50 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
+                            <span className={`text-[10px] font-black uppercase tracking-widest px-2 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Filter</span>
+                            <div className="flex items-center gap-2">
+                              <span className={`text-[10px] font-bold uppercase tracking-wider ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>From</span>
+                              <input type="date" value={compStartDate} onChange={e => setCompStartDate(e.target.value)}
+                                className={`text-xs font-semibold px-3 py-1.5 rounded-xl border focus:outline-none focus:ring-2 focus:ring-indigo-400 ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-300 text-slate-700'}`} />
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className={`text-[10px] font-bold uppercase tracking-wider ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>To</span>
+                              <input type="date" value={compEndDate} onChange={e => setCompEndDate(e.target.value)}
+                                className={`text-xs font-semibold px-3 py-1.5 rounded-xl border focus:outline-none focus:ring-2 focus:ring-indigo-400 ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-300 text-slate-700'}`} />
+                            </div>
+                            <select value={compSector} onChange={e => setCompSector(e.target.value)}
+                              className={`text-xs font-semibold px-3 py-1.5 rounded-xl border focus:outline-none focus:ring-2 focus:ring-indigo-400 ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-300 text-slate-700'}`}>
+                              {compSectorOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                            </select>
+                            <button onClick={() => { setCompStartDate(() => { const d = new Date(); d.setDate(d.getDate()-29); return d.toISOString().split('T')[0]; }); setCompEndDate(new Date().toISOString().split('T')[0]); setCompSector('All'); }}
+                              className={`text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-xl transition-colors ${darkMode ? 'text-slate-400 hover:text-white' : 'text-slate-400 hover:text-slate-700'}`}>
+                              Reset
+                            </button>
+                          </div>
                           <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] items-center gap-8">
                             <SearchableDropdown
                               label="Primary Entity"
@@ -8019,6 +8063,7 @@ ${bodyHtml}
                               darkMode={darkMode}
                             />
                           </div>
+                          </>
                         );
                       })()}
                     </div>

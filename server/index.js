@@ -761,86 +761,64 @@ app.get('/api/competitor-mentions', getUserId, async (req, res) => {
 
 // Get competitor analysis telemetry (mentions, sentiment, sources, trends, reach) for two keywords globally
 app.get('/api/competitor-analysis', getUserId, async (req, res) => {
-  const { keyword1, keyword2 } = req.query;
+  const { keyword1, keyword2, startDate, endDate, sector } = req.query;
   if (!keyword1 || !keyword2) {
     return res.status(400).json({ error: 'Two keywords are required' });
   }
 
-  try {
-    const getLast7DaysLabels = () => {
-      const labels = [];
-      const dates = [];
-      for (let i = 6; i >= 0; i--) {
-        const d = new Date();
-        d.setDate(d.getDate() - i);
-        const label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        labels.push(label);
-        dates.push(d.toISOString().split('T')[0]);
-      }
-      return { labels, dates };
-    };
+  const SECTOR_MAP = { AI:'AI', TECH:'Tech', FOODS_DRINKS:'Foods & Drinks', HEALTHCARE:'Healthcare',
+    TRAVEL:'Travel', CONSULTANCY:'Consultancies', STARTUP:'Startups', LIFESTYLE:'Lifestyle',
+    POLICIES:'Policies', STOCK_MARKET:'Stock Market', REAL_ESTATE:'Real Estate',
+    GOOGLE:'Google', EDUCATION:'Education', FINTECH:'Fintech', AUTOMOBILE:'Automobile', MEDIA:'Media & Entertainment' };
 
-    const { labels: trendLabels, dates: trendDates } = getLast7DaysLabels();
+  try {
+    // Build dynamic date range (default: last 30 days)
+    const end = endDate ? new Date(endDate + 'T23:59:59') : new Date();
+    const start = startDate ? new Date(startDate + 'T00:00:00') : (() => { const d = new Date(end); d.setDate(d.getDate() - 29); return d; })();
+    const diffDays = Math.max(1, Math.ceil((end - start) / 86400000));
+    const step = diffDays <= 45 ? 1 : 7;
+
+    const trendDates = [], trendLabels = [];
+    for (let i = 0; i <= diffDays; i += step) {
+      const d = new Date(start); d.setDate(d.getDate() + i);
+      if (d > end) break;
+      trendDates.push(d.toISOString().split('T')[0]);
+      trendLabels.push(d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+    }
+
+    const dbSector = sector && sector !== 'All' ? (SECTOR_MAP[sector.toUpperCase()] || null) : null;
 
     const getAnalysisForKeyword = async (keyword) => {
       const cleanKeyword = keyword.trim();
-      
-      // Check if there is a company matching this name globally
-      const compRes = await db.query(
-        'SELECT id FROM companies WHERE LOWER(name) = LOWER($1)',
-        [cleanKeyword]
-      );
-      
-      let queryText = '';
-      let params = [];
-      
-      if (compRes.rows.length > 0) {
-        const companyIds = compRes.rows.map(r => r.id);
-        queryText = `
-          SELECT DISTINCT ON (LOWER(a.title))
-                 a.title, a.link, a.source, a.sentiment, a.created_at, 
-                 d.page_rank_decimal, d.rank
-          FROM articles a
-          LEFT JOIN domain_authority_cache d 
-            ON d.domain = regexp_replace(substring(a.link from 'https?://([^/]+)'), '^www\\\\.', '')
-          WHERE a.company_id = ANY($1)
-          ORDER BY LOWER(a.title), a.created_at DESC
-        `;
-        params = [companyIds];
-      } else {
-        queryText = `
-          SELECT DISTINCT ON (LOWER(a.title))
-                 a.title, a.url AS link, a.agency AS source, a.sentiment, a.published_at AS created_at,
-                 d.page_rank_decimal, d.rank
-          FROM nexus_articles a
-          LEFT JOIN domain_authority_cache d
-            ON d.domain = regexp_replace(substring(a.url from 'https?://([^/]+)'), '^www\\.', '')
-          WHERE to_tsvector('simple', coalesce(a.full_body,'')) @@ plainto_tsquery('simple', $1)
-          ORDER BY LOWER(a.title), a.published_at DESC
-        `;
-        params = [cleanKeyword];
-      }
+      const fn = cleanKeyword.includes(' ') ? 'phraseto_tsquery' : 'plainto_tsquery';
+      const params = [cleanKeyword];
+      let extra = '';
+      if (startDate) { params.push(startDate); extra += ` AND a.published_at >= $${params.length}::date`; }
+      if (endDate)   { params.push(endDate);   extra += ` AND a.published_at < ($${params.length}::date + INTERVAL '1 day')`; }
+      if (dbSector)  { params.push(dbSector);  extra += ` AND a.sector = $${params.length}`; }
+
+      // Always use nexus_articles for consistent cross-brand comparisons
+      const queryText = `
+        SELECT DISTINCT ON (LOWER(a.title))
+               a.title, a.url AS link, a.agency AS source, a.sentiment, a.published_at AS created_at,
+               d.page_rank_decimal, d.rank
+        FROM nexus_articles a
+        LEFT JOIN domain_authority_cache d
+          ON d.domain = regexp_replace(substring(a.url from 'https?://([^/]+)'), '^www\\.', '')
+        WHERE to_tsvector('simple', coalesce(a.full_body,'')) @@ ${fn}('simple', $1)${extra}
+        ORDER BY LOWER(a.title), a.published_at DESC
+      `;
 
       const articleRes = await db.query(queryText, params);
       const rows = articleRes.rows;
-
-      // 1. Mentions
       const mentionsCount = rows.length;
 
-      // 2. Sentiment Breakdown
       const sentiment = { positive: 0, negative: 0, neutral: 0 };
-
-      // 3. Top Sources Count
       const sourceMap = {};
-
-      // 4. Trend counts for last 7 days
       const trendMap = {};
-      trendDates.forEach(dateStr => { trendMap[dateStr] = 0; });
+      trendDates.forEach(d => { trendMap[d] = 0; });
 
-      // 5. Reach + extras
-      let totalReach = 0;
-      let totalAgeDays = 0;
-      let ageCount = 0;
+      let totalReach = 0, totalAgeDays = 0, ageCount = 0;
       const authorityTiers = { high: 0, mid: 0, low: 0 };
       const articleReaches = [];
 
@@ -854,11 +832,16 @@ app.get('/api/competitor-analysis', getUserId, async (req, res) => {
         sourceMap[src] = (sourceMap[src] || 0) + 1;
 
         if (row.created_at) {
-          const rowDateStr = new Date(row.created_at).toISOString().split('T')[0];
-          if (rowDateStr in trendMap) trendMap[rowDateStr]++;
-          const ageDays = (Date.now() - new Date(row.created_at).getTime()) / (1000 * 60 * 60 * 24);
-          totalAgeDays += ageDays;
-          ageCount++;
+          const rowDate = new Date(row.created_at);
+          // Map to nearest trend bucket (step-aware)
+          const rowDateStr = rowDate.toISOString().split('T')[0];
+          let bucket = trendDates[0];
+          for (let i = trendDates.length - 1; i >= 0; i--) {
+            if (rowDateStr >= trendDates[i]) { bucket = trendDates[i]; break; }
+          }
+          if (bucket in trendMap) trendMap[bucket]++;
+          const ageDays = (Date.now() - rowDate.getTime()) / (1000 * 60 * 60 * 24);
+          totalAgeDays += ageDays; ageCount++;
         }
 
         let reach = 5000;
@@ -873,50 +856,29 @@ app.get('/api/competitor-analysis', getUserId, async (req, res) => {
           else authorityTiers.low++;
         } else {
           authorityTiers.low++;
-          if (hostname && (hostname.includes('news') || hostname.includes('times') || hostname.includes('post') || hostname.includes('reuters') || hostname.includes('bloomberg'))) {
-            reach = 50000;
-          }
+          if (hostname && (hostname.includes('news') || hostname.includes('times') || hostname.includes('post') || hostname.includes('reuters') || hostname.includes('bloomberg'))) reach = 50000;
         }
 
-        if (sent === 'positive') reach = Math.floor(reach * 1.2);
-        else if (sent === 'negative') reach = Math.floor(reach * 1.5);
+        const sentLow = sent;
+        if (sentLow === 'positive') reach = Math.floor(reach * 1.2);
+        else if (sentLow === 'negative') reach = Math.floor(reach * 1.5);
 
         totalReach += reach;
         articleReaches.push({ title: row.title, link: row.link, source: src, sentiment: row.sentiment || 'Neutral', reach });
       });
 
-      const sortedSources = Object.keys(sourceMap)
-        .map(src => ({ source: src, count: sourceMap[src] }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 5);
-
-      const trendValues = trendDates.map(dateStr => trendMap[dateStr]);
+      const sortedSources = Object.entries(sourceMap).map(([source, count]) => ({ source, count })).sort((a, b) => b.count - a.count).slice(0, 5);
+      const trendValues = trendDates.map(d => trendMap[d]);
       const avgArticleAgeDays = ageCount > 0 ? parseFloat((totalAgeDays / ageCount).toFixed(1)) : null;
       const topArticles = articleReaches.sort((a, b) => b.reach - a.reach).slice(0, 3);
-      const coverageIntensityScore = Math.floor((totalReach / Math.max(mentionsCount, 1)) * (mentionsCount / 7));
+      const coverageIntensityScore = Math.floor((totalReach / Math.max(mentionsCount, 1)) * (mentionsCount / Math.max(diffDays, 1)));
 
-      return {
-        name: keyword,
-        mentions: mentionsCount,
-        sentiment,
-        sources: sortedSources,
-        trends: trendValues,
-        estimatedReach: totalReach,
-        avgArticleAgeDays,
-        topArticles,
-        sourceAuthorityTiers: authorityTiers,
-        coverageIntensityScore
-      };
+      return { name: keyword, mentions: mentionsCount, sentiment, sources: sortedSources, trends: trendValues, estimatedReach: totalReach, avgArticleAgeDays, topArticles, sourceAuthorityTiers: authorityTiers, coverageIntensityScore };
     };
 
-    const comp1Data = await getAnalysisForKeyword(keyword1);
-    const comp2Data = await getAnalysisForKeyword(keyword2);
+    const [comp1Data, comp2Data] = await Promise.all([getAnalysisForKeyword(keyword1), getAnalysisForKeyword(keyword2)]);
 
-    res.status(200).json({
-      comp1: comp1Data,
-      comp2: comp2Data,
-      trendLabels
-    });
+    res.status(200).json({ comp1: comp1Data, comp2: comp2Data, trendLabels });
   } catch (err) {
     console.error('Error in GET /api/competitor-analysis:', err);
     res.status(500).json({ error: 'Internal server error' });
