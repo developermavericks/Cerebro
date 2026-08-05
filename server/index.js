@@ -2290,6 +2290,29 @@ app.get('/api/nexus/status', getUserId, async (req, res) => {
   }
 });
 
+app.get('/api/nexus/region-check', async (req, res) => {
+  const secret = req.headers['x-cron-secret'] || req.query.secret;
+  if (!secret || secret !== process.env.CRON_SECRET) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const days = parseInt(req.query.days) || 7;
+    const breakdown = await db.query(`
+      SELECT region, COUNT(*) AS cnt
+      FROM nexus_articles
+      WHERE published_at >= NOW() - INTERVAL '${days} days'
+      GROUP BY region ORDER BY cnt DESC
+    `);
+    const sample = await db.query(`
+      SELECT title, region, published_at::date AS date
+      FROM nexus_articles
+      WHERE published_at >= NOW() - INTERVAL '${days} days'
+      ORDER BY published_at DESC LIMIT 10
+    `);
+    res.json({ breakdown: breakdown.rows, sample: sample.rows, days });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/nexus/dates', async (req, res) => {
   const secret = req.headers['x-cron-secret'] || req.query.secret;
   if (!secret || secret !== process.env.CRON_SECRET) return res.status(401).json({ error: 'Unauthorized' });
