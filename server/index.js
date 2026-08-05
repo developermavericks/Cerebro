@@ -759,6 +759,57 @@ app.get('/api/competitor-mentions', getUserId, async (req, res) => {
   }
 });
 
+// Weighted sentiment scores: positive values = positive signal, negative = negative signal
+const _SENT_SCORES = {
+  // Strong positive (+2)
+  'soars':2,'soar':2,'surges':2,'surge':2,'record':2,'breakthrough':2,'wins':2,'won':2,
+  'profit':2,'profits':2,'beats':2,'beat':2,'outperforms':2,'milestone':2,'landmark':2,
+  'revolutionary':2,'pioneer':2,'dominates':2,'awarded':2,'award':2,'historic':2,
+  'booming':2,'boom':2,'jumps':2,'climbs':2,'skyrockets':2,'rallies':2,
+  // Mild positive (+1)
+  'launch':1,'launches':1,'launched':1,'launches':1,'growth':1,'grows':1,'grew':1,
+  'innovation':1,'innovative':1,'expands':1,'expansion':1,'success':1,'successful':1,
+  'leading':1,'leads':1,'lead':1,'partnership':1,'deal':1,'invest':1,'investment':1,
+  'upgrade':1,'rise':1,'rising':1,'rises':1,'gain':1,'gains':1,'gained':1,
+  'strong':1,'strengthen':1,'boost':1,'boosts':1,'boosted':1,'surpass':1,'surpasses':1,
+  'top':1,'best':1,'first':1,'ahead':1,'dominant':1,'trusted':1,'recognized':1,'recognised':1,
+  'revenue':1,'agreement':1,'approved':1,'approves':1,'new':1,'accelerates':1,'accelerate':1,
+  'momentum':1,'opportunity':1,'opportunities':1,'expand':1,'grows':1,'positive':1,
+  'confident':1,'strong':1,'healthy':1,'steady':1,'improved':1,'improves':1,'improve':1,
+  'celebrates':1,'celebrate':1,'major':1,'key':1,'significant':1,'landmark':1,
+  // Strong negative (-2)
+  'lawsuit':-2,'sued':-2,'sues':-2,'suing':-2,'fined':-2,'penalty':-2,'penalties':-2,
+  'antitrust':-2,'breach':-2,'hacked':-2,'hack':-2,'scandal':-2,'crisis':-2,'fraud':-2,
+  'violation':-2,'layoffs':-2,'layoff':-2,'fired':-2,'resign':-2,'resigned':-2,
+  'plunges':-2,'plunge':-2,'slumps':-2,'slump':-2,'crashes':-2,'crash':-2,
+  'ban':-2,'banned':-2,'blocked':-2,'probed':-2,'indicted':-2,'charges':-2,'charged':-2,
+  'monopoly':-2,'cartel':-2,'corruption':-2,'misconduct':-2,'outage':-2,'investigation':-2,
+  'misleading':-2,'misinformation':-2,'disinformation':-2,'manipulated':-2,
+  // Mild negative (-1)
+  'fine':-1,'sue':-1,'probe':-1,'concern':-1,'concerns':-1,'decline':-1,'declines':-1,
+  'falls':-1,'fall':-1,'falling':-1,'drop':-1,'drops':-1,'dropped':-1,'loss':-1,'losses':-1,
+  'fail':-1,'fails':-1,'failure':-1,'failed':-1,'block':-1,'controversy':-1,'controversial':-1,
+  'risk':-1,'risks':-1,'warning':-1,'warns':-1,'warn':-1,'problem':-1,'problems':-1,
+  'trouble':-1,'troubled':-1,'cut':-1,'cuts':-1,'cutting':-1,'delay':-1,'delayed':-1,
+  'cancel':-1,'cancelled':-1,'canceled':-1,'miss':-1,'misses':-1,'missed':-1,
+  'disappoints':-1,'disappointing':-1,'hurt':-1,'hurts':-1,'threat':-1,'threats':-1,
+  'criticized':-1,'criticised':-1,'accused':-1,'accuses':-1,'error':-1,'bug':-1,
+  'recall':-1,'leak':-1,'leaked':-1,'exposed':-1,'attack':-1,'attacked':-1,
+  'underperforms':-1,'underperform':-1,'struggles':-1,'struggle':-1,
+};
+
+function _inferSentiment(title, summary) {
+  const text = ((title || '') + ' ' + (summary || '')).toLowerCase();
+  const words = text.split(/\W+/);
+  let score = 0;
+  for (const w of words) {
+    score += (_SENT_SCORES[w] || 0);
+  }
+  if (score > 0) return 'positive';
+  if (score < 0) return 'negative';
+  return 'neutral';
+}
+
 // Get competitor analysis telemetry (mentions, sentiment, sources, trends, reach) for two keywords globally
 app.get('/api/competitor-analysis', getUserId, async (req, res) => {
   const { keyword1, keyword2, startDate, endDate, sector } = req.query;
@@ -801,6 +852,7 @@ app.get('/api/competitor-analysis', getUserId, async (req, res) => {
       const queryText = `
         SELECT DISTINCT ON (LOWER(a.title))
                a.title, a.url AS link, a.agency AS source, a.sentiment, a.published_at AS created_at,
+               a.region, a.sector,
                d.page_rank_decimal, d.rank
         FROM nexus_articles a
         LEFT JOIN domain_authority_cache d
@@ -813,9 +865,11 @@ app.get('/api/competitor-analysis', getUserId, async (req, res) => {
       const rows = articleRes.rows;
       const mentionsCount = rows.length;
 
-      const sentiment = { positive: 0, negative: 0, neutral: 0 };
+      const sentiment = { positive: 0, negative: 0, neutral: 0, unknown: 0 };
       const sourceMap = {};
       const trendMap = {};
+      const regionMap = {};
+      const sectorMap = {};
       trendDates.forEach(d => { trendMap[d] = 0; });
 
       let totalReach = 0, totalAgeDays = 0, ageCount = 0;
@@ -823,13 +877,23 @@ app.get('/api/competitor-analysis', getUserId, async (req, res) => {
       const articleReaches = [];
 
       rows.forEach(row => {
-        const sent = (row.sentiment || '').toLowerCase();
+        const sent = (row.sentiment || '').toLowerCase().trim();
         if (sent === 'positive') sentiment.positive++;
         else if (sent === 'negative') sentiment.negative++;
-        else sentiment.neutral++;
+        else if (sent === 'neutral') sentiment.neutral++;
+        else {
+          const inferred = _inferSentiment(row.title, row.summary);
+          sentiment[inferred]++;
+        }
 
         const src = row.source || 'Unknown Source';
         sourceMap[src] = (sourceMap[src] || 0) + 1;
+
+        const reg = (row.region || 'unknown').toLowerCase();
+        regionMap[reg] = (regionMap[reg] || 0) + 1;
+
+        const sec = row.sector || 'Other';
+        sectorMap[sec] = (sectorMap[sec] || 0) + 1;
 
         if (row.created_at) {
           const rowDate = new Date(row.created_at);
@@ -872,8 +936,21 @@ app.get('/api/competitor-analysis', getUserId, async (req, res) => {
       const avgArticleAgeDays = ageCount > 0 ? parseFloat((totalAgeDays / ageCount).toFixed(1)) : null;
       const topArticles = articleReaches.sort((a, b) => b.reach - a.reach).slice(0, 3);
       const coverageIntensityScore = Math.floor((totalReach / Math.max(mentionsCount, 1)) * (mentionsCount / Math.max(diffDays, 1)));
+      const coverageVelocity = parseFloat((mentionsCount / Math.max(diffDays, 1)).toFixed(1));
 
-      return { name: keyword, mentions: mentionsCount, sentiment, sources: sortedSources, trends: trendValues, estimatedReach: totalReach, avgArticleAgeDays, topArticles, sourceAuthorityTiers: authorityTiers, coverageIntensityScore };
+      const regionBreakdown = {
+        india: regionMap['india'] || 0,
+        global: regionMap['global'] || 0,
+        other: Object.entries(regionMap).filter(([k]) => k !== 'india' && k !== 'global' && k !== 'unknown').reduce((s, [, v]) => s + v, 0)
+      };
+      const topSectors = Object.entries(sectorMap)
+        .map(([sector, count]) => ({ sector, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 6);
+
+      return { name: keyword, mentions: mentionsCount, sentiment, sources: sortedSources, trends: trendValues,
+        avgArticleAgeDays, topArticles, sourceAuthorityTiers: authorityTiers, coverageIntensityScore,
+        coverageVelocity, regionBreakdown, topSectors };
     };
 
     const [comp1Data, comp2Data] = await Promise.all([getAnalysisForKeyword(keyword1), getAnalysisForKeyword(keyword2)]);
@@ -1561,6 +1638,22 @@ function detectSectorIntent(msg) {
     } catch(_) {}
   }
 
+  // Single date: "31 july", "july 31", "31st july", "aug 4", "4 august 2026", etc.
+  if (!startDate) {
+    const singleDate = m.match(/\b(\d{1,2})(?:st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*/i)
+                    || m.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\s+(\d{1,2})(?:st|nd|rd|th)?\b/i);
+    if (singleDate) {
+      try {
+        let day, mon;
+        if (/^\d/.test(singleDate[1])) { day = parseInt(singleDate[1]); mon = monthMap[singleDate[2].toLowerCase().slice(0,3)]; }
+        else { mon = monthMap[singleDate[1].toLowerCase().slice(0,3)]; day = parseInt(singleDate[2]); }
+        const year = new Date().getFullYear();
+        const dateStr = `${year}-${String(mon).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+        startDate = dateStr; endDate = dateStr; days = 1;
+      } catch(_) {}
+    }
+  }
+
   // Sector detection
   const sectorMap = [
     { keys: [' tech ',' technology ',' software ',' it sector '],                  sector: 'Tech' },
@@ -1588,24 +1681,48 @@ function detectSectorIntent(msg) {
 
 async function fetchSectorSummariesForCleo(sector, days, region, startDate, endDate) {
   try {
-    let query, params;
-    if (startDate && endDate) {
-      query = `SELECT date, summary_text, top_topics, headline_count
-               FROM nexus_sector_summaries
-               WHERE sector ILIKE $1 AND publication_region = $2
-                 AND date BETWEEN $3 AND $4
-               ORDER BY date DESC LIMIT 30`;
-      params = [sector, region, startDate, endDate];
-    } else {
-      query = `SELECT date, summary_text, top_topics, headline_count
-               FROM nexus_sector_summaries
-               WHERE sector ILIKE $1 AND publication_region = $2
-                 AND date >= CURRENT_DATE - ($3 || ' days')::INTERVAL
-               ORDER BY date DESC LIMIT 30`;
-      params = [sector, region, String(days)];
+    // Try preferred region first, then fall back to 'overall', then any region
+    const regionFallbacks = region === 'overall'
+      ? ['overall', 'india', 'global']
+      : [region, 'overall', 'india', 'global'];
+
+    for (const r of regionFallbacks) {
+      let query, params;
+      if (startDate && endDate) {
+        query = `SELECT date, summary_text, top_topics, headline_count, publication_region
+                 FROM nexus_sector_summaries
+                 WHERE sector ILIKE $1 AND publication_region = $2
+                   AND date BETWEEN $3 AND $4
+                 ORDER BY date DESC LIMIT 30`;
+        params = [sector, r, startDate, endDate];
+      } else {
+        query = `SELECT date, summary_text, top_topics, headline_count, publication_region
+                 FROM nexus_sector_summaries
+                 WHERE sector ILIKE $1 AND publication_region = $2
+                   AND date >= CURRENT_DATE - ($3 || ' days')::INTERVAL
+                 ORDER BY date DESC LIMIT 30`;
+        params = [sector, r, String(days)];
+      }
+      const result = await db.query(query, params);
+      if (result.rows.length > 0) return result.rows;
     }
-    const result = await db.query(query, params);
-    return result.rows;
+
+    // Last resort: any region, broader sector match (e.g. 'AI' also matches 'Artificial Intelligence')
+    const broadQuery = startDate && endDate
+      ? `SELECT date, summary_text, top_topics, headline_count, publication_region
+         FROM nexus_sector_summaries
+         WHERE (sector ILIKE $1 OR sector ILIKE $2) AND date BETWEEN $3 AND $4
+         ORDER BY date DESC LIMIT 30`
+      : `SELECT date, summary_text, top_topics, headline_count, publication_region
+         FROM nexus_sector_summaries
+         WHERE (sector ILIKE $1 OR sector ILIKE $2)
+           AND date >= CURRENT_DATE - ($3 || ' days')::INTERVAL
+         ORDER BY date DESC LIMIT 30`;
+    const broadParams = startDate && endDate
+      ? [`%${sector}%`, `%${sector.split(' ')[0]}%`, startDate, endDate]
+      : [`%${sector}%`, `%${sector.split(' ')[0]}%`, String(days)];
+    const broadResult = await db.query(broadQuery, broadParams);
+    return broadResult.rows;
   } catch (_) {
     return [];
   }
@@ -1768,6 +1885,52 @@ Sentiment from recent articles: Positive=${sent?.Positive||0}, Neutral=${sent?.N
         }
 
         sectorSummarySection = `\n\n=== LIVE ${intent.sector.toUpperCase()} NEWS SUMMARIES (${rangeLabel}, region: ${region}) ===\n${summaryText}\n(Answer using ONLY the above data — do not guess or use training knowledge for current events.)`;
+      } else {
+        // No pre-built summaries — fall back to querying nexus_articles directly
+        try {
+          let articleQuery, articleParams;
+          if (intent.startDate && intent.endDate) {
+            articleQuery = `
+              SELECT title, agency, published_at::date AS date, sentiment, summary, region
+              FROM nexus_articles
+              WHERE (sector ILIKE $1 OR sector ILIKE $2)
+                AND published_at::date BETWEEN $3 AND $4
+              ORDER BY published_at DESC LIMIT 60`;
+            articleParams = [`%${intent.sector}%`, `%${intent.sector.split(' ')[0]}%`, intent.startDate, intent.endDate];
+          } else {
+            articleQuery = `
+              SELECT title, agency, published_at::date AS date, sentiment, summary, region
+              FROM nexus_articles
+              WHERE (sector ILIKE $1 OR sector ILIKE $2)
+                AND published_at >= CURRENT_DATE - ($3 || ' days')::INTERVAL
+              ORDER BY published_at DESC LIMIT 60`;
+            articleParams = [`%${intent.sector}%`, `%${intent.sector.split(' ')[0]}%`, String(intent.days)];
+          }
+          const artResult = await db.query(articleQuery, articleParams);
+          if (artResult.rows.length > 0) {
+            const rangeLabel2 = intent.startDate && intent.endDate
+              ? `${intent.startDate} to ${intent.endDate}`
+              : `last ${intent.days} day(s)`;
+            const sentCount = { positive: 0, negative: 0, neutral: 0 };
+            const sourceCount = {};
+            for (const r of artResult.rows) {
+              const s = (r.sentiment || '').toLowerCase();
+              if (s === 'positive') sentCount.positive++;
+              else if (s === 'negative') sentCount.negative++;
+              else sentCount.neutral++;
+              const src = r.agency || 'Unknown';
+              sourceCount[src] = (sourceCount[src] || 0) + 1;
+            }
+            const topSources = Object.entries(sourceCount).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([s,c])=>`${s}(${c})`).join(', ');
+            const headlines = artResult.rows.slice(0, 15).map(r => `- "${r.title}" [${r.agency||'Unknown'}, ${r.date}]`).join('\n');
+            sectorSummarySection = `\n\n=== LIVE ${intent.sector.toUpperCase()} ARTICLES (${rangeLabel2}, ${artResult.rows.length} articles) ===
+Total: ${artResult.rows.length} articles | Positive: ${sentCount.positive} | Neutral: ${sentCount.neutral} | Negative: ${sentCount.negative}
+Top Sources: ${topSources}
+Headlines:
+${headlines}
+(Answer using ONLY the above data. These are real articles from the database for this sector and date range.)`;
+          }
+        } catch (_) {}
       }
     }
 

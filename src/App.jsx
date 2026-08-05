@@ -876,96 +876,104 @@ const ShareOfVoiceDonut = ({ val1, val2, name1, name2 }) => {
 };
 
 const SentimentDonut = ({ sentiment, name, isPrimary }) => {
-  const { positive, neutral, negative } = sentiment;
-  const total = positive + neutral + negative;
-  
-  const posPct = total > 0 ? (positive / total) * 100 : 33.3;
-  const neuPct = total > 0 ? (neutral / total) * 100 : 33.3;
-  const negPct = total > 0 ? (negative / total) * 100 : 33.3;
+  const { positive = 0, neutral = 0, negative = 0, unknown = 0 } = sentiment;
+  const known = positive + neutral + negative;
+  const total = known + unknown;
+  const noData = total === 0;
+
+  const posPct = known > 0 ? (positive / known) * 100 : 0;
+  const neuPct = known > 0 ? (neutral / known) * 100 : 0;
+  const negPct = known > 0 ? (negative / known) * 100 : 0;
+
+  const dominant = positive >= negative && positive >= neutral
+    ? { label: 'POSITIVE', pct: Math.round(posPct), color: 'text-emerald-500' }
+    : negative > positive && negative >= neutral
+    ? { label: 'NEGATIVE', pct: Math.round(negPct), color: 'text-rose-500' }
+    : { label: 'NEUTRAL', pct: Math.round(neuPct), color: 'text-amber-500' };
 
   const r = 45;
   const circ = 2 * Math.PI * r;
-  
   const strokeDashPos = (posPct / 100) * circ;
   const strokeDashNeu = (neuPct / 100) * circ;
   const strokeDashNeg = (negPct / 100) * circ;
-
   const offsetPos = 0;
   const offsetNeu = -strokeDashPos;
   const offsetNeg = -(strokeDashPos + strokeDashNeu);
 
+  if (noData) {
+    return (
+      <div className="flex flex-col items-center p-8 bg-white border border-slate-100 rounded-[2.5rem] shadow-xl shadow-slate-100/40 w-full relative group">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-slate-50 rounded-full -mr-16 -mt-16 transition-transform group-hover:scale-110 -z-10"></div>
+        <h6 className="text-xs font-black text-slate-400 uppercase tracking-widest leading-none mb-1">
+          {isPrimary ? 'Primary Entity' : 'Competitor'} Sentiment
+        </h6>
+        <p className="text-sm font-black text-slate-800 mb-5 truncate max-w-full">{name}</p>
+        <div className="flex flex-col items-center justify-center flex-1 py-8 gap-3">
+          <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center">
+            <svg className="w-8 h-8 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <p className="text-xs font-black text-slate-400 uppercase tracking-widest text-center">Sentiment Not Available</p>
+          <p className="text-[11px] text-slate-400 text-center max-w-[180px] leading-relaxed">
+            {total > 0 ? `${known} of ${total} articles have sentiment data` : 'No sentiment data from source'}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col items-center p-8 bg-white border border-slate-100 rounded-[2.5rem] shadow-xl shadow-slate-100/40 w-full relative group">
       <div className="absolute top-0 right-0 w-32 h-32 bg-slate-50 rounded-full -mr-16 -mt-16 transition-transform group-hover:scale-110 -z-10"></div>
-      <h6 className="text-xs font-black text-slate-400 uppercase tracking-widest leading-none mb-6">
-        {isPrimary ? 'Primary Entity' : 'Competitor'} Sentiment Breakup
+      <h6 className="text-xs font-black text-slate-400 uppercase tracking-widest leading-none mb-1">
+        {isPrimary ? 'Primary Entity' : 'Competitor'} Sentiment
       </h6>
-      
+      <p className="text-sm font-black text-slate-800 mb-5 truncate max-w-full">{name}</p>
+
       <div className="relative w-44 h-44 flex items-center justify-center mb-6">
         <svg viewBox="0 0 120 120" className="w-full h-full transform -rotate-90">
           <circle cx="60" cy="60" r={r} fill="transparent" stroke="#f1f5f9" strokeWidth="10" />
           {posPct > 0 && (
-            <circle
-              cx="60"
-              cy="60"
-              r={r}
-              fill="transparent"
-              stroke="#10b981"
-              strokeWidth="10"
+            <circle cx="60" cy="60" r={r} fill="transparent" stroke="#10b981" strokeWidth="10"
               strokeDasharray={`${strokeDashPos} ${circ - strokeDashPos}`}
-              strokeDashoffset={offsetPos}
-              strokeLinecap="round"
-            />
+              strokeDashoffset={offsetPos} strokeLinecap="round" />
           )}
           {neuPct > 0 && (
-            <circle
-              cx="60"
-              cy="60"
-              r={r}
-              fill="transparent"
-              stroke="#f59e0b"
-              strokeWidth="10"
+            <circle cx="60" cy="60" r={r} fill="transparent" stroke="#f59e0b" strokeWidth="10"
               strokeDasharray={`${strokeDashNeu} ${circ - strokeDashNeu}`}
-              strokeDashoffset={offsetNeu}
-              strokeLinecap="round"
-            />
+              strokeDashoffset={offsetNeu} strokeLinecap="round" />
           )}
           {negPct > 0 && (
-            <circle
-              cx="60"
-              cy="60"
-              r={r}
-              fill="transparent"
-              stroke="#f43f5e"
-              strokeWidth="10"
+            <circle cx="60" cy="60" r={r} fill="transparent" stroke="#f43f5e" strokeWidth="10"
               strokeDasharray={`${strokeDashNeg} ${circ - strokeDashNeg}`}
-              strokeDashoffset={offsetNeg}
-              strokeLinecap="round"
-            />
+              strokeDashoffset={offsetNeg} strokeLinecap="round" />
           )}
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-          <span className="text-4xl font-black text-slate-900 tracking-tight">
-            {total > 0 ? Math.round((positive / total) * 100) : 0}%
-          </span>
-          <span className="text-xs font-bold text-emerald-500 uppercase tracking-widest">{name}</span>
+          <span className="text-4xl font-black text-slate-900 tracking-tight">{dominant.pct}%</span>
+          <span className={`text-[10px] font-black uppercase tracking-widest mt-0.5 ${dominant.color}`}>{dominant.label}</span>
         </div>
       </div>
 
       <div className="grid grid-cols-3 gap-3 w-full font-black text-center mt-2">
         <div className="bg-emerald-50/70 border border-emerald-100/50 text-emerald-700 px-3 py-3 rounded-2xl">
           <div className="text-slate-400 uppercase font-bold text-[10px] mb-1">Positive</div>
-          <div className="text-base font-black">{positive}</div>
+          <div className="text-base font-black">{positive.toLocaleString()}</div>
+          <div className="text-[10px] text-emerald-400 font-bold">{Math.round(posPct)}%</div>
         </div>
         <div className="bg-amber-50/70 border border-amber-100/50 text-amber-700 px-3 py-3 rounded-2xl">
           <div className="text-slate-400 uppercase font-bold text-[10px] mb-1">Neutral</div>
-          <div className="text-base font-black">{neutral}</div>
+          <div className="text-base font-black">{neutral.toLocaleString()}</div>
+          <div className="text-[10px] text-amber-400 font-bold">{Math.round(neuPct)}%</div>
         </div>
         <div className="bg-rose-50/70 border border-rose-100/50 text-rose-700 px-3 py-3 rounded-2xl">
           <div className="text-slate-400 uppercase font-bold text-[10px] mb-1">Negative</div>
-          <div className="text-base font-black">{negative}</div>
+          <div className="text-base font-black">{negative.toLocaleString()}</div>
+          <div className="text-[10px] text-rose-400 font-bold">{Math.round(negPct)}%</div>
         </div>
       </div>
+      {unknown > 0 && <p className="text-[10px] text-slate-300 mt-3">{unknown.toLocaleString()} articles without sentiment data excluded</p>}
     </div>
   );
 };
@@ -1186,45 +1194,66 @@ const SentimentRatioBar = ({ comp1, comp2 }) => {
 };
 
 const PositivityGauge = ({ sentiment, name, isPrimary }) => {
-  const { positive, neutral, negative } = sentiment;
-  const total = positive + neutral + negative;
-  const pct = total > 0 ? Math.round((positive / total) * 100) : 0;
-  
+  const { positive = 0, neutral = 0, negative = 0, unknown = 0 } = sentiment;
+  const known = positive + neutral + negative;
+  const total = known + unknown;
+  const noData = total === 0;
+
+  const posPct = known > 0 ? Math.round((positive / known) * 100) : 0;
+  const gaugeColor = isPrimary ? '#4f46e5' : '#0f172a';
+
   const r = 50;
   const circ = Math.PI * r;
-  const strokeDash = (pct / 100) * circ;
-  const strokeColor = isPrimary ? '#4f46e5' : '#0f172a';
+  const strokeDash = (posPct / 100) * circ;
+
+  if (noData) {
+    return (
+      <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl shadow-slate-100/40 w-full flex flex-col items-center justify-center relative group">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-slate-50 rounded-full -mr-16 -mt-16 transition-transform group-hover:scale-110 -z-10"></div>
+        <h5 className="text-xs font-black text-slate-400 uppercase tracking-widest leading-none mb-1">
+          {isPrimary ? 'Primary' : 'Competitor'} Positivity Rate
+        </h5>
+        <p className="text-xs font-black text-slate-600 mb-5 truncate max-w-full">{name}</p>
+        <div className="relative w-48 h-28 flex items-center justify-center overflow-hidden">
+          <svg viewBox="0 0 120 70" className="w-full h-full">
+            <path d="M 10 60 A 50 50 0 0 1 110 60" fill="none" stroke="#f1f5f9" strokeWidth="10" strokeLinecap="round" />
+          </svg>
+          <div className="absolute bottom-1 flex flex-col items-center text-center">
+            <span className="text-[11px] font-black text-slate-300 uppercase tracking-widest text-center leading-tight">Sentiment<br/>Not Available</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl shadow-slate-100/40 w-full flex flex-col items-center justify-center relative group">
       <div className="absolute top-0 right-0 w-32 h-32 bg-slate-50 rounded-full -mr-16 -mt-16 transition-transform group-hover:scale-110 -z-10"></div>
-      <h5 className="text-xs font-black text-slate-400 uppercase tracking-widest leading-none mb-6">
+      <h5 className="text-xs font-black text-slate-400 uppercase tracking-widest leading-none mb-1">
         {isPrimary ? 'Primary' : 'Competitor'} Positivity Rate
       </h5>
+      <p className="text-xs font-black text-slate-600 mb-5 truncate max-w-full">{name}</p>
       <div className="relative w-48 h-28 flex items-center justify-center overflow-hidden">
         <svg viewBox="0 0 120 70" className="w-full h-full">
-          <path
-            d="M 10 60 A 50 50 0 0 1 110 60"
-            fill="none"
-            stroke="#f1f5f9"
-            strokeWidth="10"
-            strokeLinecap="round"
-          />
-          <path
-            d="M 10 60 A 50 50 0 0 1 110 60"
-            fill="none"
-            stroke={strokeColor}
-            strokeWidth="10"
-            strokeDasharray={`${strokeDash} ${circ}`}
-            strokeLinecap="round"
-            className="transition-all duration-1000 ease-out"
-          />
+          <path d="M 10 60 A 50 50 0 0 1 110 60" fill="none" stroke="#f1f5f9" strokeWidth="10" strokeLinecap="round" />
+          {posPct > 0 && (
+            <path
+              d="M 10 60 A 50 50 0 0 1 110 60"
+              fill="none"
+              stroke={gaugeColor}
+              strokeWidth="10"
+              strokeDasharray={`${strokeDash} ${circ}`}
+              strokeLinecap="round"
+              className="transition-all duration-1000 ease-out"
+            />
+          )}
         </svg>
         <div className="absolute bottom-1 flex flex-col items-center text-center">
-          <span className="text-3xl font-black text-slate-900 leading-none">{pct}%</span>
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">{name}</span>
+          <span className="text-3xl font-black text-slate-900 leading-none">{posPct}%</span>
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Positive</span>
         </div>
       </div>
+      {negative > 0 && <p className="text-[10px] text-rose-400 font-bold mt-1">{negative} negative articles</p>}
     </div>
   );
 };
@@ -1318,53 +1347,67 @@ const SourceOverlapCard = ({ sources1, sources2, name1, name2 }) => {
 };
 
 const CadenceHeatmap = ({ trends1, trends2, labels, name1, name2 }) => {
+  const SHOW = 7;
+  const displayLabels = labels.slice(-SHOW);
+  const displayTrends1 = trends1.slice(-SHOW);
+  const displayTrends2 = trends2.slice(-SHOW);
+  const maxVal = Math.max(...displayTrends1, ...displayTrends2, 1);
+
   const getIntensityClass = (val) => {
     if (val === 0) return 'bg-slate-50 border border-slate-100 text-slate-300';
-    if (val <= 2) return 'bg-indigo-100 border border-indigo-200 text-indigo-600';
-    if (val <= 5) return 'bg-indigo-300 border border-indigo-400 text-white';
-    return 'bg-indigo-600 border border-indigo-700 text-white font-black';
+    const ratio = val / maxVal;
+    if (ratio < 0.25) return 'bg-indigo-100 border border-indigo-200 text-indigo-700';
+    if (ratio < 0.5)  return 'bg-indigo-300 border border-indigo-400 text-white';
+    if (ratio < 0.75) return 'bg-indigo-500 border border-indigo-600 text-white';
+    return 'bg-indigo-700 border border-indigo-800 text-white font-black';
   };
+
+  const fmt = (n) => n >= 1000 ? `${(n/1000).toFixed(1)}k` : String(n);
 
   return (
     <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl shadow-slate-100/40 w-full relative group">
       <div className="absolute top-0 right-0 w-32 h-32 bg-slate-50 rounded-full -mr-16 -mt-16 transition-transform group-hover:scale-110 -z-10"></div>
-      <h5 className="text-xs font-black text-slate-400 uppercase tracking-widest leading-none mb-6">Mentions Cadence Heatmap</h5>
-      
-      <div className="grid grid-cols-8 gap-2.5 text-center items-center">
+      <div className="flex items-center justify-between mb-6">
+        <h5 className="text-xs font-black text-slate-400 uppercase tracking-widest leading-none">Mentions Cadence Heatmap</h5>
+        <span className="text-[10px] font-bold text-slate-400">Last {displayLabels.length} periods</span>
+      </div>
+
+      <div className="grid gap-2.5 text-center items-center" style={{ gridTemplateColumns: `120px repeat(${SHOW}, 1fr)` }}>
         <div className="text-left text-[10px] font-black text-slate-400 uppercase tracking-wider">Brand</div>
-        {labels.map((lbl, idx) => (
-          <div key={idx} className="text-[10px] font-black text-slate-400 uppercase tracking-wider">{lbl}</div>
+        {displayLabels.map((lbl, idx) => (
+          <div key={idx} className="text-[10px] font-black text-slate-400 uppercase tracking-wider leading-tight">{lbl}</div>
         ))}
-        
-        <div className="text-left text-xs font-black text-slate-800 truncate">{name1}</div>
-        {trends1.map((val, idx) => (
+
+        <div className="text-left text-xs font-black text-slate-800 truncate pr-2">{name1}</div>
+        {displayTrends1.map((val, idx) => (
           <div
             key={idx}
-            className={`h-11 rounded-xl flex items-center justify-center text-xs font-bold ${getIntensityClass(val)} transition-all hover:scale-105`}
+            className={`h-12 rounded-xl flex items-center justify-center text-xs font-bold ${getIntensityClass(val)} transition-all hover:scale-105`}
             title={`${val} mentions`}
           >
-            {val}
+            {fmt(val)}
           </div>
         ))}
-        
-        <div className="text-left text-xs font-black text-slate-800 truncate">{name2}</div>
-        {trends2.map((val, idx) => (
+
+        <div className="text-left text-xs font-black text-slate-800 truncate pr-2">{name2}</div>
+        {displayTrends2.map((val, idx) => (
           <div
             key={idx}
-            className={`h-11 rounded-xl flex items-center justify-center text-xs font-bold ${getIntensityClass(val)} transition-all hover:scale-105`}
+            className={`h-12 rounded-xl flex items-center justify-center text-xs font-bold ${getIntensityClass(val)} transition-all hover:scale-105`}
             title={`${val} mentions`}
           >
-            {val}
+            {fmt(val)}
           </div>
         ))}
       </div>
-      
+
       <div className="flex gap-4 mt-6 text-[10px] font-bold text-slate-400 justify-end items-center">
         <span>Intensity:</span>
-        <div className="flex items-center gap-1"><span className="w-3 h-3 bg-slate-50 border border-slate-100 rounded"></span><span>0</span></div>
-        <div className="flex items-center gap-1"><span className="w-3 h-3 bg-indigo-100 rounded"></span><span>1-2</span></div>
-        <div className="flex items-center gap-1"><span className="w-3 h-3 bg-indigo-300 rounded"></span><span>3-5</span></div>
-        <div className="flex items-center gap-1"><span className="w-3 h-3 bg-indigo-600 rounded"></span><span>6+</span></div>
+        <div className="flex items-center gap-1"><span className="w-3 h-3 bg-slate-50 border border-slate-100 rounded"></span><span>None</span></div>
+        <div className="flex items-center gap-1"><span className="w-3 h-3 bg-indigo-100 rounded"></span><span>Low</span></div>
+        <div className="flex items-center gap-1"><span className="w-3 h-3 bg-indigo-300 rounded"></span><span>Mid</span></div>
+        <div className="flex items-center gap-1"><span className="w-3 h-3 bg-indigo-500 rounded"></span><span>High</span></div>
+        <div className="flex items-center gap-1"><span className="w-3 h-3 bg-indigo-700 rounded"></span><span>Peak</span></div>
       </div>
     </div>
   );
@@ -1649,6 +1692,105 @@ const CoverageIntensityCard = ({ score, name, isPrimary }) => {
         </div>
       </div>
       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-6">Estimated reach / mentions normalized weekly</p>
+    </div>
+  );
+};
+
+// --- New PR-relevant Competitor Analysis Components ---
+
+const RegionSplitCard = ({ region1, region2, name1, name2 }) => {
+  const total1 = (region1.india || 0) + (region1.global || 0) + (region1.other || 0) || 1;
+  const total2 = (region2.india || 0) + (region2.global || 0) + (region2.other || 0) || 1;
+  const indPct1 = Math.round((region1.india || 0) / total1 * 100);
+  const glbPct1 = Math.round((region1.global || 0) / total1 * 100);
+  const indPct2 = Math.round((region2.india || 0) / total2 * 100);
+  const glbPct2 = Math.round((region2.global || 0) / total2 * 100);
+
+  const Bar = ({ ind, glb, total }) => (
+    <div className="w-full h-9 rounded-2xl overflow-hidden flex shadow-inner bg-slate-100">
+      {ind > 0 && <div style={{ width: `${Math.round(ind/total*100)}%` }} className="bg-indigo-600 h-full flex items-center justify-center text-[10px] font-black text-white">{Math.round(ind/total*100)}%</div>}
+      {glb > 0 && <div style={{ width: `${Math.round(glb/total*100)}%` }} className="bg-emerald-500 h-full flex items-center justify-center text-[10px] font-black text-white">{Math.round(glb/total*100)}%</div>}
+    </div>
+  );
+
+  return (
+    <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl shadow-slate-100/40 w-full relative group">
+      <div className="absolute top-0 right-0 w-32 h-32 bg-slate-50 rounded-full -mr-16 -mt-16 transition-transform group-hover:scale-110 -z-10"></div>
+      <h5 className="text-xs font-black text-slate-400 uppercase tracking-widest leading-none mb-6">India vs Global Coverage Split</h5>
+      <div className="flex flex-col gap-6">
+        <div>
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-sm font-black text-slate-900">{name1}</span>
+            <span className="text-xs font-bold text-slate-400">India: {(region1.india||0).toLocaleString()} · Global: {(region1.global||0).toLocaleString()}</span>
+          </div>
+          <Bar ind={region1.india||0} glb={region1.global||0} total={total1} />
+        </div>
+        <div>
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-sm font-black text-slate-900">{name2}</span>
+            <span className="text-xs font-bold text-slate-400">India: {(region2.india||0).toLocaleString()} · Global: {(region2.global||0).toLocaleString()}</span>
+          </div>
+          <Bar ind={region2.india||0} glb={region2.global||0} total={total2} />
+        </div>
+      </div>
+      <div className="flex gap-6 mt-5 text-xs font-bold justify-center">
+        <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-indigo-600"></span><span className="text-slate-600">India</span></div>
+        <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-emerald-500"></span><span className="text-slate-600">Global</span></div>
+      </div>
+    </div>
+  );
+};
+
+const SectorDistributionCard = ({ sectors, name, isPrimary }) => {
+  const max = Math.max(...(sectors || []).map(s => s.count), 1);
+  const themeBar = isPrimary ? 'bg-indigo-600' : 'bg-slate-800';
+  const themeText = isPrimary ? 'text-indigo-600' : 'text-slate-900';
+
+  return (
+    <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl shadow-slate-100/40 w-full relative group">
+      <div className="absolute top-0 right-0 w-32 h-32 bg-slate-50 rounded-full -mr-16 -mt-16 transition-transform group-hover:scale-110 -z-10"></div>
+      <h5 className="text-xs font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Sector Coverage</h5>
+      <p className={`text-sm font-black mb-6 truncate ${themeText}`}>{name}</p>
+      <div className="space-y-3">
+        {(sectors || []).length === 0 ? (
+          <p className="text-xs font-bold text-slate-400 italic">No sector data available.</p>
+        ) : (sectors || []).map((s, i) => (
+          <div key={i}>
+            <div className="flex justify-between text-xs font-bold mb-1">
+              <span className="text-slate-700 truncate max-w-[180px]">{s.sector}</span>
+              <span className="text-slate-500 font-black ml-2">{s.count.toLocaleString()}</span>
+            </div>
+            <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+              <div style={{ width: `${Math.round(s.count / max * 100)}%` }} className={`h-full rounded-full ${themeBar} transition-all duration-700`} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const CoverageVelocityCard = ({ velocity1, velocity2, name1, name2, diffDays }) => {
+  const higher = velocity1 >= velocity2 ? 1 : 2;
+  return (
+    <div className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl shadow-slate-100/40 w-full relative group flex flex-col justify-between">
+      <div className="absolute top-0 right-0 w-32 h-32 bg-slate-50 rounded-full -mr-16 -mt-16 transition-transform group-hover:scale-110 -z-10"></div>
+      <div>
+        <h5 className="text-xs font-black text-slate-400 uppercase tracking-widest leading-none mb-6">Coverage Velocity</h5>
+        <div className="grid grid-cols-2 gap-4">
+          <div className={`rounded-3xl p-5 border flex flex-col items-center text-center ${higher === 1 ? 'bg-indigo-50 border-indigo-100' : 'bg-slate-50 border-slate-100'}`}>
+            <span className={`text-3xl font-black tracking-tight ${higher === 1 ? 'text-indigo-600' : 'text-slate-700'}`}>{velocity1}</span>
+            <span className="text-[10px] font-black uppercase tracking-widest mt-1 text-slate-400">articles/day</span>
+            <span className="text-xs font-black text-slate-600 mt-2 truncate max-w-full">{name1}</span>
+          </div>
+          <div className={`rounded-3xl p-5 border flex flex-col items-center text-center ${higher === 2 ? 'bg-slate-900 text-white' : 'bg-slate-50 border-slate-100'}`}>
+            <span className={`text-3xl font-black tracking-tight ${higher === 2 ? 'text-white' : 'text-slate-700'}`}>{velocity2}</span>
+            <span className={`text-[10px] font-black uppercase tracking-widest mt-1 ${higher === 2 ? 'text-slate-400' : 'text-slate-400'}`}>articles/day</span>
+            <span className={`text-xs font-black mt-2 truncate max-w-full ${higher === 2 ? 'text-slate-300' : 'text-slate-600'}`}>{name2}</span>
+          </div>
+        </div>
+      </div>
+      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-5">Avg daily mentions over {diffDays || 30}-day window</p>
     </div>
   );
 };
@@ -2923,24 +3065,28 @@ function App() {
   const [isLoadingAnalysis, setIsLoadingAnalysis] = useState(false);
   const ALL_CARDS_VISIBLE = {
     summary_sov: true,
-    coverage_intensity: true,
+    coverage_velocity: true,
+    region_split: true,
+    sector_dist: true,
     momentum: true,
-    freshness: true,
     sentiment_ratio: true,
     positivity_gauge: true,
     source_overlap: true,
     grouped_bar: true,
     sentiment_donut: true,
     cadence_heatmap: true,
-    reach_accumulation: true,
-    source_authority: true,
     top_headlines: true,
-    top_sources: true
+    top_sources: true,
+    // kept but off by default — data quality issues
+    coverage_intensity: false,
+    freshness: false,
+    reach_accumulation: false,
+    source_authority: false,
   };
   const [visibleCards, setVisibleCards] = useState(() => {
     try {
       const stored = localStorage.getItem('cerebro_comp_cards');
-      return stored ? JSON.parse(stored) : ALL_CARDS_VISIBLE;
+      return stored ? { ...ALL_CARDS_VISIBLE, ...JSON.parse(stored) } : ALL_CARDS_VISIBLE;
     } catch (e) {
       return ALL_CARDS_VISIBLE;
     }
@@ -7855,20 +8001,19 @@ ${bodyHtml}
                             </div>
                             <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1 custom-scrollbar">
                               {[
-                                { id: 'summary_sov', label: '📊 Summary & SOV', desc: 'Brand mentions, reach, and share of voice' },
-                                { id: 'coverage_intensity', label: '🔥 Coverage Intensity', desc: 'Average daily media pressure metric' },
-                                { id: 'momentum', label: '📈 Brand Momentum', desc: 'Growth trend comparing week periods' },
-                                { id: 'freshness', label: '🍃 Media Freshness Index', desc: 'Average article age comparison' },
-                                { id: 'sentiment_ratio', label: '📊 Sentiment Ratio Bar', desc: 'Sentiment percentages compared side-by-side' },
-                                { id: 'positivity_gauge', label: '🎯 Positivity Gauge', desc: 'Circular positivity rate indicator' },
-                                { id: 'source_overlap', label: '🤝 Source Overlap', desc: 'Shared publishers and overlap score' },
-                                { id: 'grouped_bar', label: '📊 Grouped Bar Chart', desc: 'Mentions side-by-side for last 7 days' },
-                                { id: 'sentiment_donut', label: '🍩 Sentiment Donut', desc: 'Sentiment breakdowns individually' },
-                                { id: 'cadence_heatmap', label: '📅 Cadence Heatmap', desc: 'Daily volume intensity grid' },
-                                { id: 'reach_accumulation', label: '📈 Reach Accumulation', desc: 'Cumulative reach trend line chart' },
-                                { id: 'source_authority', label: '🛡️ Source Authority', desc: 'Authority tier breakdowns (PR metrics)' },
-                                { id: 'top_headlines', label: '📰 Top Headlines', desc: 'Table of top 5 highest-impact articles' },
-                                { id: 'top_sources', label: '🏢 Top Sources', desc: 'Most frequent publishing outlets list' }
+                                { id: 'summary_sov', label: '📊 Summary & SOV', desc: 'Total mentions and share of voice donut' },
+                                { id: 'coverage_velocity', label: '⚡ Coverage Velocity', desc: 'Average daily articles — real DB metric' },
+                                { id: 'momentum', label: '📈 Brand Momentum', desc: 'Growth trend comparing first vs second half' },
+                                { id: 'region_split', label: '🌍 India vs Global Split', desc: 'Publication region breakdown from DB' },
+                                { id: 'sector_dist', label: '🏷️ Sector Distribution', desc: 'Which sectors mention each brand most' },
+                                { id: 'sentiment_ratio', label: '📊 Sentiment Ratio Bar', desc: 'Sentiment percentages side-by-side' },
+                                { id: 'positivity_gauge', label: '🎯 Positivity / Favorable Rate', desc: 'Gauge showing positive or non-negative %' },
+                                { id: 'source_overlap', label: '🤝 Source Overlap', desc: 'Shared publishers between both brands' },
+                                { id: 'grouped_bar', label: '📊 Daily Volume Chart', desc: 'Mentions side-by-side over time' },
+                                { id: 'sentiment_donut', label: '🍩 Sentiment Donut', desc: 'Sentiment breakdown per brand' },
+                                { id: 'cadence_heatmap', label: '📅 Cadence Heatmap', desc: 'Last 7 periods intensity grid' },
+                                { id: 'top_headlines', label: '📰 Top Headlines', desc: 'Top 5 highest-reach articles' },
+                                { id: 'top_sources', label: '🏢 Top Sources', desc: 'Most frequent publishing outlets' },
                               ].map(card => (
                                 <label key={card.id} className="flex items-start gap-3 p-2 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors">
                                   <input
@@ -8112,12 +8257,12 @@ ${bodyHtml}
                                 </div>
                                 <div className="h-px bg-slate-100 my-1"></div>
                                 <div>
-                                  <h4 className="text-slate-400 text-[11px] font-black uppercase tracking-widest mb-1.5 leading-none">Estimated Reach</h4>
+                                  <h4 className="text-slate-400 text-[11px] font-black uppercase tracking-widest mb-1.5 leading-none">Coverage Velocity</h4>
                                   <div className="flex items-baseline gap-2">
                                     <span className="text-4xl font-black text-indigo-600 tracking-tight">
-                                      {compAnalysisData.comp1.estimatedReach.toLocaleString()}
+                                      {compAnalysisData.comp1.coverageVelocity}
                                     </span>
-                                    <span className="text-slate-400 text-xs font-bold">potential views</span>
+                                    <span className="text-slate-400 text-xs font-bold">articles/day</span>
                                   </div>
                                 </div>
                               </div>
@@ -8147,12 +8292,12 @@ ${bodyHtml}
                                 </div>
                                 <div className="h-px bg-slate-100 my-1"></div>
                                 <div>
-                                  <h4 className="text-slate-400 text-[11px] font-black uppercase tracking-widest mb-1.5 leading-none">Estimated Reach</h4>
+                                  <h4 className="text-slate-400 text-[11px] font-black uppercase tracking-widest mb-1.5 leading-none">Coverage Velocity</h4>
                                   <div className="flex items-baseline gap-2">
                                     <span className="text-4xl font-black text-slate-900 tracking-tight">
-                                      {compAnalysisData.comp2.estimatedReach.toLocaleString()}
+                                      {compAnalysisData.comp2.coverageVelocity}
                                     </span>
-                                    <span className="text-slate-400 text-xs font-bold">potential views</span>
+                                    <span className="text-slate-400 text-xs font-bold">articles/day</span>
                                   </div>
                                 </div>
                               </div>
@@ -8168,57 +8313,61 @@ ${bodyHtml}
                           </div>
                         )}
 
-                        {/* Row 2: Coverage Intensity, Momentum, and Freshness */}
-                        {(visibleCards.coverage_intensity || visibleCards.momentum || visibleCards.freshness) && (
-                          <div className="w-full flex flex-col gap-8 mt-8">
-                            {/* Coverage Intensity Row */}
-                            {visibleCards.coverage_intensity && (
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full animate-in fade-in slide-in-from-top-6 duration-1000">
-                                <CoverageIntensityCard
-                                  score={compAnalysisData.comp1.coverageIntensityScore}
-                                  name={compAnalysisData.comp1.name}
-                                  isPrimary={true}
-                                />
-                                <CoverageIntensityCard
-                                  score={compAnalysisData.comp2.coverageIntensityScore}
-                                  name={compAnalysisData.comp2.name}
-                                  isPrimary={false}
-                                />
-                              </div>
+                        {/* Row 2: Coverage Velocity + Momentum */}
+                        {(visibleCards.coverage_velocity || visibleCards.momentum) && (
+                          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 w-full mt-8 animate-in fade-in slide-in-from-top-6 duration-1000">
+                            {visibleCards.coverage_velocity && (
+                              <CoverageVelocityCard
+                                velocity1={compAnalysisData.comp1.coverageVelocity}
+                                velocity2={compAnalysisData.comp2.coverageVelocity}
+                                name1={compAnalysisData.comp1.name}
+                                name2={compAnalysisData.comp2.name}
+                                diffDays={Math.round((new Date(compEndDate) - new Date(compStartDate)) / 86400000) + 1}
+                              />
                             )}
-
-                            {/* Momentum and Freshness side-by-side or stacked */}
-                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 w-full">
-                              {visibleCards.momentum ? (
-                                <>
-                                  <MomentumCard
-                                    trends={compAnalysisData.comp1.trends}
-                                    name={compAnalysisData.comp1.name}
-                                    isPrimary={true}
-                                  />
-                                  <MomentumCard
-                                    trends={compAnalysisData.comp2.trends}
-                                    name={compAnalysisData.comp2.name}
-                                    isPrimary={false}
-                                  />
-                                </>
-                              ) : (
-                                <div className="hidden lg:block lg:col-span-2" />
-                              )}
-                              
-                              {visibleCards.freshness && (
-                                <FreshnessCard
-                                  age1={compAnalysisData.comp1.avgArticleAgeDays}
-                                  age2={compAnalysisData.comp2.avgArticleAgeDays}
-                                  name1={compAnalysisData.comp1.name}
-                                  name2={compAnalysisData.comp2.name}
-                                />
-                              )}
-                            </div>
+                            {visibleCards.momentum && (
+                              <>
+                                <MomentumCard trends={compAnalysisData.comp1.trends} name={compAnalysisData.comp1.name} isPrimary={true} />
+                                <MomentumCard trends={compAnalysisData.comp2.trends} name={compAnalysisData.comp2.name} isPrimary={false} />
+                              </>
+                            )}
                           </div>
                         )}
 
-                        {/* Row 3: Sentiment Ratio Bar (Full Width) */}
+                        {/* Row 3: Region Split (India vs Global) */}
+                        {visibleCards.region_split && (
+                          <div className="w-full mt-8 animate-in fade-in slide-in-from-top-6 duration-1000">
+                            <RegionSplitCard
+                              region1={compAnalysisData.comp1.regionBreakdown || { india: 0, global: 0, other: 0 }}
+                              region2={compAnalysisData.comp2.regionBreakdown || { india: 0, global: 0, other: 0 }}
+                              name1={compAnalysisData.comp1.name}
+                              name2={compAnalysisData.comp2.name}
+                            />
+                          </div>
+                        )}
+
+                        {/* Row 4: Sector Distribution */}
+                        {visibleCards.sector_dist && (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full mt-8 animate-in fade-in slide-in-from-top-6 duration-1000">
+                            <SectorDistributionCard sectors={compAnalysisData.comp1.topSectors || []} name={compAnalysisData.comp1.name} isPrimary={true} />
+                            <SectorDistributionCard sectors={compAnalysisData.comp2.topSectors || []} name={compAnalysisData.comp2.name} isPrimary={false} />
+                          </div>
+                        )}
+
+                        {/* Coverage Intensity — commented out (abstract metric, off by default) */}
+                        {/*visibleCards.coverage_intensity && (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full mt-8">
+                            <CoverageIntensityCard score={compAnalysisData.comp1.coverageIntensityScore} name={compAnalysisData.comp1.name} isPrimary={true} />
+                            <CoverageIntensityCard score={compAnalysisData.comp2.coverageIntensityScore} name={compAnalysisData.comp2.name} isPrimary={false} />
+                          </div>
+                        )*/}
+
+                        {/* Freshness — commented out (not a key PR metric) */}
+                        {/*visibleCards.freshness && (
+                          <FreshnessCard age1={compAnalysisData.comp1.avgArticleAgeDays} age2={compAnalysisData.comp2.avgArticleAgeDays} name1={compAnalysisData.comp1.name} name2={compAnalysisData.comp2.name} />
+                        )*/}
+
+                        {/* Row 5: Sentiment Ratio Bar (Full Width) */}
                         {visibleCards.sentiment_ratio && (
                           <div className="w-full mt-8 animate-in fade-in slide-in-from-top-6 duration-1000">
                             <SentimentRatioBar
@@ -8301,36 +8450,22 @@ ${bodyHtml}
                           </div>
                         )}
 
-                        {/* Row 8: Reach Accumulation Chart (Full Width) */}
-                        {visibleCards.reach_accumulation && (
-                          <div className="w-full mt-8 animate-in fade-in slide-in-from-top-6 duration-1000">
-                            <ReachAccumulationChart
-                              trends1={compAnalysisData.comp1.trends}
-                              trends2={compAnalysisData.comp2.trends}
-                              totalReach1={compAnalysisData.comp1.estimatedReach}
-                              totalReach2={compAnalysisData.comp2.estimatedReach}
-                              labels={compAnalysisData.trendLabels}
-                              name1={compAnalysisData.comp1.name}
-                              name2={compAnalysisData.comp2.name}
-                            />
+                        {/* Reach Accumulation — commented out (based on estimated/fake reach numbers) */}
+                        {/*visibleCards.reach_accumulation && (
+                          <div className="w-full mt-8">
+                            <ReachAccumulationChart trends1={compAnalysisData.comp1.trends} trends2={compAnalysisData.comp2.trends}
+                              totalReach1={0} totalReach2={0} labels={compAnalysisData.trendLabels}
+                              name1={compAnalysisData.comp1.name} name2={compAnalysisData.comp2.name} />
                           </div>
-                        )}
+                        )*/}
 
-                        {/* Row 9: Source Authority Chart */}
-                        {visibleCards.source_authority && (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full mt-8 animate-in fade-in slide-in-from-top-6 duration-1000">
-                            <SourceAuthorityChart
-                              tiers={compAnalysisData.comp1.sourceAuthorityTiers}
-                              name={compAnalysisData.comp1.name}
-                              isPrimary={true}
-                            />
-                            <SourceAuthorityChart
-                              tiers={compAnalysisData.comp2.sourceAuthorityTiers}
-                              name={compAnalysisData.comp2.name}
-                              isPrimary={false}
-                            />
+                        {/* Source Authority — commented out (page_rank data mostly missing from DB) */}
+                        {/*visibleCards.source_authority && (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full mt-8">
+                            <SourceAuthorityChart tiers={compAnalysisData.comp1.sourceAuthorityTiers} name={compAnalysisData.comp1.name} isPrimary={true} />
+                            <SourceAuthorityChart tiers={compAnalysisData.comp2.sourceAuthorityTiers} name={compAnalysisData.comp2.name} isPrimary={false} />
                           </div>
-                        )}
+                        )*/}
 
                         {/* Row 10: Top Headlines Table (Full Width) */}
                         {visibleCards.top_headlines && (

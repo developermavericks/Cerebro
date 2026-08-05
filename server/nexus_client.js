@@ -87,11 +87,12 @@ async function insertArticles(articles) {
         INSERT INTO nexus_articles
           (id, title, url, full_body, author, agency, published_at, sector, region, summary, sentiment, tags, word_count, scraped_at)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-        ON CONFLICT (url) DO NOTHING
+        ON CONFLICT (url) DO UPDATE SET
+          region = COALESCE(EXCLUDED.region, nexus_articles.region)
       `, [
         a.id, a.title, a.url, a.full_body, a.author, a.agency,
         a.published_at ? new Date(a.published_at) : null,
-        normalizeSector(a.sector), a.region, a.summary, a.sentiment,
+        normalizeSector(a.sector), a.publication_region || a.region, a.summary, a.sentiment,
         Array.isArray(a.tags) ? a.tags.join(', ') : a.tags,
         a.word_count,
         a.scraped_at ? new Date(a.scraped_at) : null
