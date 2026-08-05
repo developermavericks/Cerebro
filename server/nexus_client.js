@@ -1,7 +1,7 @@
 const axios = require('axios');
 const db = require('./db');
 
-const BASE = () => process.env.NEXUS_BASE_URL || 'http://35.240.197.209';
+const BASE = () => process.env.NEXUS_BASE_URL || 'http://34.142.240.96';
 const KEY = () => process.env.NEXUS_SERVICE_KEY || '';
 
 async function ensureTable() {
