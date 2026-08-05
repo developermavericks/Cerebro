@@ -2268,16 +2268,11 @@ app.post('/api/nexus/cron', async (req, res) => {
 });
 
 // NEXUS sync — manually trigger article import
-app.post('/api/nexus/sync', getUserId, async (req, res) => {
-  try {
-    const days = Math.min(parseInt(req.body.days) || 7, 30);
-    const nexusClient = require('./nexus_client');
-    const result = await nexusClient.syncDateRange(days);
-    res.json({ success: true, ...result });
-  } catch (err) {
-    console.error('[NEXUS] Manual sync error:', err);
-    res.status(500).json({ error: err.message });
-  }
+app.post('/api/nexus/sync', async (req, res) => {
+  const days = Math.min(parseInt(req.body?.days) || 7, 30);
+  res.json({ success: true, message: `Sync started for ${days} days — check server logs for progress` });
+  const nexusClient = require('./nexus_client');
+  nexusClient.syncDateRange(days).catch(err => console.error('[NEXUS] Manual sync error:', err));
 });
 
 // NEXUS status — how many articles are in the local cache

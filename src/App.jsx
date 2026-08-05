@@ -8009,7 +8009,7 @@ ${bodyHtml}
                           { value: 'CONSULTANCY', label: 'Consultancies' }, { value: 'AUTOMOBILE', label: 'Automobile' },
                         ];
                         return (
-                          <>
+                          <div>
                           <div className={`flex flex-wrap items-center gap-3 mb-8 px-1 py-3 rounded-2xl border ${darkMode ? 'bg-slate-800/50 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
                             <span className={`text-[10px] font-black uppercase tracking-widest px-2 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Filter</span>
                             <div className="flex items-center gap-2">
@@ -8063,7 +8063,7 @@ ${bodyHtml}
                               darkMode={darkMode}
                             />
                           </div>
-                          </>
+                          </div>
                         );
                       })()}
                     </div>
