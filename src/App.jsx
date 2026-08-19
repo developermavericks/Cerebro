@@ -6919,11 +6919,20 @@ ${bodyHtml}
                                 { value: 'POLICIES',     label: 'Policies' },
                                 { value: 'STOCK_MARKET', label: 'Stock Market' },
                                 { value: 'REAL_ESTATE',  label: 'Real Estate' },
-                                { value: 'GOOGLE',       label: 'Google' },
-                                { value: 'EDUCATION',    label: 'Education' },
-                                { value: 'FINTECH',      label: 'Fintech' },
-                                { value: 'AUTOMOBILE',   label: 'Automobile' },
-                                { value: 'MEDIA',        label: 'Media & Entertainment' },
+                                { value: 'GOOGLE',           label: 'Google' },
+                                { value: 'EDUCATION',        label: 'Education' },
+                                { value: 'FINTECH',          label: 'Fintech' },
+                                { value: 'AUTOMOBILE',       label: 'Automobile' },
+                                { value: 'MEDIA',            label: 'Media & Entertainment' },
+                                { value: 'SPORTS',           label: 'Sports' },
+                                { value: 'CLIMATE',          label: 'Climate & Environment' },
+                                { value: 'GEOPOLITICS',      label: 'Geopolitics' },
+                                { value: 'WORLD_NEWS',       label: 'World News' },
+                                { value: 'MONEY_BUSINESS',   label: 'Money & Business' },
+                                { value: 'SCIENCE_SPACE',    label: 'Science & Space' },
+                                { value: 'GAMING',           label: 'Gaming' },
+                                { value: 'POP_CULTURE',      label: 'Pop Culture' },
+                                { value: 'CREATOR_ECONOMY',  label: 'Creator Economy' },
                               ].map(({ value, label }) => (
                                 <option key={value} value={value} className={darkMode ? 'bg-[#151f32] text-white' : 'bg-white text-slate-800'}>{label}</option>
                               ))}
@@ -8152,6 +8161,15 @@ ${bodyHtml}
                           { value: 'REAL_ESTATE', label: 'Real Estate' }, { value: 'LIFESTYLE', label: 'Lifestyle' },
                           { value: 'MEDIA', label: 'Media & Entertainment' }, { value: 'EDUCATION', label: 'Education' },
                           { value: 'CONSULTANCY', label: 'Consultancies' }, { value: 'AUTOMOBILE', label: 'Automobile' },
+                          { value: 'SPORTS', label: 'Sports' },
+                          { value: 'CLIMATE', label: 'Climate & Environment' },
+                          { value: 'GEOPOLITICS', label: 'Geopolitics' },
+                          { value: 'WORLD_NEWS', label: 'World News' },
+                          { value: 'MONEY_BUSINESS', label: 'Money & Business' },
+                          { value: 'SCIENCE_SPACE', label: 'Science & Space' },
+                          { value: 'GAMING', label: 'Gaming' },
+                          { value: 'POP_CULTURE', label: 'Pop Culture' },
+                          { value: 'CREATOR_ECONOMY', label: 'Creator Economy' },
                         ];
                         return (
                           <div>

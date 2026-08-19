@@ -47,6 +47,16 @@ const SECTOR_TO_DB = {
   'FINTECH':     'Fintech',
   'AUTOMOBILE':  'Automobile',
   'MEDIA':       'Media & Entertainment',
+  'SPORTS':               'sports',
+  'CLIMATE':              'climate and environment',
+  'CLIMATE_ENVIRONMENT':  'climate and environment',
+  'GEOPOLITICS':          'geopolitics',
+  'WORLD_NEWS':           'world news',
+  'MONEY_BUSINESS':       'money and business',
+  'SCIENCE_SPACE':        'science and space',
+  'GAMING':               'gaming',
+  'POP_CULTURE':          'pop culture',
+  'CREATOR_ECONOMY':      'creator economy',
 };
 
 const BRAND_FAMILIES = {

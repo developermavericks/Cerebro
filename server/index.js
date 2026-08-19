@@ -820,7 +820,10 @@ app.get('/api/competitor-analysis', getUserId, async (req, res) => {
   const SECTOR_MAP = { AI:'AI', TECH:'Tech', FOODS_DRINKS:'Foods & Drinks', HEALTHCARE:'Healthcare',
     TRAVEL:'Travel', CONSULTANCY:'Consultancies', STARTUP:'Startups', LIFESTYLE:'Lifestyle',
     POLICIES:'Policies', STOCK_MARKET:'Stock Market', REAL_ESTATE:'Real Estate',
-    GOOGLE:'Google', EDUCATION:'Education', FINTECH:'Fintech', AUTOMOBILE:'Automobile', MEDIA:'Media & Entertainment' };
+    GOOGLE:'Google', EDUCATION:'Education', FINTECH:'Fintech', AUTOMOBILE:'Automobile', MEDIA:'Media & Entertainment',
+    SPORTS:'sports', CLIMATE:'climate and environment', CLIMATE_ENVIRONMENT:'climate and environment',
+    GEOPOLITICS:'geopolitics', WORLD_NEWS:'world news', MONEY_BUSINESS:'money and business',
+    SCIENCE_SPACE:'science and space', GAMING:'gaming', POP_CULTURE:'pop culture', CREATOR_ECONOMY:'creator economy' };
 
   try {
     // Build dynamic date range (default: last 30 days)
@@ -2587,7 +2590,10 @@ app.get('/api/keyword-articles', async (req, res) => {
   const SECTOR_MAP = { AI:'AI', TECH:'Tech', FOODS_DRINKS:'Foods & Drinks', HEALTHCARE:'Healthcare',
     TRAVEL:'Travel', CONSULTANCY:'Consultancies', STARTUP:'Startups', LIFESTYLE:'Lifestyle',
     POLICIES:'Policies', STOCK_MARKET:'Stock Market', REAL_ESTATE:'Real Estate',
-    GOOGLE:'Google', EDUCATION:'Education', FINTECH:'Fintech', AUTOMOBILE:'Automobile', MEDIA:'Media & Entertainment' };
+    GOOGLE:'Google', EDUCATION:'Education', FINTECH:'Fintech', AUTOMOBILE:'Automobile', MEDIA:'Media & Entertainment',
+    SPORTS:'sports', CLIMATE:'climate and environment', CLIMATE_ENVIRONMENT:'climate and environment',
+    GEOPOLITICS:'geopolitics', WORLD_NEWS:'world news', MONEY_BUSINESS:'money and business',
+    SCIENCE_SPACE:'science and space', GAMING:'gaming', POP_CULTURE:'pop culture', CREATOR_ECONOMY:'creator economy' };
 
   const cleanKeyword = keyword.trim();
   const pageNum  = Math.max(1, parseInt(page)  || 1);
@@ -2690,6 +2696,50 @@ if (process.env.NODE_ENV === 'production') {
     console.error('[DB] Migration error:', err.message);
   }
 })();
+
+// Background index creation — run after startup, non-blocking
+(async () => {
+  try {
+    await db.query(`CREATE EXTENSION IF NOT EXISTS pg_trgm`);
+    // Scalar indexes (fast to create)
+    const fastIndexes = [
+      `CREATE INDEX IF NOT EXISTS idx_nexus_published_at ON nexus_articles (published_at DESC)`,
+      `CREATE INDEX IF NOT EXISTS idx_nexus_sector ON nexus_articles (sector)`,
+      `CREATE INDEX IF NOT EXISTS idx_nexus_region ON nexus_articles (region)`,
+      `CREATE INDEX IF NOT EXISTS idx_nexus_sentiment ON nexus_articles (sentiment)`,
+      `CREATE INDEX IF NOT EXISTS idx_nexus_sector_published ON nexus_articles (sector, published_at DESC)`,
+      `CREATE INDEX IF NOT EXISTS idx_nexus_region_published ON nexus_articles (region, published_at DESC)`,
+    ];
+    for (const sql of fastIndexes) {
+      await db.query(sql);
+    }
+    console.log('[DB] Nexus indexes ensured');
+  } catch (err) {
+    console.error('[DB] Index error:', err.message);
+  }
+})();
+
+// One-time admin endpoint: creates the large FTS GIN index on full_body + title trigram
+// Call once: POST /api/admin/create-fts-index  (takes 20-40 min, runs in background)
+app.post('/api/admin/create-fts-index', async (req, res) => {
+  const key = req.headers['x-admin-key'] || req.body?.admin_key;
+  if (key !== 'mavs12345') return res.status(401).json({ error: 'Unauthorized' });
+  res.json({ message: 'FTS index creation started in background — check server logs' });
+  (async () => {
+    console.log('[DB] Creating FTS index on full_body (this takes 20-40 min)...');
+    const t1 = Date.now();
+    try {
+      await db.query(`CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_nexus_body_fts ON nexus_articles USING gin (to_tsvector('simple', coalesce(full_body, '')))`);
+      console.log(`[DB] idx_nexus_body_fts created in ${Math.round((Date.now()-t1)/60000)} min`);
+    } catch (e) { console.error('[DB] FTS index error:', e.message); }
+    const t2 = Date.now();
+    try {
+      await db.query(`CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_nexus_title_trgm ON nexus_articles USING gin (title gin_trgm_ops)`);
+      console.log(`[DB] idx_nexus_title_trgm created in ${Math.round((Date.now()-t2)/1000)}s`);
+    } catch (e) { console.error('[DB] Trigram index error:', e.message); }
+    console.log('[DB] All FTS indexes done');
+  })();
+});
 
 // ── Nexus Articles Export Endpoint ──────────────────────────────────────────
 app.get('/api/nexus/articles', async (req, res) => {

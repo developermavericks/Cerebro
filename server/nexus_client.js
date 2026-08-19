@@ -56,11 +56,21 @@ const SECTOR_VARIANTS = {
   'Policies':              ['policies'],
   'Startups':              ['startups', 'StartUp'],
   'Consultancies':         ['consultancies'],
-  'Google':                ['google', 'google 2', 'Google3'],
+  'Google':                ['google', 'google 2', 'google 3', 'Google3', 'google 4', 'google3', 'google4'],
   'Education':             ['education', 'Education', 'EDUCATION'],
   'Fintech':               ['fintech', 'FinTech', 'FINTECH', 'fin tech', 'financial technology', 'Financial Technology'],
   'Automobile':            ['automobile', 'Automobile', 'AUTOMOBILE', 'automotive', 'Automotive', 'AUTOMOTIVE', 'auto'],
   'Media & Entertainment': ['media and entertainment', 'Media and Entertainment', 'media & entertainment', 'Media & Entertainment', 'media', 'Media', 'MEDIA', 'entertainment', 'Entertainment'],
+  'Sports':                ['sports', 'sport', 'Sports', 'Sport'],
+  'Climate & Environment': ['climate and environment', 'Climate and Environment', 'climate & environment', 'climate'],
+  'Geopolitics':           ['geopolitics', 'Geopolitics', 'geo politics'],
+  'World News':            ['world news', 'World News', 'world'],
+  'Money & Business':      ['money and business', 'Money and Business', 'money & business', 'business'],
+  'Science & Space':       ['science and space', 'Science and Space', 'science & space', 'science', 'space'],
+  'Gaming':                ['gaming', 'Gaming', 'games'],
+  'Pop Culture':           ['pop culture', 'Pop Culture', 'popculture'],
+  'Creator Economy':       ['creator economy', 'Creator Economy', 'creators'],
+  'Energy':                ['energy', 'Energy', 'ENERGY'],
 };
 // Reverse map: variant (lowercased) → canonical
 const _sectorLookup = {};
