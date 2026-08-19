@@ -2741,6 +2741,91 @@ app.post('/api/admin/create-fts-index', async (req, res) => {
   })();
 });
 
+// Admin backfill: sync missing articles for a date range (runs in background on Cloud Run)
+// POST /api/admin/backfill-range  body: { admin_key, fromDay, toDay }
+// e.g. fromDay=7 toDay=14 syncs Aug 12 → Aug 5 (days 7-14 ago from today)
+app.post('/api/admin/backfill-range', async (req, res) => {
+  const key = req.headers['x-admin-key'] || req.body?.admin_key;
+  if (key !== 'mavs12345') return res.status(401).json({ error: 'Unauthorized' });
+  const fromDay = parseInt(req.body?.fromDay) || 7;
+  const toDay   = parseInt(req.body?.toDay)   || 14;
+  if (fromDay < 1 || toDay > 60 || fromDay > toDay) return res.status(400).json({ error: 'Invalid fromDay/toDay' });
+  res.json({ message: `Backfill started for days ${fromDay}-${toDay} in background — check server logs` });
+
+  (async () => {
+    const axios = require('axios');
+    const BASE = process.env.NEXUS_BASE_URL;
+    const KEY  = process.env.NEXUS_SERVICE_KEY;
+
+    const SECTOR_VARIANTS = {
+      'Tech':['tech','TECH','Techhh'],'AI':['ai','Ai'],'Healthcare':['healthcare','HealthCare','HEALTHCARE','Health'],
+      'Stock Market':['stock market'],'Real Estate':['real estate'],'Lifestyle':['lifestyle','LifeStyle'],
+      'Foods & Drinks':['foods and drinks','Foods and Drinks','FOODS AND DRINKS','Foods'],'Travel':['travel','Travell'],
+      'Policies':['policies'],'Startups':['startups','StartUp'],'Consultancies':['consultancies'],
+      'Education':['education','Education','EDUCATION'],'Fintech':['fintech','FinTech','FINTECH','fin tech'],
+      'Automobile':['automobile','Automobile','AUTOMOBILE','automotive','Automotive','auto'],
+      'Media & Entertainment':['media and entertainment','media & entertainment','media','Media','MEDIA','entertainment'],
+    };
+    const _sl = {};
+    for (const [c, vs] of Object.entries(SECTOR_VARIANTS)) { _sl[c.toLowerCase()] = c; for (const v of vs) _sl[v.toLowerCase()] = c; }
+    const JUNK = new Set(['test56','test545','testing','scapia']);
+    const normSector = (raw) => { if (!raw) return null; const s = raw.trim(); if (JUNK.has(s.toLowerCase())) return 'Other'; return _sl[s.toLowerCase()] || s; };
+
+    async function batchInsert(articles) {
+      if (!articles.length) return 0;
+      const vals = [], params = [];
+      let p = 1;
+      for (const a of articles) {
+        vals.push(`($${p},$${p+1},$${p+2},$${p+3},$${p+4},$${p+5},$${p+6},$${p+7},$${p+8},$${p+9},$${p+10},$${p+11},$${p+12},$${p+13})`);
+        params.push(a.id,a.title,a.url,a.full_body,a.author,a.agency,
+          a.published_at?new Date(a.published_at):null,normSector(a.sector),
+          a.publication_region||a.region,a.summary,a.sentiment,
+          Array.isArray(a.tags)?a.tags.join(', '):a.tags,a.word_count,
+          a.scraped_at?new Date(a.scraped_at):null);
+        p += 14;
+      }
+      try {
+        const r = await db.query(`INSERT INTO nexus_articles (id,title,url,full_body,author,agency,published_at,sector,region,summary,sentiment,tags,word_count,scraped_at) VALUES ${vals.join(',')} ON CONFLICT (url) DO NOTHING`,params);
+        return r.rowCount;
+      } catch(e) {
+        let cnt=0;
+        for (const a of articles) {
+          try { const r=await db.query(`INSERT INTO nexus_articles (id,title,url,full_body,author,agency,published_at,sector,region,summary,sentiment,tags,word_count,scraped_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) ON CONFLICT (url) DO NOTHING`,[a.id,a.title,a.url,a.full_body,a.author,a.agency,a.published_at?new Date(a.published_at):null,normSector(a.sector),a.publication_region||a.region,a.summary,a.sentiment,Array.isArray(a.tags)?a.tags.join(', '):a.tags,a.word_count,a.scraped_at?new Date(a.scraped_at):null]); cnt+=r.rowCount; } catch(_) {}
+        }
+        return cnt;
+      }
+    }
+
+    let grandTotal = 0;
+    const today = new Date();
+    console.log(`[BACKFILL] Starting days ${fromDay}-${toDay}`);
+    for (let i = fromDay; i <= toDay; i++) {
+      const d = new Date(today); d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().split('T')[0];
+      try {
+        const existing = await db.query(`SELECT COUNT(*) as cnt FROM nexus_articles WHERE published_at::date = $1`, [dateStr]);
+        const dbCount = parseInt(existing.rows[0].cnt);
+        const { data: fp } = await axios.get(`${BASE}/api/feed`, { params: { api_key: KEY, date: dateStr, page: 1, page_size: 100 }, timeout: 20000 });
+        const nexusTotal = (fp.total_pages||1)*100;
+        if (nexusTotal - dbCount <= 50) { console.log(`[BACKFILL] ${dateStr} SKIP (DB:${dbCount} ~= Nexus:${nexusTotal})`); continue; }
+        console.log(`[BACKFILL] ${dateStr} DB:${dbCount} Nexus:~${nexusTotal} syncing...`);
+        let inserted = await batchInsert(fp.articles||[]);
+        for (let page=2; page<=(fp.total_pages||1); page++) {
+          try {
+            const { data } = await axios.get(`${BASE}/api/feed`, { params: { api_key: KEY, date: dateStr, page, page_size: 100 }, timeout: 60000, maxContentLength: 50*1024*1024 });
+            if (!(data.articles||[]).length) break;
+            inserted += await batchInsert(data.articles);
+          } catch(e) { console.error(`[BACKFILL] ${dateStr} page ${page} err: ${e.message}`); }
+          await new Promise(r => setTimeout(r, 80));
+        }
+        grandTotal += inserted;
+        console.log(`[BACKFILL] ${dateStr} DONE +${inserted} (total so far: ${grandTotal})`);
+      } catch(e) { console.error(`[BACKFILL] ${dateStr} error: ${e.message}`); }
+    }
+    console.log(`[BACKFILL] COMPLETE — days ${fromDay}-${toDay} done, ${grandTotal} new articles`);
+  })();
+});
+
 // ── Nexus Articles Export Endpoint ──────────────────────────────────────────
 app.get('/api/nexus/articles', async (req, res) => {
   const apiKey = req.headers['x-api-key'];
