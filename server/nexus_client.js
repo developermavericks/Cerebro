@@ -192,10 +192,20 @@ async function syncDate(dateStr) {
   let page = 1;
   let totalPages = 1;
   let inserted = 0;
+  let pageErrors = 0;
   do {
-    const data = await fetchPage({ date: dateStr, page, page_size: 50 });
-    totalPages = Math.ceil((data.total_pages || 1));
-    inserted += await insertArticles(data.articles || []);
+    try {
+      const data = await fetchPage({ date: dateStr, page, page_size: 100 });
+      totalPages = data.total_pages || 1;
+      inserted += await insertArticles(data.articles || []);
+    } catch (err) {
+      pageErrors++;
+      console.warn(`[NEXUS] Page ${page}/${totalPages} error for ${dateStr}: ${err.message}`);
+      if (pageErrors >= 15) {
+        console.error(`[NEXUS] Aborting ${dateStr} after ${pageErrors} page errors`);
+        break;
+      }
+    }
     page++;
     if (page <= totalPages) await new Promise(r => setTimeout(r, 150));
   } while (page <= totalPages);
