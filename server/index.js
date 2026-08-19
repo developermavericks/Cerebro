@@ -1994,7 +1994,7 @@ ${sectorSummarySection}
     // 14. Call Groq API
     const completion = await groq.chat.completions.create({
       messages,
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-120b',
       temperature: 0.7,
       max_tokens: 700
     });
@@ -2047,7 +2047,7 @@ ${brandSummary}`
         },
         { role: 'user', content: prompt }
       ],
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-120b',
       temperature: 0.3,
       max_tokens: 1200
     });
@@ -2071,7 +2071,7 @@ ${brandSummary}`
           { role: 'system', content: `Return ONLY raw JSON with keys: type, data, options. No markdown, no text. Chart.js v4 format. Brand data:\n${brandSummary}` },
           { role: 'user', content: prompt }
         ],
-        model: 'llama-3.3-70b-versatile',
+        model: 'openai/gpt-oss-120b',
         temperature: 0.1,
         max_tokens: 1200
       });
@@ -2151,7 +2151,7 @@ ${brandSummary}`
   }
 });
 
-// AI Chart Generation — Groq llama-3.3-70b-versatile
+// AI Chart Generation — Groq GPT-OSS 120B
 app.post('/api/ai/chart', getUserId, async (req, res) => {
   const { prompts } = req.body;
   if (!Array.isArray(prompts) || prompts.length === 0) {
@@ -2176,7 +2176,7 @@ Pick the chart type and data field that best matches the user's intent. Return O
           },
           { role: 'user', content: prompt }
         ],
-        model: 'llama-3.3-70b-versatile',
+        model: 'openai/gpt-oss-120b',
         temperature: 0.2,
         max_tokens: 150
       });
