@@ -12429,7 +12429,7 @@ const spec = JSON.parse(response.text);
                                 <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-4">
                                   <div className="px-3 py-2.5 bg-indigo-500/10 border border-indigo-500/20 rounded-xl flex items-start gap-2">
                                     <Sparkles size={12} className="text-indigo-400 shrink-0 mt-0.5 animate-pulse" />
-                                    <p className="text-[10px] text-slate-400 font-medium leading-relaxed">Powered by Groq · llama-3.1-8b. Describe any chart — bubble, stacked bar, mixed, polar area — AI builds it with your real brand data.</p>
+                                    <p className="text-[10px] text-slate-400 font-medium leading-relaxed">Powered by Groq · llama-3.3-70b. Describe any chart — bubble, stacked bar, mixed, polar area — AI builds it with your real brand data.</p>
                                   </div>
                                   <div>
                                     <div className="flex items-center gap-2 mb-2">
