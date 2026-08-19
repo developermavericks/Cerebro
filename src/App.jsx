@@ -6924,15 +6924,6 @@ ${bodyHtml}
                                 { value: 'FINTECH',          label: 'Fintech' },
                                 { value: 'AUTOMOBILE',       label: 'Automobile' },
                                 { value: 'MEDIA',            label: 'Media & Entertainment' },
-                                { value: 'SPORTS',           label: 'Sports' },
-                                { value: 'CLIMATE',          label: 'Climate & Environment' },
-                                { value: 'GEOPOLITICS',      label: 'Geopolitics' },
-                                { value: 'WORLD_NEWS',       label: 'World News' },
-                                { value: 'MONEY_BUSINESS',   label: 'Money & Business' },
-                                { value: 'SCIENCE_SPACE',    label: 'Science & Space' },
-                                { value: 'GAMING',           label: 'Gaming' },
-                                { value: 'POP_CULTURE',      label: 'Pop Culture' },
-                                { value: 'CREATOR_ECONOMY',  label: 'Creator Economy' },
                               ].map(({ value, label }) => (
                                 <option key={value} value={value} className={darkMode ? 'bg-[#151f32] text-white' : 'bg-white text-slate-800'}>{label}</option>
                               ))}
@@ -7087,9 +7078,11 @@ ${bodyHtml}
                             1. Mention Count Summary
                           </h3>
                           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                            {Object.entries(curatedAnalysisResults.brands || {}).map(([brand, data], idx) => {
-                              const totalBrandArticles = Object.values(curatedAnalysisResults.brands || {}).reduce((sum, b) => sum + b.articles, 0);
-                              const baseTotal = analysisScope === 'sector' ? curatedAnalysisResults.totalSectorArticles : totalBrandArticles;
+                            {Object.entries(curatedAnalysisResults.brands || {}).filter(([b]) => b !== 'Others').map(([brand, data], idx) => {
+                              // Always brand-vs-brand: exclude Others so % is meaningful (adds up to 100%)
+                              const baseTotal = Object.entries(curatedAnalysisResults.brands || {})
+                                .filter(([b]) => b !== 'Others')
+                                .reduce((sum, [, d]) => sum + d.articles, 0);
                               const pctRaw = baseTotal > 0 ? (data.articles / baseTotal) * 100 : 0;
                               const pct = pctRaw === 0 ? '0' : pctRaw < 0.01 ? pctRaw.toFixed(3) : pctRaw < 0.1 ? pctRaw.toFixed(2) : pctRaw < 1 ? pctRaw.toFixed(2) : pctRaw.toFixed(1);
                               const avg = data.articles > 0 ? (data.mentions / data.articles).toFixed(2) : '0.00';
@@ -7167,9 +7160,9 @@ ${bodyHtml}
                             <p className={`text-[10px] font-semibold mb-5 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>How each outlet splits coverage across your tracked brands</p>
                             <div className="flex-1 space-y-4 overflow-y-auto max-h-80 custom-scrollbar pr-2">
                               {(() => {
-                                const brandKeys = Object.keys(curatedAnalysisResults.brands || {});
+                                const brandKeys = Object.keys(curatedAnalysisResults.brands || {}).filter(b => b !== 'Others');
                                 const sourceMap = {};
-                                Object.entries(curatedAnalysisResults.brands || {}).forEach(([b, d]) => {
+                                Object.entries(curatedAnalysisResults.brands || {}).filter(([b]) => b !== 'Others').forEach(([b, d]) => {
                                   Object.entries(d.sources || {}).forEach(([src, count]) => {
                                     if (!sourceMap[src]) sourceMap[src] = { total: 0, brands: {} };
                                     sourceMap[src].total += count;
@@ -7217,7 +7210,7 @@ ${bodyHtml}
 
                           {/* 3. Market Share (Pie / Bar) */}
                           {(() => {
-                            const entries = Object.entries(curatedAnalysisResults.brands || {});
+                            const entries = Object.entries(curatedAnalysisResults.brands || {}).filter(([b]) => b !== 'Others');
                             const total = entries.reduce((sum, [, d]) => sum + d.mentions, 0);
 
                             const renderBarChart = (chartH, chartW, padLeft, fontSize, maxLabelLen) => {
@@ -8161,15 +8154,6 @@ ${bodyHtml}
                           { value: 'REAL_ESTATE', label: 'Real Estate' }, { value: 'LIFESTYLE', label: 'Lifestyle' },
                           { value: 'MEDIA', label: 'Media & Entertainment' }, { value: 'EDUCATION', label: 'Education' },
                           { value: 'CONSULTANCY', label: 'Consultancies' }, { value: 'AUTOMOBILE', label: 'Automobile' },
-                          { value: 'SPORTS', label: 'Sports' },
-                          { value: 'CLIMATE', label: 'Climate & Environment' },
-                          { value: 'GEOPOLITICS', label: 'Geopolitics' },
-                          { value: 'WORLD_NEWS', label: 'World News' },
-                          { value: 'MONEY_BUSINESS', label: 'Money & Business' },
-                          { value: 'SCIENCE_SPACE', label: 'Science & Space' },
-                          { value: 'GAMING', label: 'Gaming' },
-                          { value: 'POP_CULTURE', label: 'Pop Culture' },
-                          { value: 'CREATOR_ECONOMY', label: 'Creator Economy' },
                         ];
                         return (
                           <div>
