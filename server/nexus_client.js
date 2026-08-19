@@ -80,27 +80,50 @@ function normalizeSector(raw) {
 
 async function insertArticles(articles) {
   if (!articles || articles.length === 0) return 0;
-  let inserted = 0;
+  const vals = [], params = [];
+  let p = 1;
   for (const a of articles) {
-    try {
-      const result = await db.query(`
-        INSERT INTO nexus_articles
-          (id, title, url, full_body, author, agency, published_at, sector, region, summary, sentiment, tags, word_count, scraped_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-        ON CONFLICT (url) DO UPDATE SET
-          region = COALESCE(EXCLUDED.region, nexus_articles.region)
-      `, [
-        a.id, a.title, a.url, a.full_body, a.author, a.agency,
-        a.published_at ? new Date(a.published_at) : null,
-        normalizeSector(a.sector), a.publication_region || a.region, a.summary, a.sentiment,
-        Array.isArray(a.tags) ? a.tags.join(', ') : a.tags,
-        a.word_count,
-        a.scraped_at ? new Date(a.scraped_at) : null
-      ]);
-      if (result.rowCount > 0) inserted++;
-    } catch (_) {}
+    vals.push(`($${p},$${p+1},$${p+2},$${p+3},$${p+4},$${p+5},$${p+6},$${p+7},$${p+8},$${p+9},$${p+10},$${p+11},$${p+12},$${p+13})`);
+    params.push(
+      a.id, a.title, a.url, a.full_body, a.author, a.agency,
+      a.published_at ? new Date(a.published_at) : null,
+      normalizeSector(a.sector), a.publication_region || a.region,
+      a.summary, a.sentiment,
+      Array.isArray(a.tags) ? a.tags.join(', ') : a.tags,
+      a.word_count,
+      a.scraped_at ? new Date(a.scraped_at) : null
+    );
+    p += 14;
   }
-  return inserted;
+  try {
+    const res = await db.query(
+      `INSERT INTO nexus_articles (id,title,url,full_body,author,agency,published_at,sector,region,summary,sentiment,tags,word_count,scraped_at)
+       VALUES ${vals.join(',')}
+       ON CONFLICT (url) DO UPDATE SET region = COALESCE(EXCLUDED.region, nexus_articles.region)`,
+      params
+    );
+    return res.rowCount;
+  } catch (_) {
+    // fallback: one by one
+    let inserted = 0;
+    for (const a of articles) {
+      try {
+        const r = await db.query(
+          `INSERT INTO nexus_articles (id,title,url,full_body,author,agency,published_at,sector,region,summary,sentiment,tags,word_count,scraped_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+           ON CONFLICT (url) DO UPDATE SET region = COALESCE(EXCLUDED.region, nexus_articles.region)`,
+          [a.id,a.title,a.url,a.full_body,a.author,a.agency,
+           a.published_at?new Date(a.published_at):null,
+           normalizeSector(a.sector),a.publication_region||a.region,
+           a.summary,a.sentiment,
+           Array.isArray(a.tags)?a.tags.join(', '):a.tags,
+           a.word_count,a.scraped_at?new Date(a.scraped_at):null]
+        );
+        if (r.rowCount > 0) inserted++;
+      } catch (_) {}
+    }
+    return inserted;
+  }
 }
 
 async function ensureSummaryTable() {
@@ -207,7 +230,7 @@ async function syncDate(dateStr) {
       }
     }
     page++;
-    if (page <= totalPages) await new Promise(r => setTimeout(r, 150));
+    if (page <= totalPages) await new Promise(r => setTimeout(r, 50));
   } while (page <= totalPages);
   return inserted;
 }
