@@ -178,7 +178,7 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
   const searchConds = targetTerms.map((t, i) => {
     const p = i + 1;
     const fn = t.includes(' ') ? 'phraseto_tsquery' : 'plainto_tsquery';
-    return `to_tsvector('simple', coalesce(full_body,'') || ' ' || coalesce(title,'')) @@ ${fn}('simple', $${p})`;
+    return `(to_tsvector('simple', coalesce(title,'') || ' ' || coalesce(summary,'')) @@ ${fn}('simple', $${p}) OR to_tsvector('simple', coalesce(full_body,'')) @@ ${fn}('simple', $${p}))`;
   }).join(' OR ');
 
   // Sector filter via DB field (accurate — uses normalized sector column)
@@ -229,7 +229,7 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
   // Run all queries for all brands in parallel then collect
   const perTermFn = (t) => {
     const fn = t.includes(' ') ? 'phraseto_tsquery' : 'plainto_tsquery';
-    return `to_tsvector('simple', coalesce(full_body,'') || ' ' || coalesce(title,'')) @@ ${fn}('simple', $1)`;
+    return `(to_tsvector('simple', coalesce(title,'') || ' ' || coalesce(summary,'')) @@ ${fn}('simple', $1) OR to_tsvector('simple', coalesce(full_body,'')) @@ ${fn}('simple', $1))`;
   };
 
   try {
