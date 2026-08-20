@@ -2424,13 +2424,18 @@ app.post('/api/nexus/cron', async (req, res) => {
   }
   const days = Math.min(parseInt(req.body.days) || 1, 7);
   nexusSyncRunning = true;
-  // Respond immediately — sync runs in background to avoid Cloud Run request timeout
-  res.json({ success: true, message: `Sync started for last ${days} day(s)` });
+  // Sync synchronously so Cloud Run keeps CPU active during the request (avoids CPU throttle killing background tasks)
   const nexusClient = require('./nexus_client');
-  nexusClient.syncDateRange(days)
-    .then(result => console.log(`[NEXUS] Cron sync complete, synced: ${result?.synced}`))
-    .catch(err => console.error('[NEXUS] Cron sync error:', err.message))
-    .finally(() => { nexusSyncRunning = false; });
+  try {
+    const result = await nexusClient.syncDateRange(days);
+    console.log(`[NEXUS] Cron sync complete, synced: ${result?.synced}`);
+    res.json({ success: true, message: `Sync complete for last ${days} day(s)`, synced: result?.synced });
+  } catch (err) {
+    console.error('[NEXUS] Cron sync error:', err.message);
+    res.json({ success: false, message: err.message });
+  } finally {
+    nexusSyncRunning = false;
+  }
 });
 
 // NEXUS sync — manually trigger article import
