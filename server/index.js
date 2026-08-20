@@ -859,7 +859,7 @@ app.get('/api/competitor-analysis', getUserId, async (req, res) => {
         FROM nexus_articles a
         LEFT JOIN domain_authority_cache d
           ON d.domain = regexp_replace(substring(a.url from 'https?://([^/]+)'), '^www\\.', '')
-        WHERE (to_tsvector('simple', coalesce(a.title,'') || ' ' || coalesce(a.summary,'')) @@ ${fn}('simple', $1) OR to_tsvector('simple', coalesce(a.full_body,'')) @@ ${fn}('simple', $1))${extra}
+        WHERE to_tsvector('simple', coalesce(a.title,'') || ' ' || coalesce(a.summary,'')) @@ ${fn}('simple', $1)${extra}
         ORDER BY a.published_at DESC
       `;
 
@@ -1099,7 +1099,7 @@ app.get('/api/brands/:id/history', getUserId, async (req, res) => {
     const history = await db.query(
       `SELECT DATE(published_at) as date, COUNT(*)::int as count
        FROM nexus_articles
-       WHERE (to_tsvector('simple', coalesce(title,'') || ' ' || coalesce(summary,'')) @@ plainto_tsquery('simple', $1) OR to_tsvector('simple', coalesce(full_body,'')) @@ plainto_tsquery('simple', $1))
+       WHERE to_tsvector('simple', coalesce(title,'') || ' ' || coalesce(summary,'')) @@ plainto_tsquery('simple', $1)
          AND published_at >= NOW() - INTERVAL '60 days'
        GROUP BY DATE(published_at)
        ORDER BY date ASC`,
@@ -1109,7 +1109,7 @@ app.get('/api/brands/:id/history', getUserId, async (req, res) => {
     const topSources = await db.query(
       `SELECT agency AS source, COUNT(*)::int as count
        FROM nexus_articles
-       WHERE (to_tsvector('simple', coalesce(title,'') || ' ' || coalesce(summary,'')) @@ plainto_tsquery('simple', $1) OR to_tsvector('simple', coalesce(full_body,'')) @@ plainto_tsquery('simple', $1))
+       WHERE to_tsvector('simple', coalesce(title,'') || ' ' || coalesce(summary,'')) @@ plainto_tsquery('simple', $1)
          AND agency IS NOT NULL
          AND published_at >= NOW() - INTERVAL '60 days'
        GROUP BY agency
@@ -1185,7 +1185,7 @@ app.get('/api/brands/:id/articles', getUserId, async (req, res) => {
            published_at AS created_at,
            NULL::timestamptz AS last_ping_time
          FROM nexus_articles
-         WHERE (to_tsvector('simple', coalesce(title,'') || ' ' || coalesce(summary,'')) @@ plainto_tsquery('simple', $1) OR to_tsvector('simple', coalesce(full_body,'')) @@ plainto_tsquery('simple', $1))
+         WHERE to_tsvector('simple', coalesce(title,'') || ' ' || coalesce(summary,'')) @@ plainto_tsquery('simple', $1)
          ORDER BY published_at DESC
          LIMIT 500`,
         [brandName]
@@ -2613,7 +2613,7 @@ app.get('/api/keyword-articles', async (req, res) => {
   if (startDate)  { params.push(startDate);  extra += ` AND published_at >= $${params.length}::date`; }
   if (endDate)    { params.push(endDate);     extra += ` AND published_at < ($${params.length}::date + INTERVAL '1 day')`; }
 
-  const ftsCond = `(to_tsvector('simple', coalesce(title,'') || ' ' || coalesce(summary,'')) @@ ${fn}('simple', $1) OR to_tsvector('simple', coalesce(full_body,'')) @@ ${fn}('simple', $1))`;
+  const ftsCond = `to_tsvector('simple', coalesce(title,'') || ' ' || coalesce(summary,'')) @@ ${fn}('simple', $1)`;
 
   try {
     const [countRes, articlesRes] = await Promise.all([
