@@ -1,16 +1,21 @@
 {
   "name": "server",
   "version": "1.0.0",
-  "description": "",
+  "description": "Cerebro API Server — Media Intelligence Platform",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "setup-bq": "node setup_bigquery.js",
+    "setup-bq:dry": "node setup_bigquery.js --dry-run",
+    "ingest": "node ingest_gcs.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@google-cloud/bigquery": "^7.9.0",
+    "@google-cloud/storage": "^7.14.0",
     "axios": "^1.16.1",
     "cheerio": "^1.2.0",
     "cors": "^2.8.6",

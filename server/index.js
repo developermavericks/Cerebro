@@ -13,10 +13,26 @@ const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 const { Groq } = require('groq-sdk');
 
+// BigQuery integration (graceful — if not installed, falls back to legacy analyzer)
+const bq = require('./bigquery');
+let analyzerBQ = null;
+try {
+  analyzerBQ = require('./analyzer_bigquery');
+  if (bq.available()) {
+    console.log('[Cerebro] BigQuery analyzer loaded — will use BigQuery for curated search.');
+  } else {
+    console.log('[Cerebro] BigQuery not available — falling back to legacy Excel analyzer.');
+    analyzerBQ = null;
+  }
+} catch (err) {
+  console.warn('[Cerebro] BigQuery analyzer not available:', err.message);
+}
+const analyzerLegacy = require('./analyzer');
+
 const upload = multer({ dest: path.join(__dirname, 'uploads/') });
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY || '' });
 
 // Security Middleware: Cache-Control header setup to prevent back-button caching
@@ -1591,16 +1607,39 @@ app.get('/api/brands/:id/report', async (req, res) => {
 });
 
 // Curated Query Search & Brand Analysis endpoint
+// Uses BigQuery analyzer if available, otherwise falls back to legacy Excel-based analyzer.
 app.post('/api/curated-search', async (req, res) => {
   console.log('POST /api/curated-search hit with body:', req.body);
   const { targetKeywords, excludedKeywords, topic, startDate, endDate } = req.body;
   try {
-    const analyzer = require('./analyzer');
-    const results = await analyzer.analyzeSpecificBrands({ targetKeywords, excludedKeywords, topic, startDate, endDate });
+    let results;
+
+    // Try BigQuery first
+    if (analyzerBQ && bq.available()) {
+      console.log('[curated-search] Using BigQuery analyzer...');
+      results = await analyzerBQ.analyzeSpecificBrands({ targetKeywords, excludedKeywords, topic, startDate, endDate });
+    } else {
+      // Fallback to legacy Excel-based analyzer
+      console.log('[curated-search] Using legacy Excel analyzer...');
+      results = await analyzerLegacy.analyzeSpecificBrands({ targetKeywords, excludedKeywords, topic, startDate, endDate });
+    }
+
     console.log('Analysis results keys:', Object.keys(results.brands || {}));
     res.status(200).json(results);
   } catch (err) {
-    console.error('Error in POST /api/curated-search:', err);
+    console.error('Error in POST /api/curated-search (primary):', err.message);
+
+    // If BigQuery failed, try legacy as fallback
+    if (analyzerBQ && bq.available()) {
+      try {
+        console.log('[curated-search] BigQuery failed, falling back to legacy analyzer...');
+        const fallbackResults = await analyzerLegacy.analyzeSpecificBrands({ targetKeywords, excludedKeywords, topic, startDate, endDate });
+        return res.status(200).json(fallbackResults);
+      } catch (fallbackErr) {
+        console.error('Error in fallback analyzer:', fallbackErr);
+      }
+    }
+
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -2872,9 +2911,66 @@ app.get('/api/nexus/articles', async (req, res) => {
   }
 });
 
+// ─── BigQuery Data Stats Endpoint ─────────────────────────────────────────────
+// Returns BigQuery table statistics for the admin dashboard.
+app.get('/api/data-stats', async (req, res) => {
+  try {
+    if (!bq.available()) {
+      return res.status(200).json({
+        source: 'legacy',
+        message: 'BigQuery not configured. Using legacy Excel-based analysis.',
+        articleCount: null,
+        dateRange: null
+      });
+    }
+
+    const tableRef = bq.getTableRef();
+    const [countResult] = await Promise.all([
+      bq.query(`SELECT COUNT(*) AS total, MIN(published_at) AS earliest, MAX(published_at) AS latest FROM ${tableRef}`)
+    ]);
+
+    const stats = countResult[0] || {};
+    res.status(200).json({
+      source: 'bigquery',
+      articleCount: Number(stats.total) || 0,
+      dateRange: {
+        earliest: stats.earliest || null,
+        latest: stats.latest || null
+      }
+    });
+  } catch (err) {
+    console.error('Error in GET /api/data-stats:', err);
+    res.status(500).json({ error: 'Failed to fetch data statistics' });
+  }
+});
+
+// ─── Manual Data Ingestion Endpoint (Admin only) ──────────────────────────────
+// Triggers ingestion from a GCS path or local file.
+app.post('/api/ingest', getUserId, verifyAdminKey, async (req, res) => {
+  const { source } = req.body;
+  if (!source || !source.trim()) {
+    return res.status(400).json({ error: 'Source path is required (GCS URI or local file path).' });
+  }
+
+  try {
+    const ingester = require('./ingest_gcs');
+    const count = await ingester.ingest(source.trim());
+    res.status(200).json({ message: `Successfully ingested ${count} articles.`, count });
+  } catch (err) {
+    console.error('Error in POST /api/ingest:', err);
+    res.status(500).json({ error: `Ingestion failed: ${err.message}` });
+  }
+});
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on http://localhost:${PORT}`);
+  if (bq.available()) {
+    console.log(`[BigQuery] Connected to ${bq.PROJECT_ID}.${bq.DATASET_ID}`);
+  } else {
+    console.log('[BigQuery] Not configured — using legacy Excel analyzer for curated search.');
+  }
 });
 
 // Nodemon trigger reload
+
 
