@@ -5107,7 +5107,7 @@ ${bodyHtml}
     setKeywordSearchError(null);
     setCuratedAnalysisResults(null);
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 45000);
+    const timeoutId = setTimeout(() => controller.abort(), 120000);
     try {
       const excludedKeywords = excludedKeywordsInput.split(',').map(b => b.trim()).filter(Boolean);
       const res = await fetch(`${API_BASE}/api/curated-search`, {
@@ -5136,7 +5136,7 @@ ${bodyHtml}
       clearTimeout(timeoutId);
       console.error('Error in curated search:', err);
       if (err.name === 'AbortError') {
-        setKeywordSearchError('Search timed out after 45 seconds. Please refine your search keyword or date range.');
+        setKeywordSearchError('Search timed out after 2 minutes. Please refine your search keyword or date range.');
       } else {
         setKeywordSearchError('Network error — could not reach the server. Please check your connection.');
       }

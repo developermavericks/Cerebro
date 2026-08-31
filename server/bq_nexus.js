@@ -375,13 +375,12 @@ async function keywordArticlesPaginated(keyword, { sector, startDate, endDate, s
   }
 
   // When sentiment filter is specified (Positive, Neutral, Negative):
-  // Pull up to 2000 candidates, classify them in JS, then paginate
+  // Pull all candidates, classify them in JS, then paginate
   const candidateSql = `
     SELECT title, url, published_at, agency, summary, LEFT(COALESCE(full_body, ''), 1000) AS full_body
     FROM ${TABLE_REF()}
     WHERE ${filters}
     ORDER BY published_at DESC
-    LIMIT 2000
   `;
   const rawArticles = await bq.query(candidateSql, baseParams);
   const matching = [];

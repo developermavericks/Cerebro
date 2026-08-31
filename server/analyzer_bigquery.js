@@ -256,11 +256,11 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
   const queryParams = {};
 
   if (startDate) {
-    dateFilter += 'AND published_at >= @startDate\n    ';
+    dateFilter += 'AND DATE(published_at) >= @startDate\n    ';
     queryParams.startDate = startDate;
   }
   if (endDate) {
-    dateFilter += 'AND published_at <= @endDate\n    ';
+    dateFilter += 'AND DATE(published_at) <= @endDate\n    ';
     queryParams.endDate = endDate;
   }
 
@@ -401,7 +401,7 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
         ${topicFilter}
     `;
 
-    const countRows = await bq.query(countSql, queryParams);
+    const countRows = await bq.query(countSql, { ...queryParams, ...topicParams });
     totalSectorArticles = Number(countRows[0]?.total) || 0;
   } catch (err) {
     console.error('[BigQuery Analyzer] Error counting sector articles:', err.message);
