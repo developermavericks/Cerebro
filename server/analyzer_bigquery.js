@@ -150,43 +150,45 @@ function expandBrandAliases(targetBrands) {
 }
 
 /**
- * Build BigQuery SEARCH expression for a list of terms.
- * Uses OR-combined terms for the SEARCH() function.
+ * Build a LIKE-based WHERE clause for a list of terms across title and full_body.
+ * Returns { clause: string, params: object } — no full-text index required.
  */
-function buildSearchTerms(terms) {
-  // BigQuery SEARCH() accepts space-separated terms for OR matching
-  // For multi-word terms, wrap in backticks
-  return terms.map(t => {
-    if (t.includes(' ')) {
-      return `\`${t}\``;
-    }
-    return t;
-  }).join(' ');
+function buildLikeClause(terms, paramPrefix = 'bkw') {
+  if (!terms || !terms.length) return { clause: 'FALSE', params: {} };
+  const params = {};
+  const clauses = terms.map((t, i) => {
+    const p = `${paramPrefix}${i}`;
+    params[p] = `%${t.toLowerCase()}%`;
+    return `(LOWER(COALESCE(title,'')) LIKE @${p} OR LOWER(COALESCE(full_body,'')) LIKE @${p})`;
+  });
+  return { clause: clauses.join(' OR '), params };
 }
 
 /**
- * Build a topic filter SQL clause.
- * Returns empty string if topic is 'All'.
+ * Build a topic filter SQL clause using LIKE matching.
+ * Returns { clause: string, params: object }.
  */
-function buildTopicFilter(topic) {
-  if (!topic || topic === 'All') return '';
+function buildTopicFilter(topic, paramOffset = 0) {
+  if (!topic || topic === 'All') return { clause: '', params: {} };
 
   const keywords = TOPIC_KEYWORDS[topic.toUpperCase()] || [topic.toLowerCase()];
-  const searchTerms = buildSearchTerms(keywords);
-  return `AND SEARCH((title, full_body), '${searchTerms.replace(/'/g, "\\'")}')`;
+  const { clause, params } = buildLikeClause(keywords, `tpkw${paramOffset}_`);
+  return { clause: clause !== 'FALSE' ? `AND (${clause})` : '', params };
 }
 
 /**
- * Build excluded keywords filter SQL clause.
+ * Build excluded keywords LIKE filter clauses.
+ * Returns { clauses: string[], params: object }
  */
-function buildExcludeFilter(excludedKeywords) {
-  if (!excludedKeywords || excludedKeywords.length === 0) return '';
-
-  // For each excluded keyword, ensure the article does NOT contain it
+function buildExcludeFilter(excludedKeywords, queryParams) {
+  if (!excludedKeywords || excludedKeywords.length === 0) return { clauses: [], params: {} };
+  const params = {};
   const clauses = excludedKeywords.map((kw, i) => {
-    return `AND NOT SEARCH((title, full_body), @excludedKw${i})`;
+    const p = `exkw${i}`;
+    params[p] = `%${kw.toLowerCase()}%`;
+    return `AND NOT (LOWER(COALESCE(title,'')) LIKE @${p} OR LOWER(COALESCE(full_body,'')) LIKE @${p})`;
   });
-  return clauses.join('\n    ');
+  return { clauses, params };
 }
 
 
@@ -243,27 +245,26 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
     queryParams.endDate = endDate;
   }
 
-  // Build excluded keywords filter and params
+  // Build excluded keywords filter
   let excludeFilter = '';
+  const excludeParams = {};
   if (excludedTerms.length > 0) {
-    const excludeClauses = [];
-    for (let i = 0; i < excludedTerms.length; i++) {
-      excludeClauses.push(`AND NOT SEARCH((title, full_body), @excludedKw${i})`);
-      queryParams[`excludedKw${i}`] = excludedTerms[i];
-    }
-    excludeFilter = excludeClauses.join('\n    ');
+    const { clauses: exClauses, params: exParams } = buildExcludeFilter(excludedTerms);
+    excludeFilter = exClauses.join('\n    ');
+    Object.assign(excludeParams, exParams);
   }
 
-  // Build topic filter (uses literal SQL since SEARCH terms are from our constants, not user input)
-  const topicFilter = buildTopicFilter(topic);
+  // Build topic filter
+  const { clause: topicClause, params: topicParams } = buildTopicFilter(topic);
+  const topicFilter = topicClause;
 
   // ─── Query 1: Per-brand article data (mentions, sources, timeline, sentiment, samples) in parallel ───
 
   let totalKeywordArticles = 0;
 
   const brandTasks = Array.from(brandSearchMap.entries()).map(async ([displayBrand, searchTerms]) => {
-    const brandSearchQuery = buildSearchTerms(searchTerms);
-    const brandQueryParams = { ...queryParams, brandSearch: brandSearchQuery };
+    const { clause: brandClause, params: brandLikeParams } = buildLikeClause(searchTerms, `bkw_${displayBrand.replace(/\W/g, '_')}_`);
+    const brandQueryParams = { ...queryParams, ...brandLikeParams, ...excludeParams, ...topicParams };
 
     const sql = `
       SELECT
@@ -275,7 +276,7 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
         LEFT(COALESCE(full_body, ''), 1000) AS full_body,
         COALESCE(url, '') AS url
       FROM ${tableRef}
-      WHERE SEARCH((title, full_body), @brandSearch)
+      WHERE (${brandClause})
         ${dateFilter}
         ${excludeFilter}
         ${topicFilter}

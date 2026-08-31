@@ -48,6 +48,25 @@ function getBrandSearchTerms(keyword) {
   return [(keyword || '').trim()].filter(Boolean);
 }
 
+/**
+ * Build a BigQuery LIKE filter clause for a keyword across title and full_body.
+ * Returns { clause: string, params: object } where clause uses named params like @kw0, @kw1...
+ * Case-insensitive: LOWER(title) LIKE '%term%' OR LOWER(full_body) LIKE '%term%'
+ * Works on any BigQuery table without requiring a full-text search index.
+ */
+function buildLikeFilter(keyword, paramPrefix = 'kw') {
+  const terms = getBrandSearchTerms(keyword);
+  if (!terms.length) return { clause: 'FALSE', params: {} };
+  const params = {};
+  const clauses = terms.map((t, i) => {
+    const p = `${paramPrefix}${i}`;
+    params[p] = `%${t.toLowerCase()}%`;
+    return `(LOWER(COALESCE(title,'')) LIKE @${p} OR LOWER(COALESCE(full_body,'')) LIKE @${p})`;
+  });
+  return { clause: clauses.join(' OR '), params };
+}
+
+// Keep for backwards-compat (used in tests)
 function toBQSearchQuery(keyword) {
   const terms = getBrandSearchTerms(keyword);
   if (!terms.length) return '';
@@ -71,18 +90,16 @@ function extractDomain(url) {
 // ── Public query functions ────────────────────────────────────────────────────
 
 /**
- * Count articles matching a keyword (title + full_body full-text search).
+ * Count articles matching a keyword (title + full_body LIKE search — no index required).
  * @param {string} keyword
  * @param {{ sector?, startDate?, endDate? }} opts
  */
 async function searchCount(keyword, { sector, startDate, endDate } = {}) {
   if (!bq.available()) return 0;
-  const searchTerm = toBQSearchQuery(keyword);
-  if (!searchTerm) return 0;
+  const { clause, params } = buildLikeFilter(keyword);
+  if (clause === 'FALSE') return 0;
 
-  const params = { searchTerm };
-  let filters = `SEARCH((title, full_body), @searchTerm)`;
-
+  let filters = `(${clause})`;
   if (sector && sector !== 'All') {
     params.sector = sector;
     filters += ` AND LOWER(COALESCE(sector,'')) = LOWER(@sector)`;
@@ -101,11 +118,11 @@ async function searchCount(keyword, { sector, startDate, endDate } = {}) {
  */
 async function searchArticles(keyword, { sector, startDate, endDate, limit = 2000 } = {}) {
   if (!bq.available()) return [];
-  const searchTerm = toBQSearchQuery(keyword);
-  if (!searchTerm) return [];
+  const { clause, params } = buildLikeFilter(keyword);
+  if (clause === 'FALSE') return [];
 
-  const params = { searchTerm, lim: limit };
-  let filters = `SEARCH((title, full_body), @searchTerm)`;
+  params.lim = limit;
+  let filters = `(${clause})`;
 
   if (sector && sector !== 'All') {
     params.sector = sector;
@@ -140,17 +157,17 @@ async function searchArticles(keyword, { sector, startDate, endDate, limit = 200
  */
 async function brandHistory(brandName, days = 60) {
   if (!bq.available()) return [];
-  const searchTerm = toBQSearchQuery(brandName);
-  const since = sinceTimestamp(days);
+  const { clause, params } = buildLikeFilter(brandName);
+  params.since = sinceTimestamp(days);
   const sql = `
     SELECT DATE(published_at) AS date, CAST(COUNT(*) AS INT64) AS count
     FROM ${TABLE_REF()}
-    WHERE SEARCH((title, full_body), @searchTerm)
+    WHERE (${clause})
       AND published_at >= @since
     GROUP BY date
     ORDER BY date ASC
   `;
-  return bq.query(sql, { searchTerm, since });
+  return bq.query(sql, params);
 }
 
 /**
@@ -159,19 +176,19 @@ async function brandHistory(brandName, days = 60) {
  */
 async function brandTopSources(brandName, days = 60) {
   if (!bq.available()) return [];
-  const searchTerm = toBQSearchQuery(brandName);
-  const since = sinceTimestamp(days);
+  const { clause, params } = buildLikeFilter(brandName);
+  params.since = sinceTimestamp(days);
   const sql = `
     SELECT agency AS source, CAST(COUNT(*) AS INT64) AS count
     FROM ${TABLE_REF()}
-    WHERE SEARCH((title, full_body), @searchTerm)
+    WHERE (${clause})
       AND agency IS NOT NULL
       AND published_at >= @since
     GROUP BY agency
     ORDER BY count DESC
     LIMIT 8
   `;
-  return bq.query(sql, { searchTerm, since });
+  return bq.query(sql, params);
 }
 
 /**
@@ -180,7 +197,8 @@ async function brandTopSources(brandName, days = 60) {
  */
 async function brandArticles(brandName, limit = 500) {
   if (!bq.available()) return [];
-  const searchTerm = toBQSearchQuery(brandName);
+  const { clause, params } = buildLikeFilter(brandName);
+  params.lim = limit;
   const sql = `
     SELECT
       CONCAT('nexus-', CAST(id AS STRING)) AS id,
@@ -193,11 +211,11 @@ async function brandArticles(brandName, limit = 500) {
       published_at                  AS created_at,
       CAST(NULL AS TIMESTAMP)       AS last_ping_time
     FROM ${TABLE_REF()}
-    WHERE SEARCH((title, full_body), @searchTerm)
+    WHERE (${clause})
     ORDER BY published_at DESC
     LIMIT @lim
   `;
-  const rows = await bq.query(sql, { searchTerm, lim: limit });
+  const rows = await bq.query(sql, params);
   return rows.map(r => ({
     id:             r.id,
     title:          r.title,
@@ -310,18 +328,19 @@ async function dateBreakdown() {
  */
 async function keywordArticlesPaginated(keyword, { sector, startDate, endDate, sentiment, limit = 15, offset = 0 } = {}) {
   if (!bq.available()) return { total: 0, articles: [] };
-  const searchTerm = toBQSearchQuery(keyword);
-  if (!searchTerm) return { total: 0, articles: [] };
+  const { clause, params: likeParams } = buildLikeFilter(keyword);
+  if (clause === 'FALSE') return { total: 0, articles: [] };
 
-  const params = { searchTerm };
-  let filters = `SEARCH((title, full_body), @searchTerm)`;
+  // Base params — shared for count + article queries
+  const baseParams = { ...likeParams };
+  let filters = `(${clause})`;
 
   if (sector && sector !== 'All') {
-    params.sector = sector;
+    baseParams.sector = sector;
     filters += ` AND LOWER(COALESCE(sector,'')) = LOWER(@sector)`;
   }
-  if (startDate) { params.startDate = startDate; filters += ` AND DATE(published_at) >= @startDate`; }
-  if (endDate)   { params.endDate   = endDate;   filters += ` AND DATE(published_at) <= @endDate`; }
+  if (startDate) { baseParams.startDate = startDate; filters += ` AND DATE(published_at) >= @startDate`; }
+  if (endDate)   { baseParams.endDate   = endDate;   filters += ` AND DATE(published_at) <= @endDate`; }
 
   if (!sentiment || sentiment === 'All') {
     const countSql   = `SELECT CAST(COUNT(*) AS INT64) AS cnt FROM ${TABLE_REF()} WHERE ${filters}`;
@@ -334,8 +353,8 @@ async function keywordArticlesPaginated(keyword, { sector, startDate, endDate, s
     `;
 
     const [countRows, articleRows] = await Promise.all([
-      bq.query(countSql, params),
-      bq.query(articleSql, { ...params, lim: limit, off: offset }),
+      bq.query(countSql, baseParams),
+      bq.query(articleSql, { ...baseParams, lim: limit, off: offset }),
     ]);
 
     return {
@@ -351,6 +370,7 @@ async function keywordArticlesPaginated(keyword, { sector, startDate, endDate, s
   }
 
   // When sentiment filter is specified (Positive, Neutral, Negative):
+  // Pull up to 2000 candidates, classify them in JS, then paginate
   const candidateSql = `
     SELECT title, url, published_at, agency, summary, LEFT(COALESCE(full_body, ''), 1000) AS full_body
     FROM ${TABLE_REF()}
@@ -358,7 +378,7 @@ async function keywordArticlesPaginated(keyword, { sector, startDate, endDate, s
     ORDER BY published_at DESC
     LIMIT 2000
   `;
-  const rawArticles = await bq.query(candidateSql, params);
+  const rawArticles = await bq.query(candidateSql, baseParams);
   const matching = [];
 
   for (const r of rawArticles) {
