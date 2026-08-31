@@ -148,9 +148,10 @@ function normalizeText(text) {
   return text.toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 
-async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [], topic = 'All', startDate = null, endDate = null }) {
+async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [], topic = 'All', startDate = null, endDate = null, searchScope = 'full' }) {
   const db = require('./db');
 
+  const isHeadlineOnly = searchScope === 'headline' || searchScope === 'title';
   const targetBrands = (targetKeywords || []).map(b => b.trim()).filter(Boolean);
   if (!targetBrands.length) return {};
 
@@ -175,10 +176,11 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
 
   // SQL pre-filter using GIN full-text index (fast) — falls back to seq scan if index not built yet
   const brandParams = targetTerms.map(t => t);
+  const colExpr = isHeadlineOnly ? "coalesce(title,'')" : "coalesce(title,'') || ' ' || coalesce(summary,'') || ' ' || coalesce(full_body,'')";
   const searchConds = targetTerms.map((t, i) => {
     const p = i + 1;
     const fn = t.includes(' ') ? 'phraseto_tsquery' : 'plainto_tsquery';
-    return `to_tsvector('simple', coalesce(title,'') || ' ' || coalesce(summary,'')) @@ ${fn}('simple', $${p})`;
+    return `to_tsvector('simple', ${colExpr}) @@ ${fn}('simple', $${p})`;
   }).join(' OR ');
 
   // Sector filter via DB field (accurate — uses normalized sector column)

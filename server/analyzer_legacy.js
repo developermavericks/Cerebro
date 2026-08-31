@@ -132,7 +132,8 @@ function normalizeText(text) {
   return text.toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 
-function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [], topic = 'All' }) {
+function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [], topic = 'All', searchScope = 'full' }) {
+  const isHeadlineOnly = searchScope === 'headline' || searchScope === 'title';
   const rootDir = path.resolve(__dirname, '..');
   const excelFiles = fs.readdirSync(rootDir).filter(f => f.startsWith('NEXUS_') && f.endsWith('.xlsx'));
   let articles = [];
@@ -226,7 +227,7 @@ function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [], top
     const title = article['Title'] || '';
     const summary = article['Summary'] || '';
     const fullBody = article['Full Body'] || '';
-    const rawContent = [title, summary, fullBody].join(' ');
+    const rawContent = isHeadlineOnly ? title : [title, summary, fullBody].join(' ');
     const content = normalizeText(rawContent);
 
     if (!content.trim()) continue;

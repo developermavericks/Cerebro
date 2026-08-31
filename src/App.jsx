@@ -3105,6 +3105,7 @@ function App() {
   const [excludedKeywordsInput, setExcludedKeywordsInput] = useState('');
   const [analysisScope, setAnalysisScope] = useState('sector');
   const [analysisSector, setAnalysisSector] = useState('All');
+  const [keywordSearchScope, setKeywordSearchScope] = useState('full');
   const [analysisStartDate, setAnalysisStartDate] = useState('');
   const [analysisEndDate, setAnalysisEndDate] = useState('');
   const [curatedAnalysisResults, setCuratedAnalysisResults] = useState(null);
@@ -5114,7 +5115,14 @@ ${bodyHtml}
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
-        body: JSON.stringify({ targetKeywords: brands, excludedKeywords, topic: analysisSector, startDate: analysisStartDate || null, endDate: analysisEndDate || null })
+        body: JSON.stringify({
+          targetKeywords: brands,
+          excludedKeywords,
+          topic: analysisSector,
+          startDate: analysisStartDate || null,
+          endDate: analysisEndDate || null,
+          searchScope: keywordSearchScope
+        })
       });
       clearTimeout(timeoutId);
       if (res.ok) {
@@ -6960,6 +6968,45 @@ ${bodyHtml}
                                 <option key={value} value={value} className={darkMode ? 'bg-[#151f32] text-white' : 'bg-white text-slate-800'}>{label}</option>
                               ))}
                             </select>
+                          </div>
+
+                          {/* Search Scope: Full Article vs Headline Only */}
+                          <div className="flex items-center gap-2">
+                            <span className={`text-[10px] font-black uppercase tracking-widest ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Scope:</span>
+                            <div className={`flex items-center p-0.5 rounded-xl border shadow-sm transition-all ${
+                              darkMode ? 'bg-[#151f32] border-white/10' : 'bg-white border-slate-200'
+                            }`}>
+                              <button
+                                type="button"
+                                onClick={() => setKeywordSearchScope('full')}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
+                                  keywordSearchScope === 'full'
+                                    ? 'bg-indigo-600 text-white shadow-sm'
+                                    : darkMode
+                                      ? 'text-slate-400 hover:text-white'
+                                      : 'text-slate-500 hover:text-slate-900'
+                                }`}
+                                title="Search across headline, summary, and full article body"
+                              >
+                                <FileText size={12} />
+                                Full Article
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setKeywordSearchScope('headline')}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
+                                  keywordSearchScope === 'headline'
+                                    ? 'bg-indigo-600 text-white shadow-sm'
+                                    : darkMode
+                                      ? 'text-slate-400 hover:text-white'
+                                      : 'text-slate-500 hover:text-slate-900'
+                                }`}
+                                title="Search in article headline / title only"
+                              >
+                                <AlignLeft size={12} />
+                                Headline Only
+                              </button>
+                            </div>
                           </div>
 
                           {/* Date range pickers */}

@@ -223,10 +223,11 @@ const sentimentEngine = require('./sentiment_engine');
  * @param {string} [options.endDate] - Optional end date (ISO string)
  * @returns {Promise<Object>} Analysis results in Cerebro format
  */
-async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [], topic = 'All', startDate, endDate }) {
+async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [], topic = 'All', startDate, endDate, searchScope = 'full' }) {
   const targetBrands = targetKeywords.map(b => b.trim()).filter(Boolean);
   if (!targetBrands.length) return {};
 
+  const isHeadlineOnly = searchScope === 'headline' || searchScope === 'title';
   const excludedTerms = (excludedKeywords || []).map(b => b.trim()).filter(Boolean);
   const tableRef = bq.getTableRef();
 
@@ -282,10 +283,12 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
   let totalKeywordArticles = 0;
 
   const brandTasks = Array.from(brandSearchMap.entries()).map(async ([displayBrand, searchTerms]) => {
-    // Search across title + summary + full_body (not just title)
+    // Search across title only OR title + summary + full_body based on searchScope
     const safePrefix = displayBrand.replace(/\W/g, '_');
-    const { clause: fullClause, params: fullLikeParams } = buildFullLikeClause(searchTerms, `fbkw_${safePrefix}_`);
-    const brandQueryParams = { ...queryParams, ...fullLikeParams, ...excludeParams, ...topicParams };
+    const { clause: matchClause, params: matchLikeParams } = isHeadlineOnly
+      ? buildLikeClause(searchTerms, `hdkw_${safePrefix}_`)
+      : buildFullLikeClause(searchTerms, `fbkw_${safePrefix}_`);
+    const brandQueryParams = { ...queryParams, ...matchLikeParams, ...excludeParams, ...topicParams };
 
     const sql = `
       SELECT
@@ -297,7 +300,7 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
         LEFT(COALESCE(full_body, ''), 1000) AS full_body,
         COALESCE(url, '') AS url
       FROM ${tableRef}
-      WHERE (${fullClause})
+      WHERE (${matchClause})
         ${dateFilter}
         ${excludeFilter}
         ${topicFilter}
@@ -336,6 +339,10 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
       const bodyText = ((row.summary || '') + ' ' + (row.full_body || '')).toLowerCase();
       const inHeadline = termRegexes.some(rx => rx.test(titleText));
       const inBody = termRegexes.some(rx => rx.test(bodyText));
+
+      if (isHeadlineOnly && !inHeadline) {
+        continue;
+      }
 
       // Real-time high-accuracy sentiment computed from headline + summary + body
       const sentCategory = sentimentEngine.analyzeSentiment(row.title, row.summary, row.full_body);

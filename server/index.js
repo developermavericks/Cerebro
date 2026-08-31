@@ -1578,18 +1578,18 @@ app.get('/api/brands/:id/report', async (req, res) => {
 // Uses BigQuery analyzer if available, otherwise falls back to legacy Excel-based analyzer.
 app.post('/api/curated-search', async (req, res) => {
   console.log('POST /api/curated-search hit with body:', req.body);
-  const { targetKeywords, excludedKeywords, topic, startDate, endDate } = req.body;
+  const { targetKeywords, excludedKeywords, topic, startDate, endDate, searchScope = 'full' } = req.body;
   try {
     let results;
 
     // Try BigQuery first
     if (analyzerBQ && bq.available()) {
-      console.log('[curated-search] Using BigQuery analyzer...');
-      results = await analyzerBQ.analyzeSpecificBrands({ targetKeywords, excludedKeywords, topic, startDate, endDate });
+      console.log('[curated-search] Using BigQuery analyzer (scope:', searchScope, ')...');
+      results = await analyzerBQ.analyzeSpecificBrands({ targetKeywords, excludedKeywords, topic, startDate, endDate, searchScope });
     } else {
       // Fallback to legacy Excel-based analyzer
-      console.log('[curated-search] Using legacy Excel analyzer...');
-      results = await analyzerLegacy.analyzeSpecificBrands({ targetKeywords, excludedKeywords, topic, startDate, endDate });
+      console.log('[curated-search] Using legacy Excel analyzer (scope:', searchScope, ')...');
+      results = await analyzerLegacy.analyzeSpecificBrands({ targetKeywords, excludedKeywords, topic, startDate, endDate, searchScope });
     }
 
     console.log('Analysis results keys:', Object.keys(results.brands || {}));
@@ -1601,7 +1601,7 @@ app.post('/api/curated-search', async (req, res) => {
     if (analyzerBQ && bq.available()) {
       try {
         console.log('[curated-search] BigQuery failed, falling back to legacy analyzer...');
-        const fallbackResults = await analyzerLegacy.analyzeSpecificBrands({ targetKeywords, excludedKeywords, topic, startDate, endDate });
+        const fallbackResults = await analyzerLegacy.analyzeSpecificBrands({ targetKeywords, excludedKeywords, topic, startDate, endDate, searchScope });
         return res.status(200).json(fallbackResults);
       } catch (fallbackErr) {
         console.error('Error in fallback analyzer:', fallbackErr);
