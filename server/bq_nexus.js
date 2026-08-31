@@ -49,9 +49,9 @@ function getBrandSearchTerms(keyword) {
 }
 
 /**
- * Build a BigQuery LIKE filter clause for a keyword across title and full_body.
+ * Build a BigQuery LIKE filter clause for a keyword across title only (headline search).
  * Returns { clause: string, params: object } where clause uses named params like @kw0, @kw1...
- * Case-insensitive: LOWER(title) LIKE '%term%' OR LOWER(full_body) LIKE '%term%'
+ * Case-insensitive: LOWER(title) LIKE '%term%'
  * Works on any BigQuery table without requiring a full-text search index.
  */
 function buildLikeFilter(keyword, paramPrefix = 'kw') {
@@ -61,7 +61,7 @@ function buildLikeFilter(keyword, paramPrefix = 'kw') {
   const clauses = terms.map((t, i) => {
     const p = `${paramPrefix}${i}`;
     params[p] = `%${t.toLowerCase()}%`;
-    return `(LOWER(COALESCE(title,'')) LIKE @${p} OR LOWER(COALESCE(full_body,'')) LIKE @${p})`;
+    return `LOWER(COALESCE(title,'')) LIKE @${p}`;
   });
   return { clause: clauses.join(' OR '), params };
 }

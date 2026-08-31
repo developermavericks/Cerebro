@@ -150,7 +150,7 @@ function expandBrandAliases(targetBrands) {
 }
 
 /**
- * Build a LIKE-based WHERE clause for a list of terms across title and full_body.
+ * Build a LIKE-based WHERE clause for a list of terms across title only (headline search).
  * Returns { clause: string, params: object } — no full-text index required.
  */
 function buildLikeClause(terms, paramPrefix = 'bkw') {
@@ -159,7 +159,7 @@ function buildLikeClause(terms, paramPrefix = 'bkw') {
   const clauses = terms.map((t, i) => {
     const p = `${paramPrefix}${i}`;
     params[p] = `%${t.toLowerCase()}%`;
-    return `(LOWER(COALESCE(title,'')) LIKE @${p} OR LOWER(COALESCE(full_body,'')) LIKE @${p})`;
+    return `LOWER(COALESCE(title,'')) LIKE @${p}`;
   });
   return { clause: clauses.join(' OR '), params };
 }
@@ -177,16 +177,16 @@ function buildTopicFilter(topic, paramOffset = 0) {
 }
 
 /**
- * Build excluded keywords LIKE filter clauses.
+ * Build excluded keywords LIKE filter clauses (headline only).
  * Returns { clauses: string[], params: object }
  */
-function buildExcludeFilter(excludedKeywords, queryParams) {
+function buildExcludeFilter(excludedKeywords) {
   if (!excludedKeywords || excludedKeywords.length === 0) return { clauses: [], params: {} };
   const params = {};
   const clauses = excludedKeywords.map((kw, i) => {
     const p = `exkw${i}`;
     params[p] = `%${kw.toLowerCase()}%`;
-    return `AND NOT (LOWER(COALESCE(title,'')) LIKE @${p} OR LOWER(COALESCE(full_body,'')) LIKE @${p})`;
+    return `AND NOT LOWER(COALESCE(title,'')) LIKE @${p}`;
   });
   return { clauses, params };
 }
