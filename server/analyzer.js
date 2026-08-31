@@ -215,8 +215,12 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
   const articleSeenPerBrand = {};
   for (const brand of displayBrands) {
     results[brand] = {
-      mentions: 0, articles: 0, sources: {}, timeline: {},
+      mentions: 0, articles: 0,
+      headline_mentions: 0, full_mentions: 0,
+      sources: {}, timeline: {},
       sentiment: { Positive: 0, Neutral: 0, Negative: 0 },
+      headline_sentiment: { Positive: 0, Neutral: 0, Negative: 0 },
+      full_sentiment: { Positive: 0, Neutral: 0, Negative: 0 },
       article_samples: { Positive: [], Neutral: [], Negative: [] }
     };
     articleSeenPerBrand[brand] = new Set();
@@ -322,20 +326,43 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
       let dateKey = '2026-01-01';
       try { if (article['Published At']) dateKey = new Date(article['Published At']).toISOString().split('T')[0]; } catch(e){}
 
+      const normalizedTitle = normalizeText(title);
+      const normalizedBody = normalizeText((article['Summary'] || '') + ' ' + (article['Full Body'] || ''));
+
       for (const term of targetTerms) {
         const regex = compiledPatterns[term];
         regex.lastIndex = 0;
         if (!regex.test(content)) continue;
         const brandName = normalizedTargetMap[term];
-        const sentences = rawContent.split(/[.!?]+\s+/);
+
+        // Classify headline vs body
         const sKey = term;
         if (!sRegexCache[sKey]) sRegexCache[sKey] = new RegExp('\\b' + escapeRegExp(term) + '\\b', 'i');
         const sr = sRegexCache[sKey];
+        const inHeadline = sr.test(normalizedTitle);
+        const inBody = sr.test(normalizedBody);
+
+        // Track headline vs full mentions
+        if (inHeadline) results[brandName].headline_mentions += 1;
+        if (inBody) results[brandName].full_mentions += 1;
+        if (!inBody && !inHeadline) results[brandName].full_mentions += 1; // fallback
+
+        const sentences = rawContent.split(/[.!?]+\s+/);
         for (const sentence of sentences) {
           if (!sr.test(normalizeText(sentence))) continue;
           const sc = sentiment.analyze(sentence);
           const sentCat = sc.score > 1 ? 'Positive' : sc.score < -1 ? 'Negative' : 'Neutral';
           results[brandName].sentiment[sentCat] += 1;
+
+          // Headline-only sentiment from title sentences
+          if (inHeadline) {
+            const titleSc = sentiment.analyze(title);
+            const titleSentCat = titleSc.score > 1 ? 'Positive' : titleSc.score < -1 ? 'Negative' : 'Neutral';
+            results[brandName].headline_sentiment[titleSentCat] += 1;
+          }
+          // Full/body sentiment
+          results[brandName].full_sentiment[sentCat] += 1;
+
           const url = article['Resolved URL'] || '';
           const articleKey = title.toLowerCase().trim() || url;
           if (!articleSeenPerBrand[brandName].has(articleKey)) {

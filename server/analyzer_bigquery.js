@@ -165,6 +165,21 @@ function buildLikeClause(terms, paramPrefix = 'bkw') {
 }
 
 /**
+ * Build a LIKE-based WHERE clause for a list of terms across title + summary + full_body.
+ * Returns { clause: string, params: object }.
+ */
+function buildFullLikeClause(terms, paramPrefix = 'fbkw') {
+  if (!terms || !terms.length) return { clause: 'FALSE', params: {} };
+  const params = {};
+  const clauses = terms.map((t, i) => {
+    const p = `${paramPrefix}${i}`;
+    params[p] = `%${t.toLowerCase()}%`;
+    return `(LOWER(COALESCE(title,'')) LIKE @${p} OR LOWER(COALESCE(summary,'')) LIKE @${p} OR LOWER(COALESCE(full_body,'')) LIKE @${p})`;
+  });
+  return { clause: clauses.join(' OR '), params };
+}
+
+/**
  * Build a topic filter SQL clause using LIKE matching.
  * Returns { clause: string, params: object }.
  */
@@ -215,16 +230,20 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
   const excludedTerms = (excludedKeywords || []).map(b => b.trim()).filter(Boolean);
   const tableRef = bq.getTableRef();
 
-  // Initialize results structure (same shape as legacy)
+  // Initialize results structure (same shape as legacy, plus headline/full breakdowns)
   const displayBrands = [...targetBrands, "Others"];
   const results = {};
   for (const brand of displayBrands) {
     results[brand] = {
       mentions: 0,
       articles: 0,
+      headline_mentions: 0,
+      full_mentions: 0,
       sources: {},
       timeline: {},
       sentiment: { Positive: 0, Neutral: 0, Negative: 0 },
+      headline_sentiment: { Positive: 0, Neutral: 0, Negative: 0 },
+      full_sentiment: { Positive: 0, Neutral: 0, Negative: 0 },
       article_samples: { Positive: [], Neutral: [], Negative: [] }
     };
   }
@@ -263,8 +282,10 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
   let totalKeywordArticles = 0;
 
   const brandTasks = Array.from(brandSearchMap.entries()).map(async ([displayBrand, searchTerms]) => {
-    const { clause: brandClause, params: brandLikeParams } = buildLikeClause(searchTerms, `bkw_${displayBrand.replace(/\W/g, '_')}_`);
-    const brandQueryParams = { ...queryParams, ...brandLikeParams, ...excludeParams, ...topicParams };
+    // Search across title + summary + full_body (not just title)
+    const safePrefix = displayBrand.replace(/\W/g, '_');
+    const { clause: fullClause, params: fullLikeParams } = buildFullLikeClause(searchTerms, `fbkw_${safePrefix}_`);
+    const brandQueryParams = { ...queryParams, ...fullLikeParams, ...excludeParams, ...topicParams };
 
     const sql = `
       SELECT
@@ -276,7 +297,7 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
         LEFT(COALESCE(full_body, ''), 1000) AS full_body,
         COALESCE(url, '') AS url
       FROM ${tableRef}
-      WHERE (${brandClause})
+      WHERE (${fullClause})
         ${dateFilter}
         ${excludeFilter}
         ${topicFilter}
@@ -286,27 +307,40 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
 
     try {
       const rows = await bq.query(sql, brandQueryParams);
-      return { displayBrand, rows };
+      return { displayBrand, rows, searchTerms };
     } catch (err) {
       console.error(`[BigQuery Analyzer] Error querying brand "${displayBrand}":`, err.message);
-      return { displayBrand, rows: [] };
+      return { displayBrand, rows: [], searchTerms };
     }
   });
 
   const brandResults = await Promise.all(brandTasks);
 
-  for (const { displayBrand, rows } of brandResults) {
+  for (const { displayBrand, rows, searchTerms } of brandResults) {
     results[displayBrand].articles = rows.length;
     totalKeywordArticles += rows.length;
 
     const uniqueArticles = new Set();
 
+    // Build regex patterns for headline vs body classification
+    const termRegexes = (searchTerms || []).map(t => 
+      new RegExp('\\b' + t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i')
+    );
+
     for (const row of rows) {
       const source = normalizePublicationName(row.agency);
       const dateKey = row.published_at ? row.published_at.split('T')[0] : 'Unknown';
       
+      // Classify: does the brand appear in headline (title) vs body (summary/full_body)?
+      const titleText = (row.title || '').toLowerCase();
+      const bodyText = ((row.summary || '') + ' ' + (row.full_body || '')).toLowerCase();
+      const inHeadline = termRegexes.some(rx => rx.test(titleText));
+      const inBody = termRegexes.some(rx => rx.test(bodyText));
+
       // Real-time high-accuracy sentiment computed from headline + summary + body
       const sentCategory = sentimentEngine.analyzeSentiment(row.title, row.summary, row.full_body);
+      // Headline-only sentiment (from title text alone)
+      const headlineSentCategory = sentimentEngine.analyzeSentiment(row.title, '', '');
 
       const articleKey = (row.title || row.id || '').toLowerCase().trim();
       if (!uniqueArticles.has(articleKey)) {
@@ -317,6 +351,24 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
       results[displayBrand].sources[source] = (results[displayBrand].sources[source] || 0) + 1;
       results[displayBrand].timeline[dateKey] = (results[displayBrand].timeline[dateKey] || 0) + 1;
       results[displayBrand].sentiment[sentCategory] += 1;
+
+      // Track headline vs full/body mentions and sentiment separately
+      if (inHeadline) {
+        results[displayBrand].headline_mentions += 1;
+        results[displayBrand].headline_sentiment[headlineSentCategory] += 1;
+      }
+      if (inBody && !inHeadline) {
+        // Body-only mention (not in headline)
+        results[displayBrand].full_mentions += 1;
+        results[displayBrand].full_sentiment[sentCategory] += 1;
+      } else if (inBody && inHeadline) {
+        // Appears in both — count as headline mention (already counted above), but also track body sentiment
+        results[displayBrand].full_mentions += 1;
+        results[displayBrand].full_sentiment[sentCategory] += 1;
+      } else if (!inBody && inHeadline) {
+        // Only in headline, no body match — still count full_sentiment from full article
+        results[displayBrand].full_sentiment[sentCategory] += 1;
+      }
 
       // Keep up to 100 sample articles per sentiment category
       if (results[displayBrand].article_samples[sentCategory].length < 100) {

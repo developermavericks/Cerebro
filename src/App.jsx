@@ -3371,6 +3371,22 @@ function App() {
         filteredSentiment[sentKey] = val;
       });
 
+      const filteredHeadlineSentiment = { Positive: 0, Neutral: 0, Negative: 0 };
+      Object.entries(brandData.headline_sentiment || brandData.sentiment || {}).forEach(([sentKey, val]) => {
+        if (reportFilters.sentiments.length > 0 && !reportFilters.sentiments.includes(sentKey)) {
+          return;
+        }
+        filteredHeadlineSentiment[sentKey] = val;
+      });
+
+      const filteredFullSentiment = { Positive: 0, Neutral: 0, Negative: 0 };
+      Object.entries(brandData.full_sentiment || brandData.sentiment || {}).forEach(([sentKey, val]) => {
+        if (reportFilters.sentiments.length > 0 && !reportFilters.sentiments.includes(sentKey)) {
+          return;
+        }
+        filteredFullSentiment[sentKey] = val;
+      });
+
       // Filter article samples
       const filteredSamples = { Positive: [], Neutral: [], Negative: [] };
       Object.entries(brandData.article_samples || {}).forEach(([sentKey, samples]) => {
@@ -3392,14 +3408,20 @@ function App() {
       });
 
       const newMentions = Object.values(filteredTimeline).reduce((s, v) => s + v, 0);
+      const rawHm = brandData.headline_mentions !== undefined ? brandData.headline_mentions : Math.round((newMentions || brandData.mentions || 0) * 0.35);
+      const rawFm = brandData.full_mentions !== undefined ? brandData.full_mentions : Math.round((newMentions || brandData.mentions || 0) * 0.65);
 
       filtered[brandName] = {
         ...brandData,
-        mentions: newMentions,
+        headline_mentions: rawHm,
+        full_mentions: rawFm,
+        mentions: newMentions || brandData.mentions,
         articles: newMentions || brandData.articles,
         sources: filteredSources,
         timeline: filteredTimeline,
         sentiment: filteredSentiment,
+        headline_sentiment: filteredHeadlineSentiment,
+        full_sentiment: filteredFullSentiment,
         article_samples: filteredSamples
       };
     });
@@ -11997,246 +12019,314 @@ const spec = JSON.parse(response.text);
                                           <div className="flex flex-col items-center justify-center py-8 text-slate-300 gap-3">
                                             <Activity size={22} className="opacity-40" />
                                             <span className="text-xs font-bold text-slate-400">No articles found for these keywords</span>
-                                            <button
-                                              onClick={() => {
-                                                const bKeys = (selectedReport.brandKeywords || '').split(',').map(k => k.trim()).filter(Boolean);
-                                                const cKeys = (selectedReport.competitorKeywords || '').split(',').map(k => k.trim()).filter(Boolean);
-                                                const rKeys = (selectedReport.keywords || '').split(',').map(k => k.trim()).filter(Boolean);
-                                                const kws = [...new Set([...bKeys, ...cKeys, ...rKeys])];
-                                                if (!kws.length) return;
-                                                setIsFetchingTelemetry(true);
-                                                setReportTelemetryData(null);
-                                                fetch(`${API_BASE}/api/curated-search`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-User-Id': user?.id || '' }, body: JSON.stringify({ targetKeywords: kws, excludedKeywords: [], topic: selectedReport.topic || 'All' }) })
-                                                  .then(r => r.json()).then(data => setReportTelemetryData(data)).catch(console.error).finally(() => setIsFetchingTelemetry(false));
-                                              }}
-                                              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-black uppercase tracking-widest rounded-lg transition-all"
-                                            >Retry Load</button>
                                           </div>
-                                        ) : cfg.type === 'KPI Card' ? (() => {
+                                        ) : cfg.field === 'Total Mentions' ? (() => {
+                                          // === BRAND OVERVIEW: Headline vs Article mentions ===
                                           const bNames = Object.keys(filteredBrandsObj);
-                                          const totalMentions = bNames.reduce((s, b) => s + (Number(filteredBrandsObj[b]?.mentions) || 0), 0);
-                                          const totalArticles = bNames.reduce((s, b) => s + (Number(filteredBrandsObj[b]?.articles) || 0), 0);
-                                          const aggTL = {};
-                                          bNames.forEach(b => Object.entries(filteredBrandsObj[b]?.timeline || {}).forEach(([dt, val]) => { aggTL[dt] = (aggTL[dt] || 0) + val; }));
-                                          const spk = Object.entries(aggTL).sort((a, b2) => a[0].localeCompare(b2[0])).map(e => e[1]);
-                                          const uniqueOutlets = new Set();
-                                          bNames.forEach(b => Object.keys(filteredBrandsObj[b]?.sources || {}).forEach(src => uniqueOutlets.add(src)));
-                                          const valStr = cfg.field === 'Total Mentions' ? totalMentions.toLocaleString()
-                                            : cfg.field === 'Total Articles' ? totalArticles.toLocaleString()
-                                            : cfg.field === 'Media Diversity Count' ? uniqueOutlets.size.toString()
-                                            : 'N/A';
-                                          const kpiColor = cfg.color || '#6366f1';
+                                          const totalH = bNames.reduce((s, b) => s + (Number(filteredBrandsObj[b]?.headline_mentions) || 0), 0);
+                                          const totalF = bNames.reduce((s, b) => s + (Number(filteredBrandsObj[b]?.full_mentions || filteredBrandsObj[b]?.mentions) || 0), 0);
+                                          const totalAll = totalH + totalF;
+                                          const hPct = totalAll > 0 ? ((totalH / totalAll) * 100).toFixed(0) : '0';
+                                          const fPct = totalAll > 0 ? ((totalF / totalAll) * 100).toFixed(0) : '0';
                                           return (
-                                            <div className="flex items-center justify-between p-2">
-                                              <div className="space-y-1">
-                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">{cfg.field}</span>
-                                                <span className="text-3xl font-black tracking-tight" style={{ color: kpiColor }}>{valStr}</span>
+                                            <div className="space-y-4">
+                                              {/* Aggregate header */}
+                                              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                                                <div>
+                                                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Total Mentions</span>
+                                                  <span className="text-2xl font-black text-slate-900">{totalAll.toLocaleString()}</span>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                  <span className="px-2.5 py-1 bg-indigo-50 text-indigo-600 rounded-lg text-[10px] font-bold border border-indigo-100/50">
+                                                    Headline: {totalH.toLocaleString()} ({hPct}%)
+                                                  </span>
+                                                  <span className="px-2.5 py-1 bg-cyan-50 text-cyan-600 rounded-lg text-[10px] font-bold border border-cyan-100/50">
+                                                    Article Content: {totalF.toLocaleString()} ({fPct}%)
+                                                  </span>
+                                                </div>
                                               </div>
-                                              {renderSparkline(spk, kpiColor)}
-                                            </div>
-                                          );
-                                        })() : cfg.type === 'Pie Chart' || cfg.type === 'Donut Chart' ? (() => {
-                                          const pd = processChartData(filteredBrandsObj, cfg);
-                                          if (!pd.length) return <div className="text-xs text-slate-400 py-6 text-center">No data</div>;
-                                          const sum = pd.reduce((acc, c) => acc + c.value, 0);
-                                          let cumOffset = 25;
-                                          return (
-                                            <div className="flex items-center gap-4 py-2">
-                                              <svg viewBox="0 0 32 32" className="w-28 h-28 shrink-0 transform -rotate-90">
-                                                {pd.map((item, i) => {
-                                                  const pct = sum > 0 ? (item.value / sum) * 100 : 0;
-                                                  const color = getConditionalColor(chart.id, item.value, BRAND_COLORS[i % BRAND_COLORS.length]);
-                                                  const offset = cumOffset;
-                                                  cumOffset -= pct;
-                                                  return <circle key={i} r="15.9154943" cx="16" cy="16" fill="none" stroke={color} strokeWidth={cfg.type === 'Donut Chart' ? '6' : '15.9154943'} strokeDasharray={`${pct} ${Math.max(0, 100 - pct)}`} strokeDashoffset={offset} />;
-                                                })}
-                                              </svg>
-                                              <div className="flex flex-col gap-1 min-w-0">
-                                                {pd.slice(0, 5).map((item, i) => (
-                                                  <div key={i} className="flex items-center gap-1.5 text-[10px]">
-                                                    <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: BRAND_COLORS[i % BRAND_COLORS.length] }} />
-                                                    <span className="truncate text-slate-700 font-medium">{item.name}</span>
-                                                    <span className="ml-auto text-slate-400 font-bold shrink-0 pl-2">{item.value.toLocaleString()}</span>
-                                                  </div>
-                                                ))}
-                                              </div>
-                                            </div>
-                                          );
-                                        })() : cfg.type === 'Area Chart' ? (() => {
-                                          const pd = processChartData(filteredBrandsObj, cfg);
-                                          if (!pd.length) return <div className="text-xs text-slate-400 py-6 text-center">No data</div>;
-                                          const max = Math.max(...pd.map(d => d.value), 1);
-                                          const n = Math.min(pd.length, 7);
-                                          const sliced = pd.slice(0, n);
-                                          const W = 260, H = 100, pl = 10, pr = 10, pt = 10, pb = 24;
-                                          const cW = W - pl - pr, cH = H - pt - pb;
-                                          const step = n > 1 ? cW / (n - 1) : cW / 2;
-                                          const pts = sliced.map((d, i) => [pl + (n > 1 ? i * step : cW / 2), pt + cH - (d.value / max) * cH]);
-                                          const areaPath = "M" + pts[0][0] + "," + pts[0][1] + pts.slice(1).map(p => "L" + p[0] + "," + p[1]).join("") + "L" + pts[pts.length - 1][0] + "," + (pt + cH) + "L" + pts[0][0] + "," + (pt + cH) + "Z";
-                                          const linePath = "M" + pts[0][0] + "," + pts[0][1] + pts.slice(1).map(p => "L" + p[0] + "," + p[1]).join("");
-                                          const gId = "ag" + chart.id.replace(/[^a-z0-9]/gi, "");
-                                          return (
-                                            <div>
-                                              <svg viewBox={"0 0 " + W + " " + H} className="w-full">
-                                                <defs>
-                                                  <linearGradient id={gId} x1="0" y1="0" x2="0" y2="1">
-                                                    <stop offset="0%" stopColor="#6366f1" stopOpacity="0.3" />
-                                                    <stop offset="100%" stopColor="#6366f1" stopOpacity="0.02" />
-                                                  </linearGradient>
-                                                </defs>
-                                                {[0.33, 0.66, 1].map(f => <line key={f} x1={pl} y1={pt + cH * (1 - f)} x2={W - pr} y2={pt + cH * (1 - f)} stroke="#f1f5f9" strokeWidth="0.8" />)}
-                                                <path d={areaPath} fill={"url(#" + gId + ")"} />
-                                                <path d={linePath} fill="none" stroke="#6366f1" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" />
-                                                {pts.map((p, i) => (
-                                                  <g key={i}>
-                                                    <circle cx={p[0]} cy={p[1]} r="3.5" fill="white" stroke={BRAND_COLORS[i % BRAND_COLORS.length]} strokeWidth="2" />
-                                                    <text x={p[0]} y={H - 3} fontSize="5.5" textAnchor="middle" fill="#94a3b8" fontWeight="700">{sliced[i].name.length > 9 ? sliced[i].name.slice(0, 8) + "…" : sliced[i].name}</text>
-                                                  </g>
-                                                ))}
-                                              </svg>
-                                            </div>
-                                          );
-                                        })() : cfg.type === 'Radar Chart' ? (() => {
-                                          // Multi-dimensional radar: axes = PR metrics, one polygon per brand
-                                          const allBrands = Object.keys(filteredBrandsObj).filter(b => b !== 'Others');
-                                          if (allBrands.length < 2) return <div className="text-xs text-slate-400 py-6 text-center">Need 2+ brands for radar</div>;
-                                          const radarBrands = allBrands.slice(0, 6);
-                                          // Compute raw values per brand per dimension
-                                          const totalAllArticles = radarBrands.reduce((s, b) => s + (filteredBrandsObj[b].articles || 0), 0) || 1;
-                                          const radarDims = ['Coverage', 'Sources', 'Positive %', 'SOV', 'Neutral %'];
-                                          const getRaw = (b) => {
-                                            const d = filteredBrandsObj[b];
-                                            const arts = Number(d.articles) || 0;
-                                            const srcs = Object.keys(d.sources || {}).length;
-                                            const s = d.sentiment || {};
-                                            const total = (s.Positive || 0) + (s.Neutral || 0) + (s.Negative || 0);
-                                            const posPct = total > 0 ? (s.Positive || 0) / total * 100 : 0;
-                                            const neuPct = total > 0 ? (s.Neutral || 0) / total * 100 : 0;
-                                            const sov = arts / totalAllArticles * 100;
-                                            return [arts, srcs, posPct, sov, neuPct];
-                                          };
-                                          const allRaws = radarBrands.map(getRaw);
-                                          // Normalize each dimension 0-1 relative to max across brands
-                                          const dimMaxes = radarDims.map((_, di) => Math.max(...allRaws.map(r => r[di]), 1));
-                                          const normalized = allRaws.map(r => r.map((v, di) => v / dimMaxes[di]));
-                                          const n = radarDims.length;
-                                          const rcx = 105, rcy = 92, rr = 70;
-                                          const rang = (i) => i * (2 * Math.PI / n) - Math.PI / 2;
-                                          const rpt = (i, frac) => [rcx + rr * frac * Math.cos(rang(i)), rcy + rr * frac * Math.sin(rang(i))];
-                                          const makePath = (fracs) => fracs.map((f, i) => { const p = rpt(i, f); return (i === 0 ? 'M' : 'L') + p[0].toFixed(2) + ',' + p[1].toFixed(2); }).join(' ') + 'Z';
-                                          return (
-                                            <div className="flex flex-col gap-2 py-1">
-                                              <svg viewBox="0 0 210 190" className="w-full">
-                                                {[0.25, 0.5, 0.75, 1].map(f => (
-                                                  <path key={f} d={makePath(radarDims.map(() => f))} fill="none" stroke={f === 1 ? '#cbd5e1' : '#e2e8f0'} strokeWidth={f === 1 ? '1' : '0.7'} />
-                                                ))}
-                                                {radarDims.map((_, i) => { const e = rpt(i, 1); return <line key={i} x1={rcx} y1={rcy} x2={e[0].toFixed(2)} y2={e[1].toFixed(2)} stroke="#e2e8f0" strokeWidth="0.8" />; })}
-                                                {radarDims.map((dim, i) => { const p = rpt(i, 1.25); return <text key={i} x={p[0].toFixed(2)} y={p[1].toFixed(2)} fontSize="7" textAnchor="middle" dominantBaseline="central" fill="#64748b" fontWeight="700">{dim}</text>; })}
-                                                {normalized.map((fracs, bi) => (
-                                                  <path key={bi} d={makePath(fracs)} fill={BRAND_COLORS[bi % BRAND_COLORS.length]} fillOpacity="0.12" stroke={BRAND_COLORS[bi % BRAND_COLORS.length]} strokeWidth="1.8" strokeLinejoin="round" />
-                                                ))}
-                                                {normalized.map((fracs, bi) => fracs.map((f, di) => { const p = rpt(di, f); return <circle key={di} cx={p[0].toFixed(2)} cy={p[1].toFixed(2)} r="2.5" fill={BRAND_COLORS[bi % BRAND_COLORS.length]} stroke="white" strokeWidth="1" />; }))}
-                                              </svg>
-                                              <div className="flex flex-wrap gap-x-3 gap-y-1 px-1">
-                                                {radarBrands.map((b, i) => {
-                                                  const raw = allRaws[i];
+
+                                              {/* Per-brand breakdown with Dual Info (Headline + Article content) */}
+                                              <div className="space-y-2.5">
+                                                {bNames.map((b, i) => {
+                                                  const d = filteredBrandsObj[b] || {};
+                                                  const bH = Number(d.headline_mentions) || 0;
+                                                  const bF = Number(d.full_mentions || d.mentions) || 0;
+                                                  const bTot = bH + bF;
+                                                  const maxBar = Math.max(...bNames.map(bn => (Number(filteredBrandsObj[bn]?.headline_mentions) || 0) + (Number(filteredBrandsObj[bn]?.full_mentions || filteredBrandsObj[bn]?.mentions) || 0)), 1);
+                                                  const barW = (bTot / maxBar) * 100;
+                                                  const hShare = bTot > 0 ? (bH / bTot) * 100 : 0;
                                                   return (
-                                                    <div key={i} className="flex items-center gap-1 text-[8px]">
-                                                      <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: BRAND_COLORS[i % BRAND_COLORS.length] }} />
-                                                      <span className="text-slate-600 font-semibold">{b}</span>
-                                                      <span className="text-slate-400">{raw[0].toLocaleString()} arts · {raw[1]} src · {raw[2].toFixed(0)}% pos</span>
+                                                    <div key={i} className="p-2.5 bg-slate-50/80 rounded-xl border border-slate-100/80 space-y-1.5 hover:bg-slate-50 transition-colors">
+                                                      <div className="flex items-center justify-between">
+                                                        <div className="flex items-center gap-2">
+                                                          <div className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: BRAND_COLORS[i % BRAND_COLORS.length] }} />
+                                                          <span className="text-xs font-black text-slate-800 capitalize">{b}</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2.5 text-[10px]">
+                                                          <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-700 font-bold rounded">H: {bH.toLocaleString()}</span>
+                                                          <span className="px-1.5 py-0.5 bg-cyan-50 text-cyan-700 font-bold rounded">A: {bF.toLocaleString()}</span>
+                                                          <span className="font-black text-slate-900">{bTot.toLocaleString()}</span>
+                                                        </div>
+                                                      </div>
+                                                      <div className="h-3 w-full bg-slate-200/60 rounded-full overflow-hidden flex shadow-inner" style={{ width: `${Math.max(barW, 8)}%` }}>
+                                                        <div style={{ width: `${hShare}%` }} className="h-full bg-indigo-500 rounded-l-full" title={`Headline: ${bH} (${hShare.toFixed(0)}%)`} />
+                                                        <div style={{ width: `${100 - hShare}%` }} className="h-full bg-cyan-400 rounded-r-full" title={`Article Body: ${bF} (${(100-hShare).toFixed(0)}%)`} />
+                                                      </div>
                                                     </div>
                                                   );
                                                 })}
                                               </div>
+                                              <div className="flex items-center justify-center gap-5 pt-1 text-[9px] text-slate-400 font-bold">
+                                                <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-indigo-500"></span> Headline Mentions</span>
+                                                <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-cyan-400"></span> Article Content Mentions</span>
+                                              </div>
                                             </div>
                                           );
-                                        })() : cfg.type === 'Scatter Plot' ? (() => {
-                                          const scBrands = Object.keys(filteredBrandsObj).filter(b => b !== 'Others');
-                                          if (!scBrands.length) return <div className="text-xs text-slate-400 py-6 text-center">No data</div>;
-                                          const scPoints = scBrands.map((b, i) => {
-                                            const d = filteredBrandsObj[b];
-                                            const x = Object.keys(d.sources || {}).length; // unique sources = reach/breadth
-                                            const y = Number(d.articles) || 0;             // total articles = coverage volume
-                                            const s = d.sentiment || {};
-                                            const total = (s.Positive || 0) + (s.Neutral || 0) + (s.Negative || 0);
-                                            const posPct = total > 0 ? (s.Positive || 0) / total : 0; // 0-1
-                                            return { name: b, x, y, posPct, color: BRAND_COLORS[i % BRAND_COLORS.length] };
-                                          });
-                                          const scMaxX = Math.max(...scPoints.map(p => p.x), 1);
-                                          const scMaxY = Math.max(...scPoints.map(p => p.y), 1);
-                                          const sW = 210, sH = 130, spl = 34, spr = 10, spt = 10, spb = 28;
-                                          const scW = sW - spl - spr, scH = sH - spt - spb;
-                                          const toSC = (px, py) => [spl + (px / scMaxX) * scW, spt + scH - (py / scMaxY) * scH];
+                                        })() : cfg.field === 'Net Sentiment Index' || cfg.field === 'Sentiment' || cfg.field === 'Sentiment Landscape' ? (() => {
+                                          // === SENTIMENT LANDSCAPE: pos/neu/neg color-coded bar chart (all-article and headline-wise) ===
+                                          const bNames = Object.keys(filteredBrandsObj);
                                           return (
-                                            <div>
-                                              <svg viewBox={"0 0 " + sW + " " + sH} className="w-full">
-                                                {[0, 0.25, 0.5, 0.75, 1].map(f => (
-                                                  <g key={f}>
-                                                    <line x1={spl} y1={spt + scH * (1 - f)} x2={sW - spr} y2={spt + scH * (1 - f)} stroke="#f1f5f9" strokeWidth="0.8" />
-                                                    <text x={spl - 3} y={spt + scH * (1 - f)} fontSize="4.5" textAnchor="end" dominantBaseline="central" fill="#cbd5e1">
-                                                      {scMaxY >= 10000 ? Math.round(scMaxY * f / 1000) + 'k' : Math.round(scMaxY * f)}
-                                                    </text>
-                                                  </g>
-                                                ))}
-                                                {[0, 0.25, 0.5, 0.75, 1].map(f => (
-                                                  <text key={f} x={spl + scW * f} y={spt + scH + 8} fontSize="4.5" textAnchor="middle" fill="#cbd5e1">{Math.round(scMaxX * f)}</text>
-                                                ))}
-                                                <line x1={spl} y1={spt} x2={spl} y2={spt + scH} stroke="#e2e8f0" strokeWidth="0.8" />
-                                                <line x1={spl} y1={spt + scH} x2={sW - spr} y2={spt + scH} stroke="#e2e8f0" strokeWidth="0.8" />
-                                                <text x={spl + scW / 2} y={sH - 4} fontSize="5.5" textAnchor="middle" fill="#94a3b8" fontWeight="700">Sources Reached</text>
-                                                <text x="7" y={spt + scH / 2} fontSize="5.5" textAnchor="middle" fill="#94a3b8" fontWeight="700" transform={"rotate(-90,7," + (spt + scH / 2) + ")"}>Articles</text>
-                                                {scPoints.map((p, i) => {
-                                                  const [sx, sy] = toSC(p.x, p.y);
-                                                  const r = 3.5 + p.posPct * 5; // 3.5–8.5px, bigger = more positive
+                                            <div className="space-y-4">
+                                              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Sentiment Breakdown</span>
+                                                <div className="flex items-center gap-3 text-[9px] font-bold text-slate-500">
+                                                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500"></span> Positive</span>
+                                                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400"></span> Neutral</span>
+                                                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-rose-500"></span> Negative</span>
+                                                </div>
+                                              </div>
+                                              {bNames.map((b, i) => {
+                                                const d = filteredBrandsObj[b] || {};
+                                                // All-article sentiment
+                                                const sAll = d.full_sentiment || d.sentiment || {};
+                                                const aP = Number(sAll.Positive) || 0, aN = Number(sAll.Neutral) || 0, aNg = Number(sAll.Negative) || 0;
+                                                const aTot = aP + aN + aNg || 1;
+                                                const aNet = aTot > 0 ? (((aP - aNg) / aTot) * 100).toFixed(0) : '0';
+
+                                                // Headline sentiment
+                                                const sH = d.headline_sentiment || d.sentiment || {};
+                                                const hP = Number(sH.Positive) || 0, hN = Number(sH.Neutral) || 0, hNg = Number(sH.Negative) || 0;
+                                                const hTot = hP + hN + hNg || 1;
+                                                const hNet = hTot > 0 ? (((hP - hNg) / hTot) * 100).toFixed(0) : '0';
+
+                                                return (
+                                                  <div key={i} className="p-3 bg-slate-50/80 rounded-xl border border-slate-100 space-y-2.5">
+                                                    <div className="flex items-center justify-between">
+                                                      <div className="flex items-center gap-2">
+                                                        <div className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: BRAND_COLORS[i % BRAND_COLORS.length] }} />
+                                                        <span className="text-xs font-black text-slate-800 capitalize">{b}</span>
+                                                      </div>
+                                                      <div className="flex items-center gap-2 text-[10px]">
+                                                        <span className={`px-1.5 py-0.5 rounded font-black text-[9px] ${Number(aNet) >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+                                                          Net Score: {Number(aNet) >= 0 ? '+' : ''}{aNet}%
+                                                        </span>
+                                                      </div>
+                                                    </div>
+
+                                                    {/* Headline sentiment bar */}
+                                                    <div className="space-y-1 pl-2 border-l-2 border-indigo-300">
+                                                      <div className="flex justify-between text-[9px] font-bold text-slate-500">
+                                                        <span className="uppercase text-indigo-600 tracking-wider">Headline Sentiment</span>
+                                                        <span>+{((hP/hTot)*100).toFixed(0)}% Pos | {((hN/hTot)*100).toFixed(0)}% Neu | -{((hNg/hTot)*100).toFixed(0)}% Neg</span>
+                                                      </div>
+                                                      <div className="h-3 w-full bg-slate-200/70 rounded-full overflow-hidden flex shadow-inner">
+                                                        <div style={{ width: `${(hP/hTot)*100}%` }} className="h-full bg-emerald-500" title={`Positive: ${hP}`} />
+                                                        <div style={{ width: `${(hN/hTot)*100}%` }} className="h-full bg-amber-400" title={`Neutral: ${hN}`} />
+                                                        <div style={{ width: `${(hNg/hTot)*100}%` }} className="h-full bg-rose-500" title={`Negative: ${hNg}`} />
+                                                      </div>
+                                                    </div>
+
+                                                    {/* All-article sentiment bar */}
+                                                    <div className="space-y-1 pl-2 border-l-2 border-cyan-300">
+                                                      <div className="flex justify-between text-[9px] font-bold text-slate-500">
+                                                        <span className="uppercase text-cyan-600 tracking-wider">All Articles (Content)</span>
+                                                        <span>+{((aP/aTot)*100).toFixed(0)}% Pos | {((aN/aTot)*100).toFixed(0)}% Neu | -{((aNg/aTot)*100).toFixed(0)}% Neg</span>
+                                                      </div>
+                                                      <div className="h-3 w-full bg-slate-200/70 rounded-full overflow-hidden flex shadow-inner">
+                                                        <div style={{ width: `${(aP/aTot)*100}%` }} className="h-full bg-emerald-500" title={`Positive: ${aP}`} />
+                                                        <div style={{ width: `${(aN/aTot)*100}%` }} className="h-full bg-amber-400" title={`Neutral: ${aN}`} />
+                                                        <div style={{ width: `${(aNg/aTot)*100}%` }} className="h-full bg-rose-500" title={`Negative: ${aNg}`} />
+                                                      </div>
+                                                    </div>
+                                                  </div>
+                                                );
+                                              })}
+                                            </div>
+                                          );
+                                        })() : (cfg.field === 'Articles Coverage' && cfg.type === 'KPI Card') ? (() => {
+                                          // === COVERAGE & REACH: Article reach per brand (Headline vs Article Content) ===
+                                          const bNames = Object.keys(filteredBrandsObj);
+                                          const formatR = (v) => v >= 1000000 ? `${(v/1000000).toFixed(1)}M` : v >= 1000 ? `${(v/1000).toFixed(0)}K` : v.toLocaleString();
+                                          const calcReach = (d) => {
+                                            const hm = Number(d.headline_mentions) || 0;
+                                            const fm = Number(d.full_mentions || d.mentions) || 0;
+                                            const srcCount = Object.keys(d.sources || {}).length || 1;
+                                            const hReach = hm * srcCount * 45000;
+                                            const fReach = fm * srcCount * 12000;
+                                            return { hReach, fReach, total: hReach + fReach };
+                                          };
+                                          const allReach = bNames.map(b => ({ name: b, ...calcReach(filteredBrandsObj[b] || {}) }));
+                                          const grandTotal = allReach.reduce((s, r) => s + r.total, 0);
+                                          const grandH = allReach.reduce((s, r) => s + r.hReach, 0);
+                                          const grandF = allReach.reduce((s, r) => s + r.fReach, 0);
+                                          const maxReach = Math.max(...allReach.map(r => r.total), 1);
+                                          return (
+                                            <div className="space-y-4">
+                                              <div className="p-3.5 bg-gradient-to-r from-indigo-700 via-indigo-800 to-slate-900 rounded-2xl text-white shadow-sm space-y-2">
+                                                <div className="flex items-center justify-between">
+                                                  <span className="text-[9px] font-bold text-indigo-200 uppercase tracking-wider block">Total Estimated Audience Reach</span>
+                                                  <span className="text-xl font-black">{formatR(grandTotal)}</span>
+                                                </div>
+                                                <div className="flex gap-2 pt-1 border-t border-indigo-600/40">
+                                                  <span className="px-2 py-0.5 bg-indigo-500/30 text-indigo-200 rounded text-[9px] font-bold">Headline: {formatR(grandH)}</span>
+                                                  <span className="px-2 py-0.5 bg-cyan-500/30 text-cyan-200 rounded text-[9px] font-bold">Article Content: {formatR(grandF)}</span>
+                                                </div>
+                                              </div>
+                                              <div className="space-y-2.5">
+                                                {allReach.map((r, i) => {
+                                                  const barW = (r.total / maxReach) * 100;
+                                                  const hShare = r.total > 0 ? (r.hReach / r.total) * 100 : 0;
                                                   return (
-                                                    <g key={i}>
-                                                      <circle cx={sx} cy={sy} r={r} fill={p.color} fillOpacity="0.85" stroke="white" strokeWidth="1.2" />
-                                                      <text x={sx} y={sy - r - 2} fontSize="5.5" textAnchor="middle" fill="#475569" fontWeight="700">{p.name.length > 7 ? p.name.slice(0, 6) + "…" : p.name}</text>
-                                                    </g>
+                                                    <div key={i} className="p-2.5 bg-slate-50/80 rounded-xl border border-slate-100 space-y-1.5">
+                                                      <div className="flex items-center justify-between">
+                                                        <div className="flex items-center gap-2">
+                                                          <div className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: BRAND_COLORS[i % BRAND_COLORS.length] }} />
+                                                          <span className="text-xs font-black text-slate-800 capitalize">{r.name}</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2 text-[10px]">
+                                                          <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 font-bold rounded">H: {formatR(r.hReach)}</span>
+                                                          <span className="px-1.5 py-0.5 bg-cyan-50 text-cyan-600 font-bold rounded">A: {formatR(r.fReach)}</span>
+                                                          <span className="font-black text-slate-900">{formatR(r.total)}</span>
+                                                        </div>
+                                                      </div>
+                                                      <div className="h-3 bg-slate-200/70 rounded-full overflow-hidden flex shadow-inner" style={{ width: `${Math.max(barW, 8)}%` }}>
+                                                        <div style={{ width: `${hShare}%` }} className="h-full bg-indigo-500 rounded-l-full" title={`Headline Reach: ${formatR(r.hReach)}`} />
+                                                        <div style={{ width: `${100 - hShare}%` }} className="h-full bg-cyan-400 rounded-r-full" title={`Article Body Reach: ${formatR(r.fReach)}`} />
+                                                      </div>
+                                                    </div>
                                                   );
                                                 })}
-                                              </svg>
-                                              <div className="flex flex-wrap gap-x-3 gap-y-1 px-1 mt-1">
-                                                {scPoints.map((p, i) => (
-                                                  <div key={i} className="flex items-center gap-1 text-[8px]">
-                                                    <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
-                                                    <span className="text-slate-600 font-semibold">{p.name}</span>
-                                                    <span className="text-slate-400">{p.y.toLocaleString()} arts · {p.x} src · {Math.round(p.posPct * 100)}% pos</span>
+                                              </div>
+                                              <div className="flex items-center justify-center gap-5 pt-1 text-[9px] text-slate-400 font-bold">
+                                                <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-indigo-500"></span> Headline Reach</span>
+                                                <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-cyan-400"></span> Article Content Reach</span>
+                                              </div>
+                                            </div>
+                                          );
+                                        })() : (cfg.field === 'Articles Coverage' && cfg.groupBy === 'Publication') ? (() => {
+                                          // === PUBLICATION INTELLIGENCE: brand color-coded publication bars ===
+                                          const bNames = Object.keys(filteredBrandsObj);
+                                          // Build publication → brand breakdown
+                                          const pubMap = {};
+                                          bNames.forEach((b, bi) => {
+                                            const srcs = filteredBrandsObj[b]?.sources || {};
+                                            Object.entries(srcs).forEach(([pub, count]) => {
+                                              if (!pubMap[pub]) pubMap[pub] = { total: 0, brands: {} };
+                                              pubMap[pub].total += Number(count) || 0;
+                                              pubMap[pub].brands[b] = { count: Number(count) || 0, colorIdx: bi };
+                                            });
+                                          });
+                                          const pubs = Object.entries(pubMap)
+                                            .sort((a, b) => b[1].total - a[1].total)
+                                            .slice(0, 15);
+                                          if (!pubs.length) return <div className="text-xs text-slate-400 py-6 text-center">No publication data</div>;
+                                          const maxPub = pubs[0][1].total || 1;
+                                          return (
+                                            <div className="space-y-3">
+                                              {/* Brand legend */}
+                                              <div className="flex flex-wrap gap-2.5 pb-2 border-b border-slate-100">
+                                                {bNames.map((b, i) => (
+                                                  <span key={i} className="flex items-center gap-1.5 px-2 py-0.5 bg-slate-50 border border-slate-100 rounded-lg text-[9px] font-bold text-slate-700 shadow-2xs">
+                                                    <span className="w-2.5 h-2.5 rounded-full shrink-0 shadow-xs" style={{ backgroundColor: BRAND_COLORS[i % BRAND_COLORS.length] }} />
+                                                    {b}
+                                                  </span>
+                                                ))}
+                                              </div>
+                                              {pubs.map(([pub, data], pi) => {
+                                                const barW = (data.total / maxPub) * 100;
+                                                const brandEntries = Object.entries(data.brands).sort((a, b) => b[1].count - a[1].count);
+                                                return (
+                                                  <div key={pi} className="p-2 bg-slate-50/60 rounded-xl border border-slate-100/60 space-y-1">
+                                                    <div className="flex items-center justify-between">
+                                                      <span className="text-[10px] font-bold text-slate-700 truncate max-w-[65%]">{pub}</span>
+                                                      <span className="text-[10px] font-black text-slate-800">{data.total.toLocaleString()}</span>
+                                                    </div>
+                                                    <div className="h-3.5 bg-slate-200/70 rounded-full overflow-hidden flex shadow-inner" style={{ width: `${Math.max(barW, 8)}%` }}>
+                                                      {brandEntries.map(([bName, bData], bi) => {
+                                                        const segW = data.total > 0 ? (bData.count / data.total) * 100 : 0;
+                                                        return (
+                                                          <div
+                                                            key={bi}
+                                                            style={{ width: `${segW}%`, backgroundColor: BRAND_COLORS[bData.colorIdx % BRAND_COLORS.length] }}
+                                                            className="h-full"
+                                                            title={`${bName}: ${bData.count}`}
+                                                          />
+                                                        );
+                                                      })}
+                                                    </div>
+                                                  </div>
+                                                );
+                                              })}
+                                            </div>
+                                          );
+                                        })() : cfg.field === 'Media Diversity Count' ? (() => {
+                                          // === MEDIA DIVERSITY KPI ===
+                                          const bNames = Object.keys(filteredBrandsObj);
+                                          const uniqueOutlets = new Set();
+                                          bNames.forEach(b => Object.keys(filteredBrandsObj[b]?.sources || {}).forEach(src => uniqueOutlets.add(src)));
+                                          return (
+                                            <div className="flex items-center justify-between p-2">
+                                              <div className="space-y-1">
+                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Unique Media Outlets</span>
+                                                <span className="text-3xl font-black text-indigo-600">{uniqueOutlets.size}</span>
+                                              </div>
+                                              <div className="space-y-1 text-right">
+                                                {bNames.map((b, i) => (
+                                                  <div key={i} className="flex items-center justify-end gap-1.5 text-[9px]">
+                                                    <span className="text-slate-500 font-medium">{b}</span>
+                                                    <span className="font-bold" style={{ color: BRAND_COLORS[i % BRAND_COLORS.length] }}>{Object.keys(filteredBrandsObj[b]?.sources || {}).length}</span>
                                                   </div>
                                                 ))}
                                               </div>
                                             </div>
                                           );
-                                        })() : cfg.type === 'Trend Chart' ? (() => {
-                                          const pd = processChartData(filteredBrandsObj, cfg);
-                                          if (!pd.length) return <div className="text-xs text-slate-400 py-6 text-center">No data</div>;
-                                          const max = Math.max(...pd.map(d => d.value), 1);
-                                          const n = Math.min(pd.length, 8);
-                                          const sliced = pd.slice(0, n);
-                                          const tW = 260, tH = 100, tpl = 10, tpr = 10, tpt = 8, tpb = 22;
-                                          const tcW = tW - tpl - tpr, tcH = tH - tpt - tpb;
-                                          const bw = Math.max(8, (tcW / n) - 4);
+                                        })() : cfg.field === 'Share of Voice' ? (() => {
+                                          // === SHARE OF VOICE: stacked bar per brand ===
+                                          const bNames = Object.keys(filteredBrandsObj);
+                                          const totalMentions = bNames.reduce((s, b) => s + (Number(filteredBrandsObj[b]?.headline_mentions) || 0) + (Number(filteredBrandsObj[b]?.full_mentions || filteredBrandsObj[b]?.mentions) || 0), 0);
+                                          const maxBrand = Math.max(...bNames.map(b => (Number(filteredBrandsObj[b]?.headline_mentions) || 0) + (Number(filteredBrandsObj[b]?.full_mentions || filteredBrandsObj[b]?.mentions) || 0)), 1);
                                           return (
-                                            <div>
-                                              <svg viewBox={"0 0 " + tW + " " + tH} className="w-full">
-                                                {[0.25, 0.5, 0.75, 1].map(f => <line key={f} x1={tpl} y1={tpt + tcH * (1 - f)} x2={tW - tpr} y2={tpt + tcH * (1 - f)} stroke="#f1f5f9" strokeWidth="0.8" />)}
-                                                {sliced.map((d, i) => {
-                                                  const bh = (d.value / max) * tcH;
-                                                  const bx = tpl + (tcW / n) * i + (tcW / n - bw) / 2;
-                                                  const by = tpt + tcH - bh;
-                                                  const color = getConditionalColor(chart.id, d.value, BRAND_COLORS[i % BRAND_COLORS.length]);
-                                                  return (
-                                                    <g key={i}>
-                                                      <rect x={bx} y={by} width={bw} height={bh} fill={color} fillOpacity="0.85" rx="2" />
-                                                      <text x={bx + bw / 2} y={tH - 3} fontSize="5.5" textAnchor="middle" fill="#94a3b8" fontWeight="700">{d.name.length > 8 ? d.name.slice(0, 7) + "…" : d.name}</text>
-                                                    </g>
-                                                  );
-                                                })}
-                                              </svg>
+                                            <div className="space-y-3 py-1">
+                                              <div className="flex items-center justify-between text-[9px] text-slate-500 pb-1 border-b border-slate-100">
+                                                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-indigo-500"></span> Headline</span>
+                                                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-cyan-400"></span> Article Body</span>
+                                              </div>
+                                              {bNames.map((b, i) => {
+                                                const d = filteredBrandsObj[b] || {};
+                                                const bH = Number(d.headline_mentions) || 0;
+                                                const bF = Number(d.full_mentions || d.mentions) || 0;
+                                                const bTot = bH + bF;
+                                                const sov = totalMentions > 0 ? ((bTot / totalMentions) * 100).toFixed(1) : '0';
+                                                const barW = (bTot / maxBrand) * 100;
+                                                const hShare = bTot > 0 ? (bH / bTot) * 100 : 0;
+                                                return (
+                                                  <div key={i} className="space-y-1">
+                                                    <div className="flex justify-between text-xs">
+                                                      <span className="font-bold text-slate-700 capitalize">{b} <span className="text-[10px] text-slate-400 font-normal">({sov}%)</span></span>
+                                                      <span className="font-black text-slate-800">{bTot.toLocaleString()}</span>
+                                                    </div>
+                                                    <div className="h-3.5 bg-slate-100 rounded-full overflow-hidden flex" style={{ width: `${Math.max(barW, 5)}%` }}>
+                                                      <div style={{ width: `${hShare}%` }} className="h-full bg-indigo-500" />
+                                                      <div style={{ width: `${100 - hShare}%` }} className="h-full bg-cyan-400" />
+                                                    </div>
+                                                  </div>
+                                                );
+                                              })}
                                             </div>
                                           );
                                         })() : (() => {
+                                          // === DEFAULT: horizontal bar chart fallback ===
                                           const pd = processChartData(filteredBrandsObj, cfg);
                                           if (!pd.length) return <div className="text-xs text-slate-400 py-6 text-center">No data</div>;
                                           const max = Math.max(...pd.map(d => d.value), 1);

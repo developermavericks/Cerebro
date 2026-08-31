@@ -161,9 +161,13 @@ function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [], top
     results[brand] = {
       mentions: 0,
       articles: 0,
+      headline_mentions: 0,
+      full_mentions: 0,
       sources: {},
       timeline: {},
       sentiment: { Positive: 0, Neutral: 0, Negative: 0 },
+      headline_sentiment: { Positive: 0, Neutral: 0, Negative: 0 },
+      full_sentiment: { Positive: 0, Neutral: 0, Negative: 0 },
       article_samples: { Positive: [], Neutral: [], Negative: [] }
     };
   }
@@ -279,6 +283,22 @@ function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [], top
         results[brandName].sources[source] = (results[brandName].sources[source] || 0) + matches.length;
         results[brandName].timeline[dateKey] = (results[brandName].timeline[dateKey] || 0) + matches.length;
 
+        // Classify headline vs body
+        const normalizedTitle = normalizeText(title);
+        const normalizedBody = normalizeText(summary + ' ' + fullBody);
+        const termRegex = new RegExp('\\b' + escapeRegExp(term) + '\\b', 'i');
+        const inHeadline = termRegex.test(normalizedTitle);
+        const inBody = termRegex.test(normalizedBody);
+
+        if (inHeadline) {
+          results[brandName].headline_mentions += 1;
+        }
+        if (inBody) {
+          results[brandName].full_mentions += 1;
+        } else if (!inHeadline) {
+          results[brandName].full_mentions += 1; // fallback
+        }
+
         // Sentiment analysis on matching sentences
         const sentences = rawContent.split(/[.!?]+\s+/);
         for (const sentence of sentences) {
@@ -291,6 +311,16 @@ function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [], top
             else if (res.score < -1) sentCat = "Negative";
 
             results[brandName].sentiment[sentCat] += 1;
+
+            // Headline sentiment
+            if (inHeadline) {
+              const titleRes = sentiment.analyze(title);
+              const titleSentCat = titleRes.score > 1 ? 'Positive' : titleRes.score < -1 ? 'Negative' : 'Neutral';
+              results[brandName].headline_sentiment[titleSentCat] += 1;
+            }
+            // Full/body sentiment
+            results[brandName].full_sentiment[sentCat] += 1;
+
             if (results[brandName].article_samples[sentCat].length < 20) {
               const url = article['Resolved URL'] || article['URL'] || article['link'] || '';
               const titleToCheck = title || 'No Title';
