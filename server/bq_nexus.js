@@ -48,13 +48,10 @@ function getBrandSearchTerms(keyword) {
   return [(keyword || '').trim()].filter(Boolean);
 }
 
-/**
- * Wrap terms in BigQuery SEARCH backtick-quotes for multi-word phrases.
- */
 function toBQSearchQuery(keyword) {
   const terms = getBrandSearchTerms(keyword);
   if (!terms.length) return '';
-  return terms.map(t => t.includes(' ') ? `\`${t}\`` : t).join(' ');
+  return terms.map(t => t.includes(' ') ? `"${t}"` : t).join(' OR ');
 }
 
 /**

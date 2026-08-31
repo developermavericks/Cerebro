@@ -5099,7 +5099,7 @@ ${bodyHtml}
         const data = await res.json();
         setCuratedAnalysisResults(data);
         logActivity('keyword_search', `brands:${targetBrandsInput} sector:${analysisSector}`, 'keyword-search');
-        const analyzedBrands = Object.keys(data.brands || {});
+        const analyzedBrands = Object.keys(data.brands || {}).filter(b => b.toLowerCase() !== 'others');
         if (analyzedBrands.length > 0) setCuratedDrillBrand(analyzedBrands[0]);
         const today = new Date().toDateString();
         const saved = JSON.parse(localStorage.getItem('cerebro_kw_usage') || '{"date":"","count":0}');
@@ -7864,10 +7864,19 @@ ${bodyHtml}
 
                           <div className="overflow-x-auto">
                             {(() => {
-                              const articles = kwArticles;
-                              const total = kwArticlesTotal;
-                              const totalPages = kwArticlesTotalPages;
-                              const page = kwArticlesPage;
+                              const sampleList = (() => {
+                                const samples = curatedAnalysisResults?.brands?.[curatedDrillBrand]?.article_samples || {};
+                                if (curatedDrillSentiment === 'All') {
+                                  return [...(samples.Positive || []), ...(samples.Neutral || []), ...(samples.Negative || [])];
+                                }
+                                return samples[curatedDrillSentiment] || [];
+                              })();
+
+                              const hasKwArticles = kwArticles && kwArticles.length > 0;
+                              const articles = hasKwArticles ? kwArticles : sampleList;
+                              const total = hasKwArticles ? kwArticlesTotal : sampleList.length;
+                              const totalPages = hasKwArticles ? kwArticlesTotalPages : Math.max(1, Math.ceil(sampleList.length / 15));
+                              const page = hasKwArticles ? kwArticlesPage : brandArticlePage;
 
                               if (kwArticlesLoading) return (
                                 <div className="text-center py-12 text-slate-400 font-bold text-xs animate-pulse">Loading articles…</div>
