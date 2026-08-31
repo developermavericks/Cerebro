@@ -281,7 +281,7 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
     const totalCount = parseInt(totalRes.rows[0]?.count || 0, 10);
     othersCount = Math.max(0, totalCount - totalKeywordArticles);
 
-    // Sample up to 2000 deduplicated articles for sentiment (dedup by title to avoid sector overlap dupes)
+    // Sample up to 25000 deduplicated articles for sentiment (dedup by title to avoid sector overlap dupes)
     const sampleRes = await db.query(`
       SELECT "Title", "Resolved URL", "Published At", "Publisher/Agency", "Summary", "Full Body"
       FROM (
@@ -297,6 +297,7 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
           FROM nexus_articles
           WHERE (${searchConds})${extraClauses}
           ORDER BY published_at DESC
+          LIMIT 25000
         ) candidates
         ORDER BY LOWER(title), published_at DESC
       ) deduped
