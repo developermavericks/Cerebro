@@ -13431,63 +13431,55 @@ const spec = JSON.parse(response.text);
                     summary: `Assessment for topic: ${newReportForm.topic || 'All'}${newReportForm.keywords ? ' (' + newReportForm.keywords + ')' : ''} covering brand: ${newReportForm.brandKeywords || 'N/A'}${newReportForm.competitorKeywords ? ' against competitor: ' + newReportForm.competitorKeywords : ''}.`,
                     tags: ['Intelligence', 'Analysis'],
                     metrics: { accuracy: '99.8%', confidence: 'Very High', sourcesCount: Math.floor(Math.random() * 100) + 50, startDate: newReportForm.startDate || '', endDate: newReportForm.endDate || '' },
-                    sections: (() => {
-                      const hasCompetitors = !!(newReportForm.competitorKeywords && newReportForm.competitorKeywords.trim());
-                      const secs = [
-                        {
-                          id: `${generatedId}-s1`,
-                          title: '1. Brand Overview',
-                          content: '',
-                          images: [],
-                          charts: [
-                            { id: `${generatedId}-c1`, type: 'KPI Card',  field: 'Total Mentions', width: 'full', align: 'center', config: { field: 'Total Mentions', groupBy: 'Brand', sort: 'Descending', maxItems: 'All' } },
-                          ]
-                        },
-                      ];
-                      // Only add Share of Voice if competitors are provided
-                      if (hasCompetitors) {
-                        secs.push({
-                          id: `${generatedId}-s2`,
-                          title: '2. Share of Voice Analysis',
-                          content: '',
-                          images: [],
-                          charts: [
-                            { id: `${generatedId}-c2`, type: 'Bar Chart', field: 'Share of Voice', width: 'full', align: 'center', config: { field: 'Share of Voice', groupBy: 'Brand', sort: 'Descending', maxItems: 'All' } },
-                          ]
-                        });
+                    sections: [
+                      {
+                        id: `${generatedId}-s1`,
+                        title: '1. Brand Overview',
+                        content: '',
+                        images: [],
+                        charts: [
+                          { id: `${generatedId}-c1`, type: 'KPI Card',  field: 'Total Mentions',  width: 'full', align: 'center', config: { field: 'Total Mentions',  groupBy: 'Brand', sort: 'Descending', maxItems: 'All' } },
+                          { id: `${generatedId}-c2`, type: 'Bar Chart', field: 'Share of Voice',  width: 'full', align: 'center', config: { field: 'Share of Voice',  groupBy: 'Brand', sort: 'Descending', maxItems: 'All' } },
+                        ]
+                      },
+                      {
+                        id: `${generatedId}-s2`,
+                        title: '2. Share of Voice Analysis',
+                        content: '',
+                        images: [],
+                        charts: [
+                          { id: `${generatedId}-c4`, type: 'Bar Chart', field: 'Articles Coverage', width: 'full', align: 'center', config: { field: 'Articles Coverage', groupBy: 'Brand', sort: 'Descending', maxItems: 'All' } },
+                        ]
+                      },
+                      {
+                        id: `${generatedId}-s3`,
+                        title: '3. Sentiment Landscape',
+                        content: '',
+                        images: [],
+                        charts: [
+                          { id: `${generatedId}-c6`, type: 'Bar Chart', field: 'Net Sentiment Index', width: 'full', align: 'center', config: { field: 'Net Sentiment Index', groupBy: 'Brand', sort: 'Descending', maxItems: 'All' } },
+                        ]
+                      },
+                      {
+                        id: `${generatedId}-s4`,
+                        title: '4. Coverage & Reach',
+                        content: '',
+                        images: [],
+                        charts: [
+                          { id: `${generatedId}-c8`, type: 'KPI Card', field: 'Articles Coverage', width: 'full', align: 'center', config: { field: 'Articles Coverage', groupBy: 'Brand', sort: 'Descending', maxItems: 'All' } },
+                        ]
+                      },
+                      {
+                        id: `${generatedId}-s5`,
+                        title: '5. Publication Intelligence',
+                        content: '',
+                        images: [],
+                        charts: [
+                          { id: `${generatedId}-c10`, type: 'Bar Chart', field: 'Articles Coverage', width: 'full', align: 'center', config: { field: 'Articles Coverage', groupBy: 'Publication', sort: 'Descending', maxItems: 'Top 15' } },
+                          { id: `${generatedId}-c13`, type: 'KPI Card',  field: 'Media Diversity Count', width: 'full', align: 'center', config: { field: 'Media Diversity Count', groupBy: 'Brand', sort: 'Descending', maxItems: 'All' } },
+                        ]
                       }
-                      secs.push(
-                        {
-                          id: `${generatedId}-s3`,
-                          title: hasCompetitors ? '3. Sentiment Landscape' : '2. Sentiment Landscape',
-                          content: '',
-                          images: [],
-                          charts: [
-                            { id: `${generatedId}-c6`, type: 'Bar Chart', field: 'Net Sentiment Index', width: 'full', align: 'center', config: { field: 'Net Sentiment Index', groupBy: 'Brand', sort: 'Descending', maxItems: 'All' } },
-                          ]
-                        },
-                        {
-                          id: `${generatedId}-s4`,
-                          title: hasCompetitors ? '4. Coverage & Reach' : '3. Coverage & Reach',
-                          content: '',
-                          images: [],
-                          charts: [
-                            { id: `${generatedId}-c8`, type: 'KPI Card', field: 'Articles Coverage', width: 'full', align: 'center', config: { field: 'Articles Coverage', groupBy: 'Brand', sort: 'Descending', maxItems: 'All' } },
-                          ]
-                        },
-                        {
-                          id: `${generatedId}-s5`,
-                          title: hasCompetitors ? '5. Publication Intelligence' : '4. Publication Intelligence',
-                          content: '',
-                          images: [],
-                          charts: [
-                            { id: `${generatedId}-c10`, type: 'Bar Chart', field: 'Articles Coverage', width: 'full', align: 'center', config: { field: 'Articles Coverage', groupBy: 'Publication', sort: 'Descending', maxItems: 'Top 15' } },
-                            { id: `${generatedId}-c13`, type: 'KPI Card',  field: 'Media Diversity Count', width: 'full', align: 'center', config: { field: 'Media Diversity Count', groupBy: 'Brand', sort: 'Descending', maxItems: 'All' } },
-                          ]
-                        }
-                      );
-                      return secs;
-                    })()
+                    ]
                   };
                   // Append AI Blueprint section if the user described any charts
                   const aiLines = createReportAiPrompts.split('\n').map(l => l.trim()).filter(Boolean);
