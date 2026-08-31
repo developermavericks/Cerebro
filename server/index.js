@@ -15,6 +15,8 @@ const { Groq } = require('groq-sdk');
 
 // BigQuery integration (graceful — if not installed, falls back to legacy analyzer)
 const bq = require('./bigquery');
+// BigQuery Nexus query helper — all nexus_articles reads go through BigQuery
+const bqNexus = require('./bq_nexus');
 let analyzerBQ = null;
 try {
   analyzerBQ = require('./analyzer_bigquery');
@@ -364,7 +366,7 @@ app.post('/api/activity/log', getUserId, async (req, res) => {
 // GET /api/admin/portal-data — all users + system stats (dev admin only)
 app.get('/api/admin/portal-data', getUserId, requireDevAdmin, async (req, res) => {
   try {
-    const [usersRes, statsRes] = await Promise.all([
+    const [usersRes, statsRes, bqArticleCount] = await Promise.all([
       db.query(`
         SELECT u.id, u.name, u.email, u.role, u.created_at,
                s.last_activity, s.ip_address,
@@ -377,12 +379,12 @@ app.get('/api/admin/portal-data', getUserId, requireDevAdmin, async (req, res) =
       db.query(`
         SELECT
           (SELECT COUNT(*) FROM users)::int AS total_users,
-          (SELECT COUNT(*) FROM nexus_articles)::int AS total_articles,
           (SELECT COUNT(*) FROM reports)::int AS total_reports,
           (SELECT COUNT(*) FROM companies WHERE is_active = true OR is_active IS NULL)::int AS active_brands
-      `)
+      `),
+      bqNexus.totalCount().catch(() => 0)
     ]);
-    res.json({ users: usersRes.rows, stats: statsRes.rows[0] });
+    res.json({ users: usersRes.rows, stats: { ...statsRes.rows[0], total_articles: bqArticleCount } });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -752,14 +754,8 @@ app.get('/api/competitor-mentions', getUserId, async (req, res) => {
         return total;
       }
 
-      // Fallback: full-body FTS search on nexus_articles using GIN index
-      const articleRes = await db.query(
-        `SELECT COUNT(*) as count
-         FROM nexus_articles a
-         WHERE (to_tsvector('simple', coalesce(a.title,'') || ' ' || coalesce(a.summary,'')) @@ plainto_tsquery('simple', $1) OR to_tsvector('simple', coalesce(a.full_body,'')) @@ plainto_tsquery('simple', $1))`,
-        [cleanKeyword]
-      );
-      return parseInt(articleRes.rows[0].count, 10) || 0;
+      // Fallback: full-text search on BigQuery articles (title + full_body)
+      return bqNexus.searchCount(cleanKeyword);
     };
 
     const count1 = await getMentionsForKeyword(keyword1);
@@ -867,20 +863,25 @@ app.get('/api/competitor-analysis', getUserId, async (req, res) => {
       if (endDate)   { params.push(endDate);   extra += ` AND a.published_at < ($${params.length}::date + INTERVAL '1 day')`; }
       if (dbSector)  { params.push(dbSector);  extra += ` AND a.sector = $${params.length}`; }
 
-      // Always use nexus_articles for consistent cross-brand comparisons
-      const queryText = `
-        SELECT a.title, a.url AS link, a.agency AS source, a.sentiment, a.published_at AS created_at,
-               a.region, a.sector,
-               d.page_rank_decimal, d.rank
-        FROM nexus_articles a
-        LEFT JOIN domain_authority_cache d
-          ON d.domain = regexp_replace(substring(a.url from 'https?://([^/]+)'), '^www\\.', '')
-        WHERE to_tsvector('simple', coalesce(a.title,'') || ' ' || coalesce(a.summary,'')) @@ ${fn}('simple', $1)${extra}
-        ORDER BY a.published_at DESC
-      `;
-
-      const articleRes = await db.query(queryText, params);
-      const rows = articleRes.rows;
+      // Query BigQuery for consistent cross-brand comparisons across full history
+      const bqRows = await bqNexus.searchArticles(cleanKeyword, {
+        sector: dbSector || undefined,
+        startDate: startDate || undefined,
+        endDate: endDate || undefined,
+      });
+      // Enrich with domain authority from Cloud SQL (batch lookup)
+      const domainMap = await bqNexus.getDomainAuthority(bqRows.map(r => r.url).filter(Boolean));
+      const rows = bqRows.map(r => ({
+        title:              r.title,
+        link:               r.url,
+        source:             r.agency,
+        sentiment:          r.sentiment,
+        created_at:         r.published_at,
+        region:             r.region,
+        sector:             r.sector,
+        page_rank_decimal:  (() => { try { const d = new URL(r.url||'').hostname.replace(/^www\./,''); return domainMap[d]?.page_rank_decimal ?? null; } catch(_){return null;} })(),
+        rank:               (() => { try { const d = new URL(r.url||'').hostname.replace(/^www\./,''); return domainMap[d]?.rank ?? null; } catch(_){return null;} })(),
+      }));
       const mentionsCount = rows.length;
 
       const sentiment = { positive: 0, negative: 0, neutral: 0, unknown: 0 };
@@ -1112,32 +1113,16 @@ app.get('/api/brands/:id/history', getUserId, async (req, res) => {
 
     const brandName = brandRes.rows[0].name;
 
-    const history = await db.query(
-      `SELECT DATE(published_at) as date, COUNT(*)::int as count
-       FROM nexus_articles
-       WHERE to_tsvector('simple', coalesce(title,'') || ' ' || coalesce(summary,'')) @@ plainto_tsquery('simple', $1)
-         AND published_at >= NOW() - INTERVAL '60 days'
-       GROUP BY DATE(published_at)
-       ORDER BY date ASC`,
-      [brandName]
-    );
-
-    const topSources = await db.query(
-      `SELECT agency AS source, COUNT(*)::int as count
-       FROM nexus_articles
-       WHERE to_tsvector('simple', coalesce(title,'') || ' ' || coalesce(summary,'')) @@ plainto_tsquery('simple', $1)
-         AND agency IS NOT NULL
-         AND published_at >= NOW() - INTERVAL '60 days'
-       GROUP BY agency
-       ORDER BY count DESC
-       LIMIT 8`,
-      [brandName]
-    );
+    // Query BigQuery for full 60-day brand history (full 2-month dataset available)
+    const [historyRows, topSourceRows] = await Promise.all([
+      bqNexus.brandHistory(brandName, 60),
+      bqNexus.brandTopSources(brandName, 60),
+    ]);
 
     res.status(200).json({
       name: brandName,
-      timeline: history.rows,
-      topSources: topSources.rows
+      timeline: historyRows.map(r => ({ date: r.date?.value || r.date, count: Number(r.count) })),
+      topSources: topSourceRows.map(r => ({ source: r.source, count: Number(r.count) })),
     });
   } catch (err) {
     console.error('Error in GET /api/brands/:id/history:', err);
@@ -1186,29 +1171,12 @@ app.get('/api/brands/:id/articles', getUserId, async (req, res) => {
       [id]
     );
 
-    // Full NEXUS pool — all articles mentioning this brand, no date cap, no row limit
+    // Full NEXUS pool from BigQuery — all articles across full history, no date cap
     let nexusRows = [];
     try {
-      const nexusRes = await db.query(
-        `SELECT
-           'nexus-' || id::text AS id,
-           title,
-           url AS link,
-           published_at,
-           agency AS source,
-           COALESCE(summary, '') AS summary,
-           'Neutral' AS sentiment,
-           published_at AS created_at,
-           NULL::timestamptz AS last_ping_time
-         FROM nexus_articles
-         WHERE to_tsvector('simple', coalesce(title,'') || ' ' || coalesce(summary,'')) @@ plainto_tsquery('simple', $1)
-         ORDER BY published_at DESC
-         LIMIT 500`,
-        [brandName]
-      );
-      nexusRows = nexusRes.rows;
+      nexusRows = await bqNexus.brandArticles(brandName, 500);
     } catch (nexusErr) {
-      console.error('[brands/:id/articles] nexus query failed:', nexusErr.message);
+      console.error('[brands/:id/articles] BigQuery nexus query failed:', nexusErr.message);
     }
 
     // Merge & deduplicate by lowercased title
@@ -1927,27 +1895,16 @@ Sentiment from recent articles: Positive=${sent?.Positive||0}, Neutral=${sent?.N
 
         sectorSummarySection = `\n\n=== LIVE ${intent.sector.toUpperCase()} NEWS SUMMARIES (${rangeLabel}, region: ${region}) ===\n${summaryText}\n(Answer using ONLY the above data — do not guess or use training knowledge for current events.)`;
       } else {
-        // No pre-built summaries — fall back to querying nexus_articles directly
+        // No pre-built summaries — fall back to querying BigQuery nexus articles directly
         try {
-          let articleQuery, articleParams;
-          if (intent.startDate && intent.endDate) {
-            articleQuery = `
-              SELECT title, agency, published_at::date AS date, sentiment, summary, region
-              FROM nexus_articles
-              WHERE (sector ILIKE $1 OR sector ILIKE $2)
-                AND published_at::date BETWEEN $3 AND $4
-              ORDER BY published_at DESC LIMIT 60`;
-            articleParams = [`%${intent.sector}%`, `%${intent.sector.split(' ')[0]}%`, intent.startDate, intent.endDate];
-          } else {
-            articleQuery = `
-              SELECT title, agency, published_at::date AS date, sentiment, summary, region
-              FROM nexus_articles
-              WHERE (sector ILIKE $1 OR sector ILIKE $2)
-                AND published_at >= CURRENT_DATE - ($3 || ' days')::INTERVAL
-              ORDER BY published_at DESC LIMIT 60`;
-            articleParams = [`%${intent.sector}%`, `%${intent.sector.split(' ')[0]}%`, String(intent.days)];
-          }
-          const artResult = await db.query(articleQuery, articleParams);
+          const artRows = await bqNexus.sectorArticles(intent.sector, {
+            startDate: intent.startDate,
+            endDate:   intent.endDate,
+            days:      intent.days || 7,
+            limit:     60,
+          });
+          // Normalize BQ date fields
+          const artResult = { rows: artRows.map(r => ({ ...r, date: r.date?.value || r.date })) };
           if (artResult.rows.length > 0) {
             const rangeLabel2 = intent.startDate && intent.endDate
               ? `${intent.startDate} to ${intent.endDate}`
@@ -2464,16 +2421,36 @@ app.post('/api/nexus/cron', async (req, res) => {
   nexusSyncRunning = true;
   // Sync synchronously so Cloud Run keeps CPU active during the request (avoids CPU throttle killing background tasks)
   const nexusClient = require('./nexus_client');
+  let nexusResult = null;
+  let bqResult = null;
   try {
-    const result = await nexusClient.syncDateRange(days);
-    console.log(`[NEXUS] Cron sync complete, synced: ${result?.synced}`);
-    res.json({ success: true, message: `Sync complete for last ${days} day(s)`, synced: result?.synced });
+    nexusResult = await nexusClient.syncDateRange(days);
+    console.log(`[NEXUS] Cron sync complete, synced: ${nexusResult?.synced}`);
   } catch (err) {
     console.error('[NEXUS] Cron sync error:', err.message);
-    res.json({ success: false, message: err.message });
-  } finally {
     nexusSyncRunning = false;
+    return res.json({ success: false, message: err.message });
   }
+
+  // Auto-sync newly imported articles from Cloud SQL -> BigQuery
+  try {
+    const { syncCloudSQLToBigQuery } = require('./cloudsql_to_bigquery');
+    bqResult = await syncCloudSQLToBigQuery({ lookbackDays: days + 1 });
+    console.log(`[BQ Sync] Done — ${bqResult.merged} merged (${bqResult.inserted} new, ${bqResult.updated} updated), ${bqResult.deleted} old Cloud SQL rows cleared`);
+  } catch (bqErr) {
+    // Non-fatal: Nexus data is safe in Cloud SQL; BQ sync can be retried via /api/nexus/sync-to-bq
+    console.error('[BQ Sync] Cloud SQL -> BigQuery sync failed (Cloud SQL data preserved):', bqErr.message);
+  }
+
+  nexusSyncRunning = false;
+  res.json({
+    success: true,
+    message: `Sync complete for last ${days} day(s)`,
+    synced: nexusResult?.synced,
+    bigquery: bqResult
+      ? { merged: bqResult.merged, inserted: bqResult.inserted, updated: bqResult.updated, cloudSqlRowsCleared: bqResult.deleted }
+      : { error: 'BQ sync failed — check server logs' },
+  });
 });
 
 // NEXUS sync — manually trigger article import
@@ -2484,15 +2461,76 @@ app.post('/api/nexus/sync', async (req, res) => {
   nexusClient.syncDateRange(days).catch(err => console.error('[NEXUS] Manual sync error:', err));
 });
 
-// NEXUS status — how many articles are in the local cache
+// NEXUS status — Cloud SQL cache size + BigQuery sync state
 app.get('/api/nexus/status', getUserId, async (req, res) => {
   try {
-    const count = await db.query('SELECT COUNT(*) AS total FROM nexus_articles');
-    const range = await db.query('SELECT MAX(published_at) AS latest, MIN(published_at) AS oldest FROM nexus_articles');
+    const [count, range, bqTotal] = await Promise.all([
+      db.query('SELECT COUNT(*) AS total FROM nexus_articles').catch(() => ({ rows: [{ total: 0 }] })),
+      db.query('SELECT MAX(published_at) AS latest, MIN(published_at) AS oldest FROM nexus_articles').catch(() => ({ rows: [{ latest: null, oldest: null }] })),
+      bqNexus.totalCount().catch(() => 0),
+    ]);
+    const { getLastSyncInfo } = require('./cloudsql_to_bigquery');
+    const lastBqSync = getLastSyncInfo();
     res.json({
-      total: parseInt(count.rows[0].total),
-      latest: range.rows[0].latest,
-      oldest: range.rows[0].oldest
+      total: bqTotal,
+      cloudSql: {
+        total: parseInt(count.rows[0]?.total || 0),
+        latest: range.rows[0]?.latest || null,
+        oldest: range.rows[0]?.oldest || null,
+      },
+      bigquery: {
+        total: bqTotal,
+        lastSync: lastBqSync || null,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Manual Cloud SQL -> BigQuery sync trigger (requires cron secret)
+let bqSyncRunning = false;
+app.post('/api/nexus/sync-to-bq', async (req, res) => {
+  const secret = req.headers['x-cron-secret'] || req.body?.secret;
+  if (!secret || secret !== process.env.CRON_SECRET) {
+    return res.status(401).json({ error: 'Unauthorized — provide x-cron-secret header' });
+  }
+  if (bqSyncRunning) {
+    return res.json({ success: false, message: 'BQ sync already running, try again later' });
+  }
+  const lookbackDays = Math.min(parseInt(req.body?.days) || 7, 30);
+  bqSyncRunning = true;
+  try {
+    const { syncCloudSQLToBigQuery } = require('./cloudsql_to_bigquery');
+    const result = await syncCloudSQLToBigQuery({ lookbackDays });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('[BQ Sync] Manual sync-to-bq failed:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  } finally {
+    bqSyncRunning = false;
+  }
+});
+
+// BigQuery article count + last sync info
+app.get('/api/nexus/bq-status', async (req, res) => {
+  const secret = req.headers['x-cron-secret'] || req.query.secret;
+  if (!secret || secret !== process.env.CRON_SECRET) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  try {
+    const { getLastSyncInfo } = require('./cloudsql_to_bigquery');
+    const lastSync = getLastSyncInfo();
+    // Query live BigQuery row count
+    const bqRows = await bq.query(
+      `SELECT COUNT(*) AS total, MAX(scraped_at) AS latest FROM \`${bq.PROJECT_ID}.${bq.DATASET_ID}.${bq.TABLE_ID}\``
+    );
+    res.json({
+      bigquery: {
+        total: Number(bqRows[0]?.total || 0),
+        latest: bqRows[0]?.latest || null,
+      },
+      lastSync: lastSync || null,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2504,19 +2542,11 @@ app.get('/api/nexus/region-check', async (req, res) => {
   if (!secret || secret !== process.env.CRON_SECRET) return res.status(401).json({ error: 'Unauthorized' });
   try {
     const days = parseInt(req.query.days) || 7;
-    const breakdown = await db.query(`
-      SELECT region, COUNT(*) AS cnt
-      FROM nexus_articles
-      WHERE published_at >= NOW() - INTERVAL '${days} days'
-      GROUP BY region ORDER BY cnt DESC
-    `);
-    const sample = await db.query(`
-      SELECT title, region, published_at::date AS date
-      FROM nexus_articles
-      WHERE published_at >= NOW() - INTERVAL '${days} days'
-      ORDER BY published_at DESC LIMIT 10
-    `);
-    res.json({ breakdown: breakdown.rows, sample: sample.rows, days });
+    const [breakdown, sample] = await Promise.all([
+      bqNexus.regionBreakdown(days),
+      bqNexus.regionSample(days),
+    ]);
+    res.json({ breakdown, sample, days, source: 'bigquery' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -2526,15 +2556,11 @@ app.get('/api/nexus/dates', async (req, res) => {
   const secret = req.headers['x-cron-secret'] || req.query.secret;
   if (!secret || secret !== process.env.CRON_SECRET) return res.status(401).json({ error: 'Unauthorized' });
   try {
-    const result = await db.query(`
-      SELECT DATE(published_at) AS date, COUNT(*) AS count
-      FROM nexus_articles
-      WHERE published_at IS NOT NULL
-      GROUP BY DATE(published_at)
-      ORDER BY date DESC
-      LIMIT 90
-    `);
-    res.json(result.rows.map(r => ({ date: r.date.toISOString().split('T')[0], count: parseInt(r.count) })));
+    const rows = await bqNexus.dateBreakdown();
+    res.json(rows.map(r => ({
+      date:  r.date?.value || (r.date instanceof Date ? r.date.toISOString().split('T')[0] : String(r.date)),
+      count: Number(r.count),
+    })));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -2654,24 +2680,20 @@ app.get('/api/keyword-articles', async (req, res) => {
 
   const ftsCond = `to_tsvector('simple', coalesce(title,'') || ' ' || coalesce(summary,'')) @@ ${fn}('simple', $1)`;
 
+  // BigQuery handles pagination — full history visible, not just 7-day Cloud SQL buffer
   try {
-    const [countRes, articlesRes] = await Promise.all([
-      db.query(`SELECT COUNT(*) FROM nexus_articles WHERE (${ftsCond})${extra}`, params),
-      db.query(`SELECT title, url, published_at, agency FROM nexus_articles WHERE (${ftsCond})${extra} ORDER BY published_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-        [...params, limitNum, offset])
-    ]);
-
-    const total = parseInt(countRes.rows[0]?.count || 0);
+    const { total, articles } = await bqNexus.keywordArticlesPaginated(cleanKeyword, {
+      sector:    dbSector || undefined,
+      startDate: startDate || undefined,
+      endDate:   endDate   || undefined,
+      limit:     limitNum,
+      offset,
+    });
     res.json({
-      articles: articlesRes.rows.map(r => ({
-        title:     r.title       || 'No Title',
-        url:       r.url         || '',
-        published: r.published_at ? new Date(r.published_at).toISOString().split('T')[0] : '',
-        source:    r.agency      || 'Unknown'
-      })),
+      articles,
       total,
       page:       pageNum,
-      totalPages: Math.max(1, Math.ceil(total / limitNum))
+      totalPages: Math.max(1, Math.ceil(total / limitNum)),
     });
   } catch (err) {
     console.error('[keyword-articles]', err.message);
@@ -2757,6 +2779,9 @@ if (process.env.NODE_ENV === 'production') {
       await db.query(sql);
     }
     console.log('[DB] Nexus indexes ensured');
+
+    // Trigger non-blocking background creation of FTS GIN index if missing
+    db.query(`CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_nexus_body_fts ON nexus_articles USING gin (to_tsvector('simple', coalesce(title,'') || ' ' || coalesce(summary,'')))`).catch(() => {});
   } catch (err) {
     console.error('[DB] Index error:', err.message);
   }
@@ -2880,30 +2905,18 @@ app.get('/api/nexus/articles', async (req, res) => {
   const limit = Math.min(500, Math.max(1, parseInt(req.query.limit) || 100));
   const offset = (page - 1) * limit;
 
+  // Serve from BigQuery — full 2-month+ dataset, not just Cloud SQL 1-day staging buffer
   try {
-    const [dataRes, countRes] = await Promise.all([
-      db.query(
-        `SELECT id, title, url, full_body, author, agency, published_at,
-                sector, region, summary, sentiment, tags, word_count,
-                scraped_at, imported_at
-         FROM nexus_articles
-         ORDER BY id
-         LIMIT $1 OFFSET $2`,
-        [limit, offset]
-      ),
-      db.query('SELECT COUNT(*) AS total FROM nexus_articles'),
-    ]);
-
-    const total      = parseInt(countRes.rows[0].total);
+    const { rows, total } = await bqNexus.exportArticles(limit, offset);
     const totalPages = Math.ceil(total / limit);
-
     res.json({
       page,
       limit,
       total,
       totalPages,
       hasNextPage: page < totalPages,
-      articles: dataRes.rows,
+      articles: rows,
+      source: 'bigquery',
     });
   } catch (err) {
     console.error('[nexus/articles]', err.message);

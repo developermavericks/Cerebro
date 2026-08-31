@@ -288,8 +288,13 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
           agency                                        AS "Publisher/Agency",
           LEFT(COALESCE(full_body, summary, ''), 800)   AS "Summary",
           LEFT(COALESCE(full_body, summary, ''), 800)   AS "Full Body"
-        FROM nexus_articles
-        WHERE (${searchConds})${extraClauses}
+        FROM (
+          SELECT title, url, published_at, agency, summary, full_body
+          FROM nexus_articles
+          WHERE (${searchConds})${extraClauses}
+          ORDER BY published_at DESC
+          LIMIT 5000
+        ) candidates
         ORDER BY LOWER(title), published_at DESC
       ) deduped
       ORDER BY "Published At" DESC

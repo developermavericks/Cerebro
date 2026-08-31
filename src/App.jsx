@@ -5083,13 +5083,17 @@ ${bodyHtml}
     setIsSearchingKeyword(true);
     setKeywordSearchError(null);
     setCuratedAnalysisResults(null);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 45000);
     try {
       const excludedKeywords = excludedKeywordsInput.split(',').map(b => b.trim()).filter(Boolean);
       const res = await fetch(`${API_BASE}/api/curated-search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({ targetKeywords: brands, excludedKeywords, topic: analysisSector, startDate: analysisStartDate || null, endDate: analysisEndDate || null })
       });
+      clearTimeout(timeoutId);
       if (res.ok) {
         const data = await res.json();
         setCuratedAnalysisResults(data);
@@ -5106,8 +5110,13 @@ ${bodyHtml}
         setKeywordSearchError(errData.message || `Search failed (${res.status}). Please try again.`);
       }
     } catch (err) {
+      clearTimeout(timeoutId);
       console.error('Error in curated search:', err);
-      setKeywordSearchError('Network error — could not reach the server. Please check your connection.');
+      if (err.name === 'AbortError') {
+        setKeywordSearchError('Search timed out after 45 seconds. Please refine your search keyword or date range.');
+      } else {
+        setKeywordSearchError('Network error — could not reach the server. Please check your connection.');
+      }
     } finally {
       setIsSearchingKeyword(false);
     }
