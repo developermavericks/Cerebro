@@ -297,12 +297,10 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
           FROM nexus_articles
           WHERE (${searchConds})${extraClauses}
           ORDER BY published_at DESC
-          LIMIT 5000
         ) candidates
         ORDER BY LOWER(title), published_at DESC
       ) deduped
       ORDER BY "Published At" DESC
-      LIMIT 2000
     `, sqlParams);
 
     const compiledPatterns = {};

@@ -302,7 +302,6 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
         ${excludeFilter}
         ${topicFilter}
       ORDER BY published_at DESC
-      LIMIT 5000
     `;
 
     try {

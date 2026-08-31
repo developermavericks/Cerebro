@@ -116,12 +116,11 @@ async function searchCount(keyword, { sector, startDate, endDate } = {}) {
  * Fetch articles matching a keyword with optional date/sector filters.
  * Returns rows with calculated sentiment: { title, url, agency, sentiment, published_at, region, sector, summary }
  */
-async function searchArticles(keyword, { sector, startDate, endDate, limit = 2000 } = {}) {
+async function searchArticles(keyword, { sector, startDate, endDate, limit = null } = {}) {
   if (!bq.available()) return [];
   const { clause, params } = buildLikeFilter(keyword);
   if (clause === 'FALSE') return [];
 
-  params.lim = limit;
   let filters = `(${clause})`;
 
   if (sector && sector !== 'All') {
@@ -131,12 +130,18 @@ async function searchArticles(keyword, { sector, startDate, endDate, limit = 200
   if (startDate) { params.startDate = startDate; filters += ` AND DATE(published_at) >= @startDate`; }
   if (endDate)   { params.endDate   = endDate;   filters += ` AND DATE(published_at) <= @endDate`; }
 
+  let limitClause = '';
+  if (limit) {
+    params.lim = limit;
+    limitClause = 'LIMIT @lim';
+  }
+
   const sql = `
     SELECT title, url, agency, published_at, region, sector, summary, LEFT(COALESCE(full_body, ''), 1000) AS full_body
     FROM ${TABLE_REF()}
     WHERE ${filters}
     ORDER BY published_at DESC
-    LIMIT @lim
+    ${limitClause}
   `;
   const rawRows = await bq.query(sql, params);
   return rawRows.map(r => ({
