@@ -12578,8 +12578,10 @@ const spec = JSON.parse(response.text);
                               <h1 className={`text-4xl tracking-tight ${darkMode ? 'text-white' : 'text-slate-900'}`}>
                                 <span className="font-light">Create</span> <span className="font-black">Report</span>
                               </h1>
-                              <div className="w-10 h-10 rounded-full bg-[#3b82f6] hover:bg-blue-600 text-white flex items-center justify-center transition-all shadow-lg shadow-blue-500/30 group-hover:scale-110">
-                                <Plus size={20} strokeWidth={3} />
+                              <div className="relative animate-cta-nudge">
+                                <div className="w-10 h-10 rounded-full bg-[#3b82f6] hover:bg-blue-600 text-white flex items-center justify-center transition-all shadow-lg shadow-blue-500/30 group-hover:scale-110 relative cta-ring">
+                                  <Plus size={20} strokeWidth={3} />
+                                </div>
                               </div>
                             </div>
                             <p className={`text-sm font-medium ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Build and manage intelligence reports across all your brands</p>

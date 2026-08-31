@@ -143,6 +143,36 @@ h1, h2, h3, h4, h5, h6, .font-heading, aside button, aside span, aside label {
     animation: float 6s ease-in-out infinite;
   }
 
+  /* Create Report + button nudge animation */
+  @keyframes cta-nudge {
+    0%, 100% { transform: translateX(0) scale(1); }
+    15% { transform: translateX(4px) scale(1.08); }
+    30% { transform: translateX(-3px) scale(1.04); }
+    45% { transform: translateX(2px) scale(1.06); }
+    60% { transform: translateX(0) scale(1); }
+  }
+
+  @keyframes cta-ring-pulse {
+    0% { transform: scale(1); opacity: 0.6; }
+    70% { transform: scale(1.8); opacity: 0; }
+    100% { transform: scale(1.8); opacity: 0; }
+  }
+
+  .animate-cta-nudge {
+    animation: cta-nudge 2.5s ease-in-out infinite;
+    animation-delay: 1s;
+  }
+
+  .cta-ring::before {
+    content: "";
+    position: absolute;
+    inset: -4px;
+    border-radius: 9999px;
+    border: 2px solid #3b82f6;
+    animation: cta-ring-pulse 2s ease-out infinite;
+    pointer-events: none;
+  }
+
   .glass-shimmer {
     position: relative;
     overflow: hidden;
