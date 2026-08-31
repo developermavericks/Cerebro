@@ -267,7 +267,7 @@ const PREDEFINED_REPORTS = [
     priority: 'High',
     topic: 'AI',
     keywords: 'OpenAI, Google, Microsoft, Anthropic, Meta AI',
-    summary: 'Comprehensive competitive analysis of the global AI landscape in Q2 2026, covering market share, media sentiment, and brand positioning across leading players.',
+    summary: 'Comprehensive competitive analysis of the global AI landscape in Q2 2026, covering share of voice, media sentiment, and brand positioning across leading players.',
     tags: ['AI', 'Competitive Intelligence', 'Q2 2026', 'Tech'],
     metrics: {},
     bookmarks: [],
@@ -3121,14 +3121,15 @@ function App() {
   const [kwArticlesPage, setKwArticlesPage] = useState(1);
   const [kwArticlesLoading, setKwArticlesLoading] = useState(false);
 
-  // Fetch paginated articles for keyword drill-down (All sentiment tab)
+  // Fetch paginated articles for keyword drill-down (supports All, Positive, Neutral, Negative)
   React.useEffect(() => {
-    if (!curatedDrillBrand || curatedDrillSentiment !== 'All') return;
+    if (!curatedDrillBrand) return;
     setKwArticlesLoading(true);
     const params = new URLSearchParams({ keyword: curatedDrillBrand, page: kwArticlesPage, limit: 15 });
     if (analysisStartDate) params.append('startDate', analysisStartDate);
     if (analysisEndDate)   params.append('endDate',   analysisEndDate);
     if (analysisSector && analysisSector !== 'All') params.append('sector', analysisSector);
+    if (curatedDrillSentiment && curatedDrillSentiment !== 'All') params.append('sentiment', curatedDrillSentiment);
     fetch(`${API_BASE}/api/keyword-articles?${params}`)
       .then(r => r.json())
       .then(d => { setKwArticles(d.articles || []); setKwArticlesTotal(d.total || 0); setKwArticlesTotalPages(d.totalPages || 1); })
@@ -7081,10 +7082,10 @@ ${bodyHtml}
                     {curatedAnalysisResults && (
                       <div className="w-full space-y-10 animate-in fade-in slide-in-from-top-6 duration-1000 pb-20">
                         
-                        {/* 1. Mention Counts Summary */}
+                        {/* Mention Counts Summary */}
                         <div>
                           <h3 className={`text-xl font-black uppercase tracking-wider mb-6 flex items-center gap-3 font-heading ${darkMode ? 'text-[#00F2FE]' : 'text-indigo-600'}`}>
-                            1. Mention Count Summary
+                            Mention Count Summary
                           </h3>
                           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                             {Object.entries(curatedAnalysisResults.brands || {}).filter(([b]) => b !== 'Others').map(([brand, data], idx) => {
@@ -7159,12 +7160,12 @@ ${bodyHtml}
                           </div>
                         </div>
 
-                        {/* Top Publications & Market Share */}
+                        {/* Top Publications & Share of Voice */}
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-                          {/* 2. Publication Brand Coverage */}
+                          {/* Publication Brand Coverage */}
                           <div className={`${darkMode ? 'bg-[#151f32] border-white/5' : 'bg-white border-slate-200/60'} border rounded-[2.5rem] p-8 shadow-md flex flex-col`}>
                             <h3 className={`text-lg font-black uppercase tracking-wider mb-1 flex items-center gap-3 font-heading ${darkMode ? 'text-[#00F2FE]' : 'text-indigo-600'}`}>
-                              2. Publication Brand Coverage
+                              Publication Brand Coverage
                             </h3>
                             <p className={`text-[10px] font-semibold mb-5 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>How each outlet splits coverage across your tracked brands</p>
                             <div className="flex-1 space-y-4 overflow-y-auto max-h-80 custom-scrollbar pr-2">
@@ -7217,7 +7218,7 @@ ${bodyHtml}
                             </div>
                           </div>
 
-                          {/* 3. Market Share (Pie / Bar) */}
+                          {/* Share of Voice (SOV) (Pie / Bar) */}
                           {(() => {
                             const entries = Object.entries(curatedAnalysisResults.brands || {}).filter(([b]) => b !== 'Others');
                             const total = entries.reduce((sum, [, d]) => sum + d.mentions, 0);
@@ -7384,7 +7385,7 @@ ${bodyHtml}
                                 <div className={`${darkMode ? 'bg-[#151f32] border-white/5' : 'bg-white border-slate-200/60'} border rounded-[2.5rem] p-8 shadow-md flex flex-col`}>
                                   <div className="flex items-center justify-between mb-6">
                                     <h3 className={`text-lg font-black uppercase tracking-wider flex items-center gap-3 font-heading ${darkMode ? 'text-[#00F2FE]' : 'text-indigo-600'}`}>
-                                      3. Market Share
+                                      Share of Voice (SOV)
                                     </h3>
                                     <div className="flex items-center gap-2">
                                       <div className={`flex p-1 rounded-xl ${darkMode ? 'bg-white/5' : 'bg-slate-100'}`}>
@@ -7423,7 +7424,7 @@ ${bodyHtml}
                                       onClick={e => e.stopPropagation()}>
                                       <div className="flex items-center justify-between mb-6">
                                         <h3 className={`text-xl font-black uppercase tracking-wider font-heading ${darkMode ? 'text-[#00F2FE]' : 'text-indigo-600'}`}>
-                                          Market Share Analysis
+                                          Share of Voice Analysis
                                         </h3>
                                         <div className="flex items-center gap-2">
                                           <div className={`flex p-1 rounded-xl ${darkMode ? 'bg-white/5' : 'bg-slate-100'}`}>
@@ -7461,7 +7462,7 @@ ${bodyHtml}
 
                         {/* Media Source Progress Meters */}
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-                          {/* 4. Media Source Distribution - Pie Chart */}
+                          {/* Media Source Distribution - Pie Chart */}
                           {(() => {
                             const SOURCE_COLORS = ['#6366f1','#f43f5e','#10b981','#f59e0b','#3b82f6','#8b5cf6','#ec4899','#14b8a6','#f97316','#84cc16'];
                             const sourceMap = {};
@@ -7550,7 +7551,7 @@ ${bodyHtml}
                                 <div className={`${darkMode ? 'bg-[#151f32] border-white/5' : 'bg-white border-slate-200/60'} border rounded-[2.5rem] p-8 shadow-md flex flex-col`}>
                                   <div className="flex items-center justify-between mb-4">
                                     <h3 className={`text-lg font-black uppercase tracking-wider flex items-center gap-3 font-heading ${darkMode ? 'text-[#00F2FE]' : 'text-indigo-600'}`}>
-                                      4. Media Source Distribution
+                                      Media Source Distribution
                                     </h3>
                                     <button onClick={() => setMaximizedChart('source')}
                                       className={`p-2 rounded-xl transition-all ${darkMode ? 'hover:bg-white/10 text-slate-400 hover:text-white' : 'hover:bg-slate-100 text-slate-400 hover:text-slate-700'}`}
@@ -7588,10 +7589,10 @@ ${bodyHtml}
                             );
                           })()}
 
-                          {/* 5. Sentiments Landscape matrix */}
+                          {/* Sentiments Landscape matrix */}
                           <div className={`${darkMode ? 'bg-[#151f32] border-white/5' : 'bg-white border-slate-200/60'} border rounded-[2.5rem] p-8 shadow-md flex flex-col`}>
                             <h3 className={`text-lg font-black uppercase tracking-wider mb-6 flex items-center gap-3 font-heading ${darkMode ? 'text-[#00F2FE]' : 'text-indigo-600'}`}>
-                              5. Sentiments landscape
+                              Sentiment Landscape
                             </h3>
                             <div className="flex-1 space-y-4 overflow-y-auto max-h-80 custom-scrollbar pr-2">
                               
@@ -7604,11 +7605,11 @@ ${bodyHtml}
                               </div>
 
                               {Object.entries(curatedAnalysisResults.brands || {}).filter(([b]) => b.toLowerCase() !== 'others').map(([b, d]) => {
-                                const total = d.sentiment.Positive + d.sentiment.Neutral + d.sentiment.Negative;
+                                const total = (d.sentiment?.Positive || 0) + (d.sentiment?.Neutral || 0) + (d.sentiment?.Negative || 0);
                                 if (total === 0) return null;
-                                const posP = ((d.sentiment.Positive / total) * 100).toFixed(0);
-                                const neuP = ((d.sentiment.Neutral / total) * 100).toFixed(0);
-                                const negP = ((d.sentiment.Negative / total) * 100).toFixed(0);
+                                const posP = (((d.sentiment?.Positive || 0) / total) * 100).toFixed(0);
+                                const neuP = (((d.sentiment?.Neutral || 0) / total) * 100).toFixed(0);
+                                const negP = (((d.sentiment?.Negative || 0) / total) * 100).toFixed(0);
                                 return (
                                   <div key={b} className="grid grid-cols-4 gap-2 items-center text-center">
                                     <div className={`text-xs font-black truncate text-left ${darkMode ? 'text-white' : 'text-slate-800'}`}>
@@ -7616,15 +7617,15 @@ ${bodyHtml}
                                     </div>
                                     <div className="bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 rounded-xl p-3 flex flex-col items-center">
                                       <span className="text-sm font-black">{posP}%</span>
-                                      <span className="text-[8px] font-bold opacity-60">{d.sentiment.Positive}</span>
+                                      <span className="text-[8px] font-bold opacity-60">{d.sentiment?.Positive || 0}</span>
                                     </div>
                                     <div className="bg-indigo-500/10 border border-indigo-500/25 text-indigo-400 rounded-xl p-3 flex flex-col items-center">
                                       <span className="text-sm font-black">{neuP}%</span>
-                                      <span className="text-[8px] font-bold opacity-60">{d.sentiment.Neutral}</span>
+                                      <span className="text-[8px] font-bold opacity-60">{d.sentiment?.Neutral || 0}</span>
                                     </div>
                                     <div className="bg-red-500/10 border border-red-500/25 text-red-400 rounded-xl p-3 flex flex-col items-center">
                                       <span className="text-sm font-black">{negP}%</span>
-                                      <span className="text-[8px] font-bold opacity-60">{d.sentiment.Negative}</span>
+                                      <span className="text-[8px] font-bold opacity-60">{d.sentiment?.Negative || 0}</span>
                                     </div>
                                   </div>
                                 );
@@ -7750,24 +7751,24 @@ ${bodyHtml}
                           );
                         })()}
 
-                        {/* 6. Tracked Brand Articles */}
+                        {/* Tracked Brand Articles */}
                         <div className={`${darkMode ? 'bg-[#151f32] border-white/5' : 'bg-white border-slate-200/60'} border rounded-[2.5rem] p-8 shadow-md`}>
                           <div className="flex flex-col gap-4 mb-6">
                             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                               <div>
                                 <h3 className={`text-lg font-black uppercase tracking-wider flex items-center gap-3 font-heading ${darkMode ? 'text-[#00F2FE]' : 'text-indigo-600'}`}>
-                                  6. Brand Articles
+                                  Brand Articles
                                 </h3>
-                                <p className={`text-[10px] font-semibold mt-1 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>Articles from tracked brands only</p>
+                                <p className={`text-[10px] font-semibold mt-1 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>Articles and coverage for tracked brands with calculated sentiment</p>
                               </div>
                               <div className="flex items-center gap-3 flex-wrap">
                                 <select value={curatedDrillBrand} onChange={(e) => { setCuratedDrillBrand(e.target.value); setBrandArticlePage(1); setKwArticlesPage(1); }}
                                   className={`px-4 py-2.5 rounded-xl text-xs font-bold outline-none border cursor-pointer ${darkMode ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-800'}`}>
                                   {Object.keys(curatedAnalysisResults.brands || {}).filter(b => b.toLowerCase() !== 'others').map(b => <option key={b} value={b}>{b}</option>)}
                                 </select>
-                                <select value={curatedDrillSentiment} onChange={(e) => { setCuratedDrillSentiment(e.target.value); setBrandArticlePage(1); }}
+                                <select value={curatedDrillSentiment} onChange={(e) => { setCuratedDrillSentiment(e.target.value); setBrandArticlePage(1); setKwArticlesPage(1); }}
                                   className={`px-4 py-2.5 rounded-xl text-xs font-bold outline-none border cursor-pointer ${darkMode ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-800'}`}>
-                                  <option value="All">All</option>
+                                  <option value="All">All Sentiments</option>
                                   <option value="Positive">Positive</option>
                                   <option value="Neutral">Neutral</option>
                                   <option value="Negative">Negative</option>
@@ -7780,90 +7781,131 @@ ${bodyHtml}
                                 <Calendar size={13} className={darkMode ? 'text-slate-400' : 'text-slate-500'} />
                                 <span className={`text-[10px] font-black uppercase tracking-widest ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>From</span>
                                 <input type="date" value={brandArticleDateFrom}
-                                  onChange={(e) => { setBrandArticleDateFrom(e.target.value); setBrandArticlePage(1); }}
+                                  onChange={(e) => { setBrandArticleDateFrom(e.target.value); setBrandArticlePage(1); setKwArticlesPage(1); }}
                                   className={`px-3 py-2 rounded-xl text-xs font-bold outline-none border cursor-pointer ${darkMode ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-800'}`} />
                               </div>
                               <div className="flex items-center gap-2">
                                 <span className={`text-[10px] font-black uppercase tracking-widest ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>To</span>
                                 <input type="date" value={brandArticleDateTo}
-                                  onChange={(e) => { setBrandArticleDateTo(e.target.value); setBrandArticlePage(1); }}
+                                  onChange={(e) => { setBrandArticleDateTo(e.target.value); setBrandArticlePage(1); setKwArticlesPage(1); }}
                                   className={`px-3 py-2 rounded-xl text-xs font-bold outline-none border cursor-pointer ${darkMode ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-800'}`} />
                               </div>
                               {(brandArticleDateFrom || brandArticleDateTo) && (
-                                <button onClick={() => { setBrandArticleDateFrom(''); setBrandArticleDateTo(''); setBrandArticlePage(1); }}
+                                <button onClick={() => { setBrandArticleDateFrom(''); setBrandArticleDateTo(''); setBrandArticlePage(1); setKwArticlesPage(1); }}
                                   className={`px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-colors ${darkMode ? 'bg-[#0f172a] border-white/10 text-slate-400 hover:text-white' : 'bg-slate-50 border-slate-200 text-slate-500 hover:text-slate-800'}`}>
                                   Clear
                                 </button>
                               )}
                               <div className="flex-1" />
-                              {/* Export to Excel */}
+                              
+                              {/* Export to Excel & CSV */}
                               {(() => {
-                                const exportSamples = curatedAnalysisResults.brands?.[curatedDrillBrand]?.article_samples || {};
-                                const exportAll = (() => {
-                                  const seen = new Set();
-                                  return [...(exportSamples.Positive || []), ...(exportSamples.Neutral || []), ...(exportSamples.Negative || [])]
-                                    .filter(a => { const k = (a.url && a.url !== 'N/A') ? a.url : a.title; return seen.has(k) ? false : (seen.add(k), true); })
-                                    .sort((a, b) => new Date(b.published) - new Date(a.published));
+                                const exportList = kwArticles.length > 0 ? kwArticles : (() => {
+                                  const samples = curatedAnalysisResults.brands?.[curatedDrillBrand]?.article_samples || {};
+                                  if (curatedDrillSentiment === 'All') {
+                                    return [...(samples.Positive || []), ...(samples.Neutral || []), ...(samples.Negative || [])];
+                                  }
+                                  return samples[curatedDrillSentiment] || [];
                                 })();
-                                const exportFiltered = curatedDrillSentiment === 'All' ? exportAll : (exportSamples[curatedDrillSentiment] || []).slice().sort((a, b) => new Date(b.published) - new Date(a.published));
+
+                                const downloadExcel = () => {
+                                  const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+                                  const rows = exportList.map((art, i) => `<tr>
+                                    <td>${i + 1}</td>
+                                    <td>${esc(curatedDrillBrand)}</td>
+                                    <td>${esc(art.title)}</td>
+                                    <td>${esc(art.sentiment || 'Neutral')}</td>
+                                    <td>${esc(art.source)}</td>
+                                    <td>${esc(art.published)}</td>
+                                    <td>${art.url && art.url !== 'N/A' ? `<a href="${esc(resolveArticleUrl(art.url))}">Open</a>` : 'N/A'}</td>
+                                  </tr>`).join('');
+                                  const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"><style>a{color:#1155CC;text-decoration:underline;}th{background:#f3f4f6;font-weight:bold;}td,th{border:1px solid #e5e7eb;padding:6px 10px;}</style></head><body><table><thead><tr><th>S. No.</th><th>Brand</th><th>Headline</th><th>Sentiment</th><th>Publication</th><th>Publish Date</th><th>Link</th></tr></thead><tbody>${rows}</tbody></table></body></html>`;
+                                  const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8' });
+                                  const url = URL.createObjectURL(blob);
+                                  const a = document.createElement('a');
+                                  a.href = url; a.download = `${curatedDrillBrand}_${curatedDrillSentiment}_articles.xls`; a.click();
+                                  URL.revokeObjectURL(url);
+                                };
+
+                                const downloadCsv = () => {
+                                  const escCsv = (s) => `"${String(s || '').replace(/"/g, '""')}"`;
+                                  const header = ['S. No.', 'Brand', 'Headline', 'Sentiment', 'Publication', 'Publish Date', 'URL'].join(',');
+                                  const body = exportList.map((art, i) => [
+                                    i + 1,
+                                    escCsv(curatedDrillBrand),
+                                    escCsv(art.title),
+                                    escCsv(art.sentiment || 'Neutral'),
+                                    escCsv(art.source),
+                                    escCsv(art.published),
+                                    escCsv(resolveArticleUrl(art.url) || 'N/A')
+                                  ].join(',')).join('\n');
+                                  const blob = new Blob([header + '\n' + body], { type: 'text/csv;charset=utf-8;' });
+                                  const url = URL.createObjectURL(blob);
+                                  const a = document.createElement('a');
+                                  a.href = url; a.download = `${curatedDrillBrand}_${curatedDrillSentiment}_articles.csv`; a.click();
+                                  URL.revokeObjectURL(url);
+                                };
+
                                 return (
-                                  <button onClick={() => {
-                                    const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-                                    const rows = exportFiltered.map((art, i) => `<tr>
-                                      <td>${i + 1}</td>
-                                      <td>${esc(art.title)}</td>
-                                      <td>${art.url && art.url !== 'N/A' ? `<a href="${esc(resolveArticleUrl(art.url))}">Open</a>` : 'N/A'}</td>
-                                      <td>${esc(art.source)}</td>
-                                      <td>${esc(art.published)}</td>
-                                    </tr>`).join('');
-                                    const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"><style>a{color:#1155CC;text-decoration:underline;}th{background:#f3f4f6;font-weight:bold;}td,th{border:1px solid #e5e7eb;padding:6px 10px;}</style></head><body><table><thead><tr><th>S. No.</th><th>Title</th><th>Link</th><th>Publication</th><th>Publish Date</th></tr></thead><tbody>${rows}</tbody></table></body></html>`;
-                                    const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8' });
-                                    const url = URL.createObjectURL(blob);
-                                    const a = document.createElement('a');
-                                    a.href = url; a.download = `${curatedDrillBrand}_${curatedDrillSentiment}_articles.xls`; a.click();
-                                    URL.revokeObjectURL(url);
-                                  }}
-                                  className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-colors ${darkMode ? 'bg-[#0f172a] border-white/10 text-emerald-400 hover:bg-emerald-900/20' : 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'}`}>
-                                    <FileSpreadsheet size={13} /> Export Excel
-                                  </button>
+                                  <div className="flex items-center gap-2">
+                                    <button onClick={downloadExcel}
+                                      className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-colors ${darkMode ? 'bg-[#0f172a] border-white/10 text-emerald-400 hover:bg-emerald-900/20' : 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'}`}>
+                                      <FileSpreadsheet size={13} /> Export Excel
+                                    </button>
+                                    <button onClick={downloadCsv}
+                                      className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-colors ${darkMode ? 'bg-[#0f172a] border-white/10 text-indigo-400 hover:bg-indigo-900/20' : 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100'}`}>
+                                      <Download size={13} /> Export CSV
+                                    </button>
+                                  </div>
                                 );
                               })()}
                             </div>
                           </div>
+
                           <div className="overflow-x-auto">
                             {(() => {
-                              // "All" tab → API-driven pagination (all matching articles from DB)
-                              // Sentiment tabs → in-memory sample (50 analyzed articles)
-                              const useApi = curatedDrillSentiment === 'All';
+                              const articles = kwArticles;
+                              const total = kwArticlesTotal;
+                              const totalPages = kwArticlesTotalPages;
+                              const page = kwArticlesPage;
 
-                              if (useApi) {
-                                const articles = kwArticles;
-                                const total = kwArticlesTotal;
-                                const totalPages = kwArticlesTotalPages;
-                                const page = kwArticlesPage;
-                                if (kwArticlesLoading) return (
-                                  <div className="text-center py-10 text-slate-400 font-bold text-xs animate-pulse">Loading articles…</div>
-                                );
-                                if (!articles.length) return (
-                                  <div className="text-center py-10 text-slate-400 font-bold text-xs">No articles found for <span className="text-indigo-400">{curatedDrillBrand}</span>.</div>
-                                );
-                                return (
-                                  <>
-                                    <table className="w-full text-left border-collapse">
-                                      <thead>
-                                        <tr className={`border-b text-[9px] font-black uppercase tracking-widest ${darkMode ? 'border-white/5 text-slate-500' : 'border-slate-100 text-slate-400'}`}>
-                                          <th className="py-3 px-4 w-10">#</th>
-                                          <th className="py-3 px-4">Headline</th>
-                                          <th className="py-3 px-4">Publication</th>
-                                          <th className="py-3 px-4">Date</th>
-                                          <th className="py-3 px-4 text-right">Link</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody className={`divide-y text-xs font-semibold ${darkMode ? 'divide-white/5' : 'divide-slate-100'}`}>
-                                        {articles.map((art, idx) => (
+                              if (kwArticlesLoading) return (
+                                <div className="text-center py-12 text-slate-400 font-bold text-xs animate-pulse">Loading articles…</div>
+                              );
+                              if (!articles.length) return (
+                                <div className="text-center py-12 text-slate-400 font-bold text-xs">No articles found for <span className="text-indigo-400">{curatedDrillBrand}</span> ({curatedDrillSentiment}).</div>
+                              );
+
+                              return (
+                                <>
+                                  <table className="w-full text-left border-collapse">
+                                    <thead>
+                                      <tr className={`border-b text-[9px] font-black uppercase tracking-widest ${darkMode ? 'border-white/5 text-slate-500' : 'border-slate-100 text-slate-400'}`}>
+                                        <th className="py-3 px-4 w-10">#</th>
+                                        <th className="py-3 px-4">Headline</th>
+                                        <th className="py-3 px-4">Sentiment</th>
+                                        <th className="py-3 px-4">Publication</th>
+                                        <th className="py-3 px-4">Date</th>
+                                        <th className="py-3 px-4 text-right">Link</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className={`divide-y text-xs font-semibold ${darkMode ? 'divide-white/5' : 'divide-slate-100'}`}>
+                                      {articles.map((art, idx) => {
+                                        const sent = art.sentiment || 'Neutral';
+                                        const badgeClass = sent === 'Positive'
+                                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                                          : sent === 'Negative'
+                                          ? 'bg-red-500/10 text-red-400 border-red-500/30'
+                                          : 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30';
+                                        return (
                                           <tr key={idx} className={`${darkMode ? 'hover:bg-white/5 text-slate-200' : 'hover:bg-slate-50 text-slate-700'} transition-colors`}>
                                             <td className={`py-3 px-4 text-[10px] font-black ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{(page - 1) * 15 + idx + 1}</td>
-                                            <td className="py-3 px-4 font-bold max-w-xs truncate">{art.title}</td>
+                                            <td className="py-3 px-4 font-bold max-w-sm truncate">{art.title}</td>
+                                            <td className="py-3 px-4 whitespace-nowrap">
+                                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${badgeClass}`}>
+                                                {sent}
+                                              </span>
+                                            </td>
                                             <td className="py-3 px-4 text-slate-400 whitespace-nowrap">{art.source}</td>
                                             <td className="py-3 px-4 text-slate-400 whitespace-nowrap">{art.published}</td>
                                             <td className="py-3 px-4 text-right">
@@ -7876,98 +7918,28 @@ ${bodyHtml}
                                               }
                                             </td>
                                           </tr>
-                                        ))}
-                                      </tbody>
-                                    </table>
-                                    <div className="flex flex-wrap items-center justify-between gap-3 mt-5 pt-4 border-t border-slate-100 dark:border-white/5">
-                                      <span className={`text-[10px] font-black uppercase tracking-widest ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>
-                                        {total.toLocaleString()} articles · Page {page} of {totalPages.toLocaleString()}
-                                      </span>
-                                      <div className="flex items-center gap-2">
-                                        <button onClick={() => setKwArticlesPage(p => Math.max(1, p - 1))} disabled={page === 1}
-                                          className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-colors ${page === 1 ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'} ${darkMode ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'}`}>
-                                          <ChevronLeft size={12} /> Prev
-                                        </button>
-                                        <div className="flex items-center gap-1.5">
-                                          <span className={`text-[10px] font-black uppercase tracking-widest ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>Go</span>
-                                          <input type="number" min="1" max={totalPages} defaultValue={page} key={page}
-                                            onKeyDown={(e) => { if (e.key === 'Enter') { const v = parseInt(e.target.value); if (!isNaN(v)) setKwArticlesPage(Math.min(totalPages, Math.max(1, v))); }}}
-                                            onBlur={(e) => { const v = parseInt(e.target.value); if (!isNaN(v)) setKwArticlesPage(Math.min(totalPages, Math.max(1, v))); }}
-                                            className={`w-14 px-2 py-2 rounded-xl text-[10px] font-black text-center outline-none border ${darkMode ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-800'}`}
-                                          />
-                                        </div>
-                                        <button onClick={() => setKwArticlesPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
-                                          className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-colors ${page === totalPages ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'} ${darkMode ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'}`}>
-                                          Next <ChevronRight size={12} />
-                                        </button>
-                                      </div>
-                                    </div>
-                                  </>
-                                );
-                              }
-
-                              // Sentiment-filtered view — uses the 50-article analyzed sample
-                              const ITEMS_PER_PAGE = 15;
-                              const samples = curatedAnalysisResults.brands?.[curatedDrillBrand]?.article_samples || {};
-                              const raw = samples[curatedDrillSentiment] || [];
-                              const sorted = raw.slice().sort((a, b) => new Date(b.published) - new Date(a.published));
-                              const filtered = sorted.filter(art => {
-                                if (!brandArticleDateFrom && !brandArticleDateTo) return true;
-                                const d = art.published;
-                                if (brandArticleDateFrom && d < brandArticleDateFrom) return false;
-                                if (brandArticleDateTo && d > brandArticleDateTo) return false;
-                                return true;
-                              });
-                              const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
-                              const page = Math.min(brandArticlePage, totalPages);
-                              const paginated = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
-                              if (filtered.length === 0) return (
-                                <div className="text-center py-10 text-slate-400 font-bold text-xs">
-                                  No {curatedDrillSentiment.toLowerCase()} articles found for <span className="text-indigo-400">{curatedDrillBrand}</span>.
-                                </div>
-                              );
-                              return (
-                                <>
-                                  <table className="w-full text-left border-collapse">
-                                    <thead>
-                                      <tr className={`border-b text-[9px] font-black uppercase tracking-widest ${darkMode ? 'border-white/5 text-slate-500' : 'border-slate-100 text-slate-400'}`}>
-                                        <th className="py-3 px-4 w-10">#</th>
-                                        <th className="py-3 px-4">Headline</th>
-                                        <th className="py-3 px-4">Publication</th>
-                                        <th className="py-3 px-4">Date</th>
-                                        <th className="py-3 px-4 text-right">Link</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody className={`divide-y text-xs font-semibold ${darkMode ? 'divide-white/5' : 'divide-slate-100'}`}>
-                                      {paginated.map((art, idx) => (
-                                        <tr key={idx} className={`${darkMode ? 'hover:bg-white/5 text-slate-200' : 'hover:bg-slate-50 text-slate-700'} transition-colors`}>
-                                          <td className={`py-3 px-4 text-[10px] font-black ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{(page - 1) * ITEMS_PER_PAGE + idx + 1}</td>
-                                          <td className="py-3 px-4 font-bold max-w-xs truncate">{art.title}</td>
-                                          <td className="py-3 px-4 text-slate-400 whitespace-nowrap">{art.source}</td>
-                                          <td className="py-3 px-4 text-slate-400 whitespace-nowrap">{art.published}</td>
-                                          <td className="py-3 px-4 text-right">
-                                            {art.url && art.url !== 'N/A'
-                                              ? <a href={resolveArticleUrl(art.url)} target="_blank" rel="noreferrer"
-                                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 font-black text-[9px] uppercase tracking-wider transition-colors">
-                                                  <Chrome size={11} /> Read
-                                                </a>
-                                              : <span className="text-slate-400 text-[9px] font-black uppercase">No Link</span>
-                                            }
-                                          </td>
-                                        </tr>
-                                      ))}
+                                        );
+                                      })}
                                     </tbody>
                                   </table>
                                   <div className="flex flex-wrap items-center justify-between gap-3 mt-5 pt-4 border-t border-slate-100 dark:border-white/5">
                                     <span className={`text-[10px] font-black uppercase tracking-widest ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>
-                                      {filtered.length} articles (sample) · Page {page} of {totalPages}
+                                      {total.toLocaleString()} articles · Page {page} of {totalPages.toLocaleString()}
                                     </span>
                                     <div className="flex items-center gap-2">
-                                      <button onClick={() => setBrandArticlePage(p => Math.max(1, p - 1))} disabled={page === 1}
+                                      <button onClick={() => setKwArticlesPage(p => Math.max(1, p - 1))} disabled={page === 1}
                                         className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-colors ${page === 1 ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'} ${darkMode ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'}`}>
                                         <ChevronLeft size={12} /> Prev
                                       </button>
-                                      <button onClick={() => setBrandArticlePage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+                                      <div className="flex items-center gap-1.5">
+                                        <span className={`text-[10px] font-black uppercase tracking-widest ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>Go</span>
+                                        <input type="number" min="1" max={totalPages} defaultValue={page} key={page}
+                                          onKeyDown={(e) => { if (e.key === 'Enter') { const v = parseInt(e.target.value); if (!isNaN(v)) setKwArticlesPage(Math.min(totalPages, Math.max(1, v))); }}}
+                                          onBlur={(e) => { const v = parseInt(e.target.value); if (!isNaN(v)) setKwArticlesPage(Math.min(totalPages, Math.max(1, v))); }}
+                                          className={`w-14 px-2 py-2 rounded-xl text-[10px] font-black text-center outline-none border ${darkMode ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-800'}`}
+                                        />
+                                      </div>
+                                      <button onClick={() => setKwArticlesPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
                                         className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-colors ${page === totalPages ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'} ${darkMode ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'}`}>
                                         Next <ChevronRight size={12} />
                                       </button>

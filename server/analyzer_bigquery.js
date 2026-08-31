@@ -190,6 +190,8 @@ function buildExcludeFilter(excludedKeywords) {
 }
 
 
+const sentimentEngine = require('./sentiment_engine');
+
 // ─── Main Analysis Function ─────────────────────────────────────────────────
 
 /**
@@ -269,7 +271,8 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
         title,
         COALESCE(agency, 'Unknown') AS agency,
         CAST(published_at AS STRING) AS published_at,
-        COALESCE(sentiment, 'Neutral') AS sentiment,
+        COALESCE(summary, '') AS summary,
+        LEFT(COALESCE(full_body, ''), 1000) AS full_body,
         COALESCE(url, '') AS url
       FROM ${tableRef}
       WHERE SEARCH((title, full_body), @brandSearch)
@@ -300,12 +303,11 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
     for (const row of rows) {
       const source = normalizePublicationName(row.agency);
       const dateKey = row.published_at ? row.published_at.split('T')[0] : 'Unknown';
-      const sentimentLabel = row.sentiment || 'Neutral';
-      const sentCategory = sentimentLabel === 'Positive' ? 'Positive'
-        : sentimentLabel === 'Negative' ? 'Negative'
-        : 'Neutral';
+      
+      // Real-time high-accuracy sentiment computed from headline + summary + body
+      const sentCategory = sentimentEngine.analyzeSentiment(row.title, row.summary, row.full_body);
 
-      const articleKey = row.title || row.id;
+      const articleKey = (row.title || row.id || '').toLowerCase().trim();
       if (!uniqueArticles.has(articleKey)) {
         uniqueArticles.add(articleKey);
       }
@@ -315,7 +317,8 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
       results[displayBrand].timeline[dateKey] = (results[displayBrand].timeline[dateKey] || 0) + 1;
       results[displayBrand].sentiment[sentCategory] += 1;
 
-      if (results[displayBrand].article_samples[sentCategory].length < 20) {
+      // Keep up to 100 sample articles per sentiment category
+      if (results[displayBrand].article_samples[sentCategory].length < 100) {
         const titleToCheck = row.title || 'No Title';
         const urlToCheck = row.url || '';
         const isDuplicate = results[displayBrand].article_samples[sentCategory].some(
@@ -326,7 +329,8 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
             title: titleToCheck,
             source: source,
             url: urlToCheck,
-            published: dateKey
+            published: dateKey,
+            sentiment: sentCategory
           });
         }
       }

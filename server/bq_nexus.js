@@ -1,4 +1,4 @@
-﻿/**
+/**
  * bq_nexus.js — BigQuery Nexus Query Helper for Cerebro
  *
  * All nexus_articles READ queries previously running against Cloud SQL
@@ -21,21 +21,40 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 const bq = require('./bigquery');
+const sentimentEngine = require('./sentiment_engine');
 
 const TABLE_REF = () => `\`${bq.PROJECT_ID}.${bq.DATASET_ID}.${bq.TABLE_ID}\``;
+
+const BRAND_FAMILIES = {
+  "Qualcomm": ["Qualcomm", "Snapdragon"],
+  "MediaTek": ["MediaTek", "Dimensity", "Helio"],
+  "Intel": ["Intel", "Core i", "Xeon", "Arc GPU", "Lakefield"],
+  "AMD": ["AMD", "Ryzen", "Radeon", "EPYC", "Threadripper"],
+  "Nvidia": ["Nvidia", "GeForce", "RTX", "GTX", "H100", "A100", "B100", "Grace Hopper"]
+};
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
 /**
- * Wrap a multi-word keyword in BigQuery SEARCH backtick-quotes for phrase matching.
- * Single words are left as-is.
- *   "Tesla"              → "Tesla"          (term search)
- *   "Reliance Industries"→ "`Reliance Industries`"  (phrase search)
+ * Expand a brand name into all its search aliases if applicable.
+ */
+function getBrandSearchTerms(keyword) {
+  const kLower = (keyword || '').trim().toLowerCase();
+  for (const [family, aliases] of Object.entries(BRAND_FAMILIES)) {
+    if (kLower === family.toLowerCase()) {
+      return aliases;
+    }
+  }
+  return [(keyword || '').trim()].filter(Boolean);
+}
+
+/**
+ * Wrap terms in BigQuery SEARCH backtick-quotes for multi-word phrases.
  */
 function toBQSearchQuery(keyword) {
-  const term = (keyword || '').trim();
-  if (!term) return term;
-  return term.includes(' ') ? `\`${term}\`` : term;
+  const terms = getBrandSearchTerms(keyword);
+  if (!terms.length) return '';
+  return terms.map(t => t.includes(' ') ? `\`${t}\`` : t).join(' ');
 }
 
 /**
@@ -81,7 +100,7 @@ async function searchCount(keyword, { sector, startDate, endDate } = {}) {
 
 /**
  * Fetch articles matching a keyword with optional date/sector filters.
- * Returns rows: { title, url, agency, sentiment, published_at, region, sector, summary }
+ * Returns rows with calculated sentiment: { title, url, agency, sentiment, published_at, region, sector, summary }
  */
 async function searchArticles(keyword, { sector, startDate, endDate, limit = 2000 } = {}) {
   if (!bq.available()) return [];
@@ -99,13 +118,23 @@ async function searchArticles(keyword, { sector, startDate, endDate, limit = 200
   if (endDate)   { params.endDate   = endDate;   filters += ` AND DATE(published_at) <= @endDate`; }
 
   const sql = `
-    SELECT title, url, agency, sentiment, published_at, region, sector, summary
+    SELECT title, url, agency, published_at, region, sector, summary, LEFT(COALESCE(full_body, ''), 1000) AS full_body
     FROM ${TABLE_REF()}
     WHERE ${filters}
     ORDER BY published_at DESC
     LIMIT @lim
   `;
-  return bq.query(sql, params);
+  const rawRows = await bq.query(sql, params);
+  return rawRows.map(r => ({
+    title:        r.title,
+    url:          r.url,
+    agency:       r.agency,
+    published_at: r.published_at,
+    region:       r.region,
+    sector:       r.sector,
+    summary:      r.summary,
+    sentiment:    sentimentEngine.analyzeSentiment(r.title, r.summary, r.full_body),
+  }));
 }
 
 /**
@@ -149,8 +178,8 @@ async function brandTopSources(brandName, days = 60) {
 }
 
 /**
- * Brand article pool — all articles mentioning the brand, no date cap.
- * Returns rows shaped like nexus_articles for direct use in /api/brands/:id/articles.
+ * Brand article pool — all articles mentioning the brand across full history.
+ * Returns rows shaped like nexus_articles with real calculated sentiment.
  */
 async function brandArticles(brandName, limit = 500) {
   if (!bq.available()) return [];
@@ -163,7 +192,7 @@ async function brandArticles(brandName, limit = 500) {
       published_at,
       agency                        AS source,
       COALESCE(summary, '')         AS summary,
-      COALESCE(sentiment, 'Neutral') AS sentiment,
+      LEFT(COALESCE(full_body, ''), 1000) AS full_body,
       published_at                  AS created_at,
       CAST(NULL AS TIMESTAMP)       AS last_ping_time
     FROM ${TABLE_REF()}
@@ -171,7 +200,18 @@ async function brandArticles(brandName, limit = 500) {
     ORDER BY published_at DESC
     LIMIT @lim
   `;
-  return bq.query(sql, { searchTerm, lim: limit });
+  const rows = await bq.query(sql, { searchTerm, lim: limit });
+  return rows.map(r => ({
+    id:             r.id,
+    title:          r.title,
+    link:           r.link,
+    published_at:   r.published_at,
+    source:         r.source,
+    summary:        r.summary,
+    sentiment:      sentimentEngine.analyzeSentiment(r.title, r.summary, r.full_body),
+    created_at:     r.created_at,
+    last_ping_time: r.last_ping_time,
+  }));
 }
 
 /**
@@ -271,12 +311,12 @@ async function dateBreakdown() {
  * Paginated keyword article list + total count (for /api/keyword-articles).
  * Returns { total, articles: [{ title, url, published, source }] }
  */
-async function keywordArticlesPaginated(keyword, { sector, startDate, endDate, limit = 15, offset = 0 } = {}) {
+async function keywordArticlesPaginated(keyword, { sector, startDate, endDate, sentiment, limit = 15, offset = 0 } = {}) {
   if (!bq.available()) return { total: 0, articles: [] };
   const searchTerm = toBQSearchQuery(keyword);
   if (!searchTerm) return { total: 0, articles: [] };
 
-  const params = { searchTerm, lim: limit, off: offset };
+  const params = { searchTerm };
   let filters = `SEARCH((title, full_body), @searchTerm)`;
 
   if (sector && sector !== 'All') {
@@ -286,28 +326,61 @@ async function keywordArticlesPaginated(keyword, { sector, startDate, endDate, l
   if (startDate) { params.startDate = startDate; filters += ` AND DATE(published_at) >= @startDate`; }
   if (endDate)   { params.endDate   = endDate;   filters += ` AND DATE(published_at) <= @endDate`; }
 
-  const countSql   = `SELECT CAST(COUNT(*) AS INT64) AS cnt FROM ${TABLE_REF()} WHERE ${filters}`;
-  const articleSql = `
-    SELECT title, url, published_at, agency
+  if (!sentiment || sentiment === 'All') {
+    const countSql   = `SELECT CAST(COUNT(*) AS INT64) AS cnt FROM ${TABLE_REF()} WHERE ${filters}`;
+    const articleSql = `
+      SELECT title, url, published_at, agency, summary, LEFT(COALESCE(full_body, ''), 1000) AS full_body
+      FROM ${TABLE_REF()}
+      WHERE ${filters}
+      ORDER BY published_at DESC
+      LIMIT @lim OFFSET @off
+    `;
+
+    const [countRows, articleRows] = await Promise.all([
+      bq.query(countSql, params),
+      bq.query(articleSql, { ...params, lim: limit, off: offset }),
+    ]);
+
+    return {
+      total: Number(countRows[0]?.cnt || 0),
+      articles: articleRows.map(r => ({
+        title:     r.title       || 'No Title',
+        url:       r.url         || '',
+        published: r.published_at ? new Date(r.published_at).toISOString().split('T')[0] : '',
+        source:    r.agency      || 'Unknown',
+        sentiment: sentimentEngine.analyzeSentiment(r.title, r.summary, r.full_body),
+      })),
+    };
+  }
+
+  // When sentiment filter is specified (Positive, Neutral, Negative):
+  const candidateSql = `
+    SELECT title, url, published_at, agency, summary, LEFT(COALESCE(full_body, ''), 1000) AS full_body
     FROM ${TABLE_REF()}
     WHERE ${filters}
     ORDER BY published_at DESC
-    LIMIT @lim OFFSET @off
+    LIMIT 2000
   `;
+  const rawArticles = await bq.query(candidateSql, params);
+  const matching = [];
 
-  const [countRows, articleRows] = await Promise.all([
-    bq.query(countSql, params),
-    bq.query(articleSql, params),
-  ]);
+  for (const r of rawArticles) {
+    const s = sentimentEngine.analyzeSentiment(r.title, r.summary, r.full_body);
+    if (s.toLowerCase() === sentiment.toLowerCase()) {
+      matching.push({
+        title:     r.title       || 'No Title',
+        url:       r.url         || '',
+        published: r.published_at ? new Date(r.published_at).toISOString().split('T')[0] : '',
+        source:    r.agency      || 'Unknown',
+        sentiment: s,
+      });
+    }
+  }
 
+  const paginated = matching.slice(offset, offset + limit);
   return {
-    total: Number(countRows[0]?.cnt || 0),
-    articles: articleRows.map(r => ({
-      title:     r.title       || 'No Title',
-      url:       r.url         || '',
-      published: r.published_at ? new Date(r.published_at).toISOString().split('T')[0] : '',
-      source:    r.agency      || 'Unknown',
-    })),
+    total: matching.length,
+    articles: paginated,
   };
 }
 

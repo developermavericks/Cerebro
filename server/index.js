@@ -2653,7 +2653,7 @@ app.put('/api/support/tickets/:id/reply', getUserId, async (req, res) => {
 
 // Paginated article list for keyword drill-down
 app.get('/api/keyword-articles', async (req, res) => {
-  const { keyword, page = '1', limit = '15', startDate, endDate, sector } = req.query;
+  const { keyword, page = '1', limit = '15', startDate, endDate, sector, sentiment } = req.query;
   if (!keyword) return res.status(400).json({ error: 'keyword required' });
 
   const SECTOR_MAP = { AI:'AI', TECH:'Tech', FOODS_DRINKS:'Foods & Drinks', HEALTHCARE:'Healthcare',
@@ -2669,23 +2669,15 @@ app.get('/api/keyword-articles', async (req, res) => {
   const limitNum = Math.min(50, Math.max(1, parseInt(limit) || 15));
   const offset   = (pageNum - 1) * limitNum;
 
-  const fn = cleanKeyword.includes(' ') ? 'phraseto_tsquery' : 'plainto_tsquery';
-  const params = [cleanKeyword];
-  let extra = '';
-
   const dbSector = sector && sector !== 'All' ? (SECTOR_MAP[sector.toUpperCase()] || null) : null;
-  if (dbSector)   { params.push(dbSector);   extra += ` AND sector = $${params.length}`; }
-  if (startDate)  { params.push(startDate);  extra += ` AND published_at >= $${params.length}::date`; }
-  if (endDate)    { params.push(endDate);     extra += ` AND published_at < ($${params.length}::date + INTERVAL '1 day')`; }
 
-  const ftsCond = `to_tsvector('simple', coalesce(title,'') || ' ' || coalesce(summary,'')) @@ ${fn}('simple', $1)`;
-
-  // BigQuery handles pagination — full history visible, not just 7-day Cloud SQL buffer
+  // BigQuery handles pagination & real-time sentiment filtering — full history visible
   try {
     const { total, articles } = await bqNexus.keywordArticlesPaginated(cleanKeyword, {
       sector:    dbSector || undefined,
       startDate: startDate || undefined,
       endDate:   endDate   || undefined,
+      sentiment: sentiment || undefined,
       limit:     limitNum,
       offset,
     });
