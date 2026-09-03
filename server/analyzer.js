@@ -29,18 +29,34 @@ const OTHER_BRANDS_POOL = [
   "AIndra Systems", "Soket AI Labs"
 ];
 
-const TOPIC_KEYWORDS = {
-  "AI": ["ai", "artificial intelligence", "machine learning", "deep learning", "generative ai", "neural network", "openai", "copilot", "llm", "large language model"],
-  "STARTUP": ["startup", "startups", "venture capital", "funding", "founder", "founders", "entrepreneur", "entrepreneurs", "seed round", "series a"],
-  "CONSULTANCY": ["consultancy", "consulting", "consultant", "consultants", "mckinsey", "bcg", "bain", "accenture", "ey", "deloitte", "pwc", "kpmg"],
-  "FINANCE": ["finance", "financial", "banking", "investment", "capital", "stock", "stocks", "market", "markets", "bank", "banks", "equity"],
-  "TECHNOLOGY": ["technology", "tech", "software", "hardware", "digital", "it", "semiconductor", "microchip", "processor"],
-  "HEALTHCARE": ["healthcare", "health", "medical", "pharma", "pharmaceutical", "hospital", "hospitals", "clinical", "medicine"],
-  "EDUCATION": ["education", "educational", "school", "schools", "university", "universities", "college", "colleges", "learning", "student", "students"],
-  "ENERGY": ["energy", "power", "solar", "wind", "oil", "gas", "renewable", "renewables", "electricity"],
-  "RETAIL": ["retail", "shopping", "e-commerce", "ecommerce", "store", "stores", "consumer", "goods", "supermarket"],
-  "MEDIA": ["media", "news", "press", "journalism", "broadcast", "television", "tv", "newspaper", "social media"],
-  "AUTOMOTIVE": ["automotive", "automobile", "car", "cars", "vehicle", "vehicles", "ev", "electric vehicle", "electric vehicles"]
+// Maps frontend dropdown value → canonical DB sector value
+const SECTOR_TO_DB = {
+  'AI':          'AI',
+  'TECH':        'Tech',
+  'FOODS_DRINKS':'Foods & Drinks',
+  'HEALTHCARE':  'Healthcare',
+  'TRAVEL':      'Travel',
+  'CONSULTANCY': 'Consultancies',
+  'STARTUP':     'Startups',
+  'LIFESTYLE':   'Lifestyle',
+  'POLICIES':    'Policies',
+  'STOCK_MARKET':'Stock Market',
+  'REAL_ESTATE': 'Real Estate',
+  'GOOGLE':      'Google',
+  'EDUCATION':   'Education',
+  'FINTECH':     'Fintech',
+  'AUTOMOBILE':  'Automobile',
+  'MEDIA':       'Media & Entertainment',
+  'SPORTS':               'sports',
+  'CLIMATE':              'climate and environment',
+  'CLIMATE_ENVIRONMENT':  'climate and environment',
+  'GEOPOLITICS':          'geopolitics',
+  'WORLD_NEWS':           'world news',
+  'MONEY_BUSINESS':       'money and business',
+  'SCIENCE_SPACE':        'science and space',
+  'GAMING':               'gaming',
+  'POP_CULTURE':          'pop culture',
+  'CREATOR_ECONOMY':      'creator economy',
 };
 
 const BRAND_FAMILIES = {
@@ -132,60 +148,25 @@ function normalizeText(text) {
   return text.toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 
-function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [], topic = 'All' }) {
-  const rootDir = path.resolve(__dirname, '..');
-  const excelFiles = fs.readdirSync(rootDir).filter(f => f.startsWith('NEXUS_') && f.endsWith('.xlsx'));
-  let articles = [];
+async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [], topic = 'All', startDate = null, endDate = null, searchScope = 'full' }) {
+  const db = require('./db');
 
-  for (const file of excelFiles) {
-    try {
-      const excelPath = path.resolve(rootDir, file);
-      const wb = xlsx.readFile(excelPath);
-      const sheet = wb.Sheets[wb.SheetNames[0]];
-      const data = xlsx.utils.sheet_to_json(sheet);
-      articles = articles.concat(data);
-    } catch (err) {
-      console.error(`Error loading Excel file ${file}:`, err.message);
-    }
-  }
-
+  const isHeadlineOnly = searchScope === 'headline' || searchScope === 'title';
   const targetBrands = (targetKeywords || []).map(b => b.trim()).filter(Boolean);
   if (!targetBrands.length) return {};
 
   const excludedTerms = (excludedKeywords || []).map(b => b.trim()).filter(Boolean);
 
-  const displayBrands = [...targetBrands, "Others"];
-
-  const results = {};
-  for (const brand of displayBrands) {
-    results[brand] = {
-      mentions: 0,
-      articles: 0,
-      sources: {},
-      timeline: {},
-      sentiment: { Positive: 0, Neutral: 0, Negative: 0 },
-      article_samples: { Positive: [], Neutral: [], Negative: [] }
-    };
-  }
-
-  let totalSectorArticles = 0;
-  let totalKeywordArticles = 0;
-
-  // Target aliases map: search term lowercase -> Brand display name
+  // Build alias map early (needed for SQL pre-filter)
   const normalizedTargetMap = {};
   for (const b of targetBrands) {
     const bLower = b.toLowerCase();
     let familyMatch = null;
     for (const [displayName, aliases] of Object.entries(BRAND_FAMILIES)) {
-      if (bLower === displayName.toLowerCase()) {
-        familyMatch = aliases;
-        break;
-      }
+      if (bLower === displayName.toLowerCase()) { familyMatch = aliases; break; }
     }
     if (familyMatch) {
-      for (const alias of familyMatch) {
-        normalizedTargetMap[alias.toLowerCase().trim()] = b;
-      }
+      for (const alias of familyMatch) normalizedTargetMap[alias.toLowerCase().trim()] = b;
     } else {
       normalizedTargetMap[bLower] = b;
     }
@@ -193,185 +174,227 @@ function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [], top
 
   const targetTerms = Object.keys(normalizedTargetMap);
 
-  // Compile regex patterns for target, excluded, and topic keywords
-  const compiledPatterns = {};
-  for (const term of targetTerms) {
-    const normTerm = normalizeText(term);
-    const escapedParts = normTerm.split(/\s+/).map(escapeRegExp);
-    compiledPatterns[term] = new RegExp('\\b' + escapedParts.join('\\s+') + '\\b', 'gi');
+  // SQL pre-filter using GIN full-text index (fast) — falls back to seq scan if index not built yet
+  const brandParams = targetTerms.map(t => t);
+  const colExpr = isHeadlineOnly ? "coalesce(title,'')" : "coalesce(title,'') || ' ' || coalesce(summary,'') || ' ' || coalesce(full_body,'')";
+  const searchConds = targetTerms.map((t, i) => {
+    const p = i + 1;
+    const fn = t.includes(' ') ? 'phraseto_tsquery' : 'plainto_tsquery';
+    return `to_tsvector('simple', ${colExpr}) @@ ${fn}('simple', $${p})`;
+  }).join(' OR ');
+
+  // Sector filter via DB field (accurate — uses normalized sector column)
+  const dbSector = topic && topic !== 'All' ? (SECTOR_TO_DB[topic.toUpperCase()] || null) : null;
+
+  // Build dynamic extra clauses + params
+  // extraClauses uses $-indices offset by brandParams.length (for sqlParams)
+  // totalClauses uses $-indices starting at $1 (for extraParams-only queries)
+  const extraParams = [];
+  let extraClauses = '';
+  let totalClauses = '';
+  if (dbSector) {
+    extraParams.push(dbSector);
+    const ep = extraParams.length;
+    extraClauses += ` AND sector = $${brandParams.length + ep}`;
+    totalClauses += ` AND sector = $${ep}`;
+  }
+  if (startDate) {
+    extraParams.push(startDate);
+    const ep = extraParams.length;
+    extraClauses += ` AND published_at >= $${brandParams.length + ep}::date`;
+    totalClauses += ` AND published_at >= $${ep}::date`;
+  }
+  if (endDate) {
+    extraParams.push(endDate);
+    const ep = extraParams.length;
+    extraClauses += ` AND published_at < ($${brandParams.length + ep}::date + INTERVAL '1 day')`;
+    totalClauses += ` AND published_at < ($${ep}::date + INTERVAL '1 day')`;
+  }
+  const sqlParams = [...brandParams, ...extraParams];
+
+  const displayBrands = [...targetBrands, "Others"];
+  const results = {};
+  const articleSeenPerBrand = {};
+  for (const brand of displayBrands) {
+    results[brand] = {
+      mentions: 0, articles: 0,
+      headline_mentions: 0, full_mentions: 0,
+      sources: {}, timeline: {},
+      sentiment: { Positive: 0, Neutral: 0, Negative: 0 },
+      headline_sentiment: { Positive: 0, Neutral: 0, Negative: 0 },
+      full_sentiment: { Positive: 0, Neutral: 0, Negative: 0 },
+      article_samples: { Positive: [], Neutral: [], Negative: [] }
+    };
+    articleSeenPerBrand[brand] = new Set();
   }
 
-  const compiledExcluded = excludedTerms.map(term => {
-    const normTerm = normalizeText(term);
-    const escapedParts = normTerm.split(/\s+/).map(escapeRegExp);
-    return new RegExp('\\b' + escapedParts.join('\\s+') + '\\b', 'i');
-  });
+  let totalKeywordArticles = 0;
+  let othersCount = 0;
 
-  // Compile topic regex if not 'All'
-  let topicRegex = null;
-  if (topic && topic !== 'All') {
-    const keywords = TOPIC_KEYWORDS[topic.toUpperCase()] || [topic];
-    const escaped = keywords.map(k => escapeRegExp(normalizeText(k)));
-    topicRegex = new RegExp('\\b(' + escaped.join('|') + ')\\b', 'i');
-  }
+  // ── Per-brand DB aggregations (no large data transfer) ──────────────────────
+  // Run all queries for all brands in parallel then collect
+  const perTermFn = (t) => {
+    const fn = t.includes(' ') ? 'phraseto_tsquery' : 'plainto_tsquery';
+    return `to_tsvector('simple', coalesce(title,'') || ' ' || coalesce(summary,'')) @@ ${fn}('simple', $1)`;
+  };
 
-  // Pre-compiled regex for others pool to speed up matching
-  const otherBrandsRegex = new RegExp('\\b(' + OTHER_BRANDS_POOL.map(escapeRegExp).join('|') + ')\\b', 'gi');
+  try {
+    // Build per-term queries so each brand gets its own accurate count/timeline/sources
+    const perTermQueries = targetTerms.map((term) => {
+      const cond = perTermFn(term);
+      const p = [term, ...extraParams];
+      // shift extraClauses indices by 1 (term is $1, extras start at $2)
+      const termExtra = extraClauses.replace(/\$(\d+)/g, (_, n) => `$${parseInt(n) - brandParams.length + 1}`);
+      return { term, cond, p, termExtra };
+    });
 
-  for (const article of articles) {
-    const title = article['Title'] || '';
-    const summary = article['Summary'] || '';
-    const fullBody = article['Full Body'] || '';
-    const rawContent = [title, summary, fullBody].join(' ');
-    const content = normalizeText(rawContent);
+    const queryResults = await Promise.all(perTermQueries.map(({ cond, p, termExtra }) =>
+      Promise.all([
+        db.query(`SELECT COUNT(*) AS count FROM nexus_articles WHERE (${cond})${termExtra}`, p),
+        db.query(`SELECT DATE(published_at) AS date, COUNT(*) AS count FROM nexus_articles WHERE (${cond})${termExtra} GROUP BY DATE(published_at) ORDER BY date ASC`, p),
+        db.query(`SELECT COALESCE(agency,'Unknown') AS source, COUNT(*) AS count FROM nexus_articles WHERE (${cond})${termExtra} AND agency IS NOT NULL GROUP BY agency ORDER BY count DESC LIMIT 15`, p),
+      ])
+    ));
 
-    if (!content.trim()) continue;
-
-    // Filter by topic if active
-    if (topicRegex) {
-      topicRegex.lastIndex = 0;
-      if (!topicRegex.test(content)) {
-        continue;
+    queryResults.forEach(([countRes, timelineRes, sourcesRes], i) => {
+      const term = targetTerms[i];
+      const brandName = normalizedTargetMap[term];
+      const cnt = parseInt(countRes.rows[0]?.count || 0, 10);
+      results[brandName].articles += cnt;
+      results[brandName].mentions += cnt;
+      totalKeywordArticles += cnt;
+      for (const row of timelineRes.rows) {
+        const dk = new Date(row.date).toISOString().split('T')[0];
+        results[brandName].timeline[dk] = (results[brandName].timeline[dk] || 0) + parseInt(row.count, 10);
       }
-    }
-
-    let isExcluded = false;
-    for (const regex of compiledExcluded) {
-      regex.lastIndex = 0;
-      if (regex.test(content)) {
-        isExcluded = true;
-        break;
+      for (const row of sourcesRes.rows) {
+        const src = normalizePublicationName(row.source);
+        results[brandName].sources[src] = (results[brandName].sources[src] || 0) + parseInt(row.count, 10);
       }
-    }
-    if (isExcluded) continue;
+    });
 
-    totalSectorArticles++;
+    // Others count: total in window minus all matched brands
+    const [totalRes] = await Promise.all([
+      db.query(
+        `SELECT COUNT(*) AS count FROM nexus_articles${totalClauses ? ` WHERE 1=1${totalClauses}` : ''}`,
+        extraParams
+      )
+    ]);
+    const totalCount = parseInt(totalRes.rows[0]?.count || 0, 10);
+    othersCount = Math.max(0, totalCount - totalKeywordArticles);
 
-    const sourceRaw = article['Publisher/Agency'] || article['Publisher'] || article['Source Feed'] || 'Unknown';
-    const source = normalizePublicationName(sourceRaw);
+    // Sample up to 25000 deduplicated articles for sentiment (dedup by title to avoid sector overlap dupes)
+    const sampleRes = await db.query(`
+      SELECT "Title", "Resolved URL", "Published At", "Publisher/Agency", "Summary", "Full Body"
+      FROM (
+        SELECT DISTINCT ON (LOWER(title))
+          title                                         AS "Title",
+          url                                           AS "Resolved URL",
+          published_at                                  AS "Published At",
+          agency                                        AS "Publisher/Agency",
+          LEFT(COALESCE(full_body, summary, ''), 800)   AS "Summary",
+          LEFT(COALESCE(full_body, summary, ''), 800)   AS "Full Body"
+        FROM (
+          SELECT title, url, published_at, agency, summary, full_body
+          FROM nexus_articles
+          WHERE (${searchConds})${extraClauses}
+          ORDER BY published_at DESC
+          LIMIT 25000
+        ) candidates
+        ORDER BY LOWER(title), published_at DESC
+      ) deduped
+      ORDER BY "Published At" DESC
+    `, sqlParams);
 
-    let dateKey = '2026-05-18';
-    const pubRaw = article['Published At'] || article['Timestamp'];
-    if (pubRaw) {
-      try {
-        const dateObj = new Date(pubRaw);
-        if (!isNaN(dateObj.getTime())) {
-          dateKey = dateObj.toISOString().split('T')[0];
-        }
-      } catch (e) {}
-    }
-
-    const articleMatches = new Set();
-    let hasKeywordMatch = false;
-
-    // 1. Target Brands
+    const compiledPatterns = {};
     for (const term of targetTerms) {
-      const regex = compiledPatterns[term];
-      regex.lastIndex = 0;
-      const matches = content.match(regex);
-      if (matches && matches.length > 0) {
-        hasKeywordMatch = true;
+      const normTerm = normalizeText(term);
+      compiledPatterns[term] = new RegExp('\\b' + normTerm.split(/\s+/).map(escapeRegExp).join('\\s+') + '\\b', 'gi');
+    }
+    const compiledExcluded = excludedTerms.map(term =>
+      new RegExp('\\b' + normalizeText(term).split(/\s+/).map(escapeRegExp).join('\\s+') + '\\b', 'i')
+    );
+    const sRegexCache = {};
+
+    for (const article of sampleRes.rows) {
+      const title = article['Title'] || '';
+      const rawContent = [title, article['Summary'] || '', article['Full Body'] || ''].join(' ');
+      const content = normalizeText(rawContent);
+      if (!content.trim()) continue;
+      if (compiledExcluded.some(rx => { rx.lastIndex = 0; return rx.test(content); })) continue;
+
+      const source = normalizePublicationName(article['Publisher/Agency'] || 'Unknown');
+      let dateKey = '2026-01-01';
+      try { if (article['Published At']) dateKey = new Date(article['Published At']).toISOString().split('T')[0]; } catch(e){}
+
+      const normalizedTitle = normalizeText(title);
+      const normalizedBody = normalizeText((article['Summary'] || '') + ' ' + (article['Full Body'] || ''));
+
+      for (const term of targetTerms) {
+        const regex = compiledPatterns[term];
+        regex.lastIndex = 0;
+        if (!regex.test(content)) continue;
         const brandName = normalizedTargetMap[term];
-        articleMatches.add(brandName);
 
-        results[brandName].mentions += matches.length;
-        results[brandName].articles += 1;
-        results[brandName].sources[source] = (results[brandName].sources[source] || 0) + matches.length;
-        results[brandName].timeline[dateKey] = (results[brandName].timeline[dateKey] || 0) + matches.length;
+        // Classify headline vs body
+        const sKey = term;
+        if (!sRegexCache[sKey]) sRegexCache[sKey] = new RegExp('\\b' + escapeRegExp(term) + '\\b', 'i');
+        const sr = sRegexCache[sKey];
+        const inHeadline = sr.test(normalizedTitle);
+        const inBody = sr.test(normalizedBody);
 
-        // Sentiment analysis on matching sentences
+        // Track headline vs full mentions
+        if (inHeadline) results[brandName].headline_mentions += 1;
+        if (inBody) results[brandName].full_mentions += 1;
+        if (!inBody && !inHeadline) results[brandName].full_mentions += 1; // fallback
+
         const sentences = rawContent.split(/[.!?]+\s+/);
         for (const sentence of sentences) {
-          const sentNorm = normalizeText(sentence);
-          const sRegex = new RegExp('\\b' + escapeRegExp(term) + '\\b', 'i');
-          if (sRegex.test(sentNorm)) {
-            const res = sentiment.analyze(sentence);
-            let sentCat = "Neutral";
-            if (res.score > 1) sentCat = "Positive";
-            else if (res.score < -1) sentCat = "Negative";
+          if (!sr.test(normalizeText(sentence))) continue;
+          const sc = sentiment.analyze(sentence);
+          const sentCat = sc.score > 1 ? 'Positive' : sc.score < -1 ? 'Negative' : 'Neutral';
+          results[brandName].sentiment[sentCat] += 1;
 
-            results[brandName].sentiment[sentCat] += 1;
-            if (results[brandName].article_samples[sentCat].length < 20) {
-              const url = article['Resolved URL'] || article['URL'] || article['link'] || '';
-              const titleToCheck = title || 'No Title';
-              if (!results[brandName].article_samples[sentCat].some(s => s.title === titleToCheck || (url && s.url === url))) {
-                results[brandName].article_samples[sentCat].push({
-                  title: titleToCheck,
-                  source: source,
-                  url: url,
-                  published: dateKey
-                });
-              }
-            }
+          // Headline-only sentiment from title sentences
+          if (inHeadline) {
+            const titleSc = sentiment.analyze(title);
+            const titleSentCat = titleSc.score > 1 ? 'Positive' : titleSc.score < -1 ? 'Negative' : 'Neutral';
+            results[brandName].headline_sentiment[titleSentCat] += 1;
+          }
+          // Full/body sentiment
+          results[brandName].full_sentiment[sentCat] += 1;
+
+          const url = article['Resolved URL'] || '';
+          const articleKey = title.toLowerCase().trim() || url;
+          if (!articleSeenPerBrand[brandName].has(articleKey)) {
+            articleSeenPerBrand[brandName].add(articleKey);
+            if (results[brandName].article_samples[sentCat].length < 50)
+              results[brandName].article_samples[sentCat].push({ title: title || 'No Title', source, url, published: dateKey });
           }
         }
       }
     }
 
-    // 2. All remaining articles go into "Others"
-    if (!hasKeywordMatch) {
-      const brandName = "Others";
-      results[brandName].articles += 1;
-
-      // Count mentions of other brands from the pool, or default to 1 exposure mention
-      let mentionsCount = 0;
-      otherBrandsRegex.lastIndex = 0;
-      const otherMatches = content.match(otherBrandsRegex);
-      if (otherMatches && otherMatches.length > 0) {
-        mentionsCount = otherMatches.length;
-      } else {
-        mentionsCount = 1;
-      }
-
-      results[brandName].mentions += mentionsCount;
-      results[brandName].sources[source] = (results[brandName].sources[source] || 0) + mentionsCount;
-      results[brandName].timeline[dateKey] = (results[brandName].timeline[dateKey] || 0) + mentionsCount;
-
-      // Sentiment analysis on title/summary of this other article
-      const resS = sentiment.analyze(title + " " + summary);
-      let sentCat = "Neutral";
-      if (resS.score > 1) sentCat = "Positive";
-      else if (resS.score < -1) sentCat = "Negative";
-
-      results[brandName].sentiment[sentCat] += 1;
-      if (results[brandName].article_samples[sentCat].length < 20) {
-        const url = article['Resolved URL'] || article['URL'] || article['link'] || '';
-        const titleToCheck = title || 'No Title';
-        if (!results[brandName].article_samples[sentCat].some(s => s.title === titleToCheck || (url && s.url === url))) {
-          results[brandName].article_samples[sentCat].push({
-            title: titleToCheck,
-            source: source,
-            url: url,
-            published: dateKey
-          });
-        }
-      }
-    }
-
-    if (hasKeywordMatch) {
-      totalKeywordArticles++;
-    }
+  } catch (err) {
+    console.error('[Analyzer] DB queries failed:', err.message);
   }
 
+  results["Others"].articles = othersCount;
+  results["Others"].mentions = othersCount;
+
+  const totalSectorArticles = totalKeywordArticles + othersCount;
+
   const indianSourceCounts = {};
-  for (const [brand, data] of Object.entries(results)) {
+  for (const [, data] of Object.entries(results)) {
     for (const [src, count] of Object.entries(data.sources)) {
-      if (isIndianSource(src)) {
-        indianSourceCounts[src] = (indianSourceCounts[src] || 0) + count;
-      }
+      if (isIndianSource(src)) indianSourceCounts[src] = (indianSourceCounts[src] || 0) + count;
     }
   }
   const topIndianPublications = Object.entries(indianSourceCounts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 20)
+    .sort((a, b) => b[1] - a[1]).slice(0, 20)
     .map(([name, count]) => ({ name, count }));
 
-  return {
-    brands: results,
-    topIndianPublications,
-    totalSectorArticles,
-    totalKeywordArticles
-  };
+  return { brands: results, topIndianPublications, totalSectorArticles, totalKeywordArticles };
 }
 
 module.exports = {

@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS batch_jobs (
 ALTER TABLE batch_jobs ADD COLUMN IF NOT EXISTS results TEXT;
 ALTER TABLE companies ADD COLUMN IF NOT EXISTS last_viewed_at TIMESTAMP WITH TIME ZONE;
 ALTER TABLE companies ADD COLUMN IF NOT EXISTS last_ping_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
 
 CREATE TABLE IF NOT EXISTS license_keys (
   id SERIAL PRIMARY KEY,
@@ -83,5 +84,64 @@ CREATE TABLE IF NOT EXISTS domain_authority_cache (
   rank INT,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS reports (
+  id VARCHAR(255) PRIMARY KEY,
+  user_id INT REFERENCES users(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  type VARCHAR(255) NOT NULL,
+  status VARCHAR(255) DEFAULT 'Generated',
+  date VARCHAR(255),
+  author VARCHAR(255),
+  priority VARCHAR(255),
+  topic VARCHAR(255),
+  keywords TEXT,
+  brand_keywords TEXT,
+  competitor_keywords TEXT,
+  summary TEXT,
+  tags TEXT[],
+  metrics JSONB,
+  sections JSONB,
+  bookmarks JSONB,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS user_id INT REFERENCES users(id) ON DELETE CASCADE;
+
+CREATE TABLE IF NOT EXISTS system_settings (
+  key VARCHAR(255) PRIMARY KEY,
+  value TEXT
+);
+
+INSERT INTO system_settings (key, value)
+VALUES ('admin_key', 'admin123')
+ON CONFLICT (key) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS password_resets (
+  id SERIAL PRIMARY KEY,
+  email VARCHAR(255) NOT NULL,
+  token VARCHAR(255) UNIQUE NOT NULL,
+  expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS user_sessions (
+  user_id INT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  session_token VARCHAR(255) NOT NULL,
+  ip_address VARCHAR(45) NOT NULL,
+  last_activity TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS activity_logs (
+  id SERIAL PRIMARY KEY,
+  user_id INT REFERENCES users(id) ON DELETE CASCADE,
+  action VARCHAR(100) NOT NULL,
+  details TEXT,
+  tab VARCHAR(100),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+
+
 
 
