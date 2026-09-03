@@ -234,7 +234,7 @@ async function syncDate(dateStr) {
     } catch (err) {
       pageErrors++;
       console.warn(`[NEXUS] Page ${page}/${totalPages} error for ${dateStr}: ${err.message}`);
-      if (pageErrors >= 15) {
+      if (pageErrors >= 50) {
         console.error(`[NEXUS] Aborting ${dateStr} after ${pageErrors} page errors`);
         break;
       }

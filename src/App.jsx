@@ -6453,7 +6453,7 @@ ${bodyHtml}
                         },
                         {
                           title: 'News Articles in DB',
-                          subtitle: nexusStats.latest ? `Last synced: ${new Date(nexusStats.latest).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}` : 'Synced daily at 12:30 PM',
+                          subtitle: nexusStats.latest ? `Last synced: ${new Date(nexusStats.latest).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}` : 'Synced daily at 2:30 PM',
                           value: nexusStats.total !== null ? nexusStats.total.toLocaleString('en-IN') : '—',
                           video: '/search.mp4',
                           action: () => setActiveTab('keyword-search')

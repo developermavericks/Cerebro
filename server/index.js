@@ -2424,7 +2424,7 @@ app.post('/api/nexus/cron', async (req, res) => {
   if (nexusSyncRunning) {
     return res.json({ success: false, message: 'Sync already running, skipped' });
   }
-  const days = Math.min(parseInt(req.body.days) || 1, 7);
+  const days = Math.min(parseInt(req.body.days) || 2, 7);
   nexusSyncRunning = true;
   // Sync synchronously so Cloud Run keeps CPU active during the request (avoids CPU throttle killing background tasks)
   const nexusClient = require('./nexus_client');
@@ -2478,11 +2478,14 @@ app.get('/api/nexus/status', getUserId, async (req, res) => {
     ]);
     const { getLastSyncInfo } = require('./cloudsql_to_bigquery');
     const lastBqSync = getLastSyncInfo();
+    const cloudSqlTotal = parseInt(count.rows[0]?.total || 0);
+    const cloudSqlLatest = range.rows[0]?.latest || null;
     res.json({
-      total: bqTotal,
+      total: Math.max(cloudSqlTotal, bqTotal || 0), // show whichever is larger
+      latest: cloudSqlLatest,                        // most recent article date in DB
       cloudSql: {
-        total: parseInt(count.rows[0]?.total || 0),
-        latest: range.rows[0]?.latest || null,
+        total: cloudSqlTotal,
+        latest: cloudSqlLatest,
         oldest: range.rows[0]?.oldest || null,
       },
       bigquery: {
