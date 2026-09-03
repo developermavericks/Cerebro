@@ -5118,7 +5118,7 @@ ${bodyHtml}
     const progressInterval = setInterval(async () => {
       try {
         const p = await fetch(`${API_BASE}/api/search-progress`).then(r => r.json());
-        if (p && p.batch > 0) setSearchBatchProgress(p);
+        if (p && p.articles > 0) setSearchBatchProgress(p);
       } catch (_) {}
     }, 1500);
     try {
@@ -7158,15 +7158,15 @@ ${bodyHtml}
                           }
                           return (
                             <div className="flex flex-col items-center gap-2 animate-in fade-in duration-300 w-72">
-                              <div className={`w-full h-1.5 ${darkMode ? 'bg-white/10' : 'bg-indigo-100'} rounded-full overflow-hidden`}>
+                              <div className={`relative w-full h-1.5 ${darkMode ? 'bg-white/10' : 'bg-indigo-100'} rounded-full overflow-hidden`}>
                                 {pct !== null
                                   ? <div className="h-full bg-indigo-500 rounded-full transition-all duration-700" style={{width: `${pct}%`}} />
-                                  : <div className="absolute h-full w-1/3 bg-indigo-500 rounded-full" style={{animation: 'indeterminate 1.5s ease-in-out infinite'}} />
+                                  : <div className="absolute top-0 left-0 h-full w-1/3 bg-indigo-500 rounded-full" style={{animation: 'indeterminate 1.5s ease-in-out infinite'}} />
                                 }
                               </div>
                               <p className={`text-xs font-medium ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
                                 {pct !== null
-                                  ? `${pct}% scanned · ${(searchBatchProgress.articles || 0).toLocaleString()} articles`
+                                  ? `${pct}% scanned · ${(searchBatchProgress.articles || 0).toLocaleString()} articles · ${searchBatchProgress.brand || ''}`
                                   : 'Scanning articles across the database...'}
                               </p>
                             </div>

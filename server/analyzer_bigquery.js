@@ -278,11 +278,12 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
   const { clause: topicClause, params: topicParams } = buildTopicFilter(topic);
   const topicFilter = topicClause;
 
-  // ─── Query 1: Per-brand article data (mentions, sources, timeline, sentiment, samples) in parallel ───
+  // ─── Query 1: Per-brand article data — run brands sequentially to keep memory at O(22K) ───
+  // Running concurrently (Promise.all) would hold 3×22K rows in memory simultaneously → OOM on Cloud Run.
 
   let totalKeywordArticles = 0;
 
-  const brandTasks = Array.from(brandSearchMap.entries()).map(async ([displayBrand, searchTerms]) => {
+  for (const [displayBrand, searchTerms] of brandSearchMap.entries()) {
     // Search across title only OR title + summary + full_body based on searchScope
     const safePrefix = displayBrand.replace(/\W/g, '_');
     const { clause: matchClause, params: matchLikeParams } = isHeadlineOnly
@@ -314,7 +315,6 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
     const termRegexes = (searchTerms || []).map(t =>
       new RegExp('\\b' + t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i')
     );
-    const uniqueArticles = new Set();
 
     try {
       let totalFetched = 0;
@@ -339,9 +339,6 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
 
           const sentCategory = sentimentEngine.analyzeSentiment(row.title, row.summary, row.full_body);
           const headlineSentCategory = sentimentEngine.analyzeSentiment(row.title, '', '');
-
-          const articleKey = (row.title || row.id || '').toLowerCase().trim();
-          uniqueArticles.add(articleKey);
 
           results[displayBrand].mentions += 1;
           results[displayBrand].sources[source] = (results[displayBrand].sources[source] || 0) + 1;
@@ -381,9 +378,7 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
     } catch (err) {
       console.error(`[BigQuery Analyzer] Error querying brand "${displayBrand}":`, err.message);
     }
-  });
-
-  await Promise.all(brandTasks);
+  }
 
   // ─── Query 2: Total sector article count first ───
 
