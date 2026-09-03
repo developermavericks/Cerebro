@@ -223,7 +223,7 @@ const sentimentEngine = require('./sentiment_engine');
  * @param {string} [options.endDate] - Optional end date (ISO string)
  * @returns {Promise<Object>} Analysis results in Cerebro format
  */
-async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [], topic = 'All', startDate, endDate, searchScope = 'full' }) {
+async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [], topic = 'All', startDate, endDate, searchScope = 'full', onProgress = null }) {
   const targetBrands = targetKeywords.map(b => b.trim()).filter(Boolean);
   if (!targetBrands.length) return {};
 
@@ -290,7 +290,10 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
       : buildFullLikeClause(searchTerms, `fbkw_${safePrefix}_`);
     const brandQueryParams = { ...queryParams, ...matchLikeParams, ...excludeParams, ...topicParams };
 
-    const sql = `
+    const BATCH_SIZE = 22000;
+    const MAX_BATCHES = 15; // cap at 330K articles per brand
+
+    const baseSql = `
       SELECT
         id,
         title,
@@ -305,12 +308,20 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
         ${excludeFilter}
         ${topicFilter}
       ORDER BY published_at DESC
-      LIMIT 25000
     `;
 
     try {
-      const rows = await bq.query(sql, brandQueryParams);
-      return { displayBrand, rows, searchTerms };
+      let allRows = [];
+      for (let batch = 0; batch < MAX_BATCHES; batch++) {
+        const sql = `${baseSql} LIMIT ${BATCH_SIZE} OFFSET ${batch * BATCH_SIZE}`;
+        const batchRows = await bq.query(sql, brandQueryParams);
+        allRows = allRows.concat(batchRows);
+        const oldestDate = batchRows.length > 0 ? batchRows[batchRows.length - 1]?.published_at : null;
+        if (onProgress) onProgress({ articles: allRows.length, brand: displayBrand, oldestDate });
+        console.log(`[Analyzer] ${displayBrand} batch ${batch + 1}: ${batchRows.length} rows (total so far: ${allRows.length})`);
+        if (batchRows.length < BATCH_SIZE) break;
+      }
+      return { displayBrand, rows: allRows, searchTerms };
     } catch (err) {
       console.error(`[BigQuery Analyzer] Error querying brand "${displayBrand}":`, err.message);
       return { displayBrand, rows: [], searchTerms };

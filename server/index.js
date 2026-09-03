@@ -1574,9 +1574,15 @@ app.get('/api/brands/:id/report', async (req, res) => {
   }
 });
 
+// Search progress tracker — updated by analyzer_bigquery during batch loop
+let _searchProgress = { articles: 0, brand: '', oldestDate: null, done: false };
+function updateSearchProgress(data) { Object.assign(_searchProgress, data); }
+app.get('/api/search-progress', (req, res) => res.json(_searchProgress));
+
 // Curated Query Search & Brand Analysis endpoint
 // Uses BigQuery analyzer if available, otherwise falls back to legacy Excel-based analyzer.
 app.post('/api/curated-search', async (req, res) => {
+  _searchProgress = { batch: 0, totalBatches: null, articles: 0, brand: '', done: false };
   console.log('POST /api/curated-search hit with body:', req.body);
   const { targetKeywords, excludedKeywords, topic, startDate, endDate, searchScope = 'full' } = req.body;
   try {
@@ -1585,13 +1591,14 @@ app.post('/api/curated-search', async (req, res) => {
     // Try BigQuery first
     if (analyzerBQ && bq.available()) {
       console.log('[curated-search] Using BigQuery analyzer (scope:', searchScope, ')...');
-      results = await analyzerBQ.analyzeSpecificBrands({ targetKeywords, excludedKeywords, topic, startDate, endDate, searchScope });
+      results = await analyzerBQ.analyzeSpecificBrands({ targetKeywords, excludedKeywords, topic, startDate, endDate, searchScope, onProgress: updateSearchProgress });
     } else {
       // Fallback to legacy Excel-based analyzer
       console.log('[curated-search] Using legacy Excel analyzer (scope:', searchScope, ')...');
       results = await analyzerLegacy.analyzeSpecificBrands({ targetKeywords, excludedKeywords, topic, startDate, endDate, searchScope });
     }
 
+    _searchProgress.done = true;
     console.log('Analysis results keys:', Object.keys(results.brands || {}));
     res.status(200).json(results);
   } catch (err) {

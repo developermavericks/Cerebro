@@ -3101,6 +3101,7 @@ function App() {
   const [mustHave, setMustHave] = useState('');
   const [shouldNotHave, setShouldNotHave] = useState('');
   const [isSearchingKeyword, setIsSearchingKeyword] = useState(false);
+  const [searchBatchProgress, setSearchBatchProgress] = useState(null);
   const [targetBrandsInput, setTargetBrandsInput] = useState('');
   const [excludedKeywordsInput, setExcludedKeywordsInput] = useState('');
   const [analysisScope, setAnalysisScope] = useState('sector');
@@ -5104,11 +5105,22 @@ ${bodyHtml}
   const handleKeywordSearch = async () => {
     const brands = targetBrandsInput.split(',').map(b => b.trim()).filter(Boolean);
     if (brands.length === 0) return;
+    if (brands.length > 3) {
+      setKeywordSearchError('Maximum 3 keywords allowed. Please remove some and try again.');
+      return;
+    }
     setIsSearchingKeyword(true);
+    setSearchBatchProgress(null);
     setKeywordSearchError(null);
     setCuratedAnalysisResults(null);
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 120000);
+    const timeoutId = setTimeout(() => controller.abort(), 600000);
+    const progressInterval = setInterval(async () => {
+      try {
+        const p = await fetch(`${API_BASE}/api/search-progress`).then(r => r.json());
+        if (p && p.batch > 0) setSearchBatchProgress(p);
+      } catch (_) {}
+    }, 1500);
     try {
       const excludedKeywords = excludedKeywordsInput.split(',').map(b => b.trim()).filter(Boolean);
       const res = await fetch(`${API_BASE}/api/curated-search`, {
@@ -5149,7 +5161,9 @@ ${bodyHtml}
         setKeywordSearchError('Network error — could not reach the server. Please check your connection.');
       }
     } finally {
+      clearInterval(progressInterval);
       setIsSearchingKeyword(false);
+      setSearchBatchProgress(null);
     }
   };
 
@@ -7133,18 +7147,31 @@ ${bodyHtml}
                           {isSearchingKeyword ? 'Analyzing Corpus...' : 'Analyze Exposure'}
                         </button>
 
-                        {isSearchingKeyword && (
-                          <div className="flex flex-col items-center gap-2 animate-in fade-in duration-300">
-                            <div className="w-64 h-1 bg-indigo-100 rounded-full overflow-hidden relative">
-                              <div className="absolute h-full w-1/3 bg-indigo-500 rounded-full"
-                                style={{animation: 'indeterminate 1.5s ease-in-out infinite'}}
-                              />
+                        {isSearchingKeyword && (() => {
+                          let pct = null;
+                          if (searchBatchProgress?.oldestDate && analysisStartDate && analysisEndDate) {
+                            const start = new Date(analysisStartDate).getTime();
+                            const end = new Date(analysisEndDate).getTime();
+                            const oldest = new Date(searchBatchProgress.oldestDate).getTime();
+                            const total = end - start;
+                            if (total > 0) pct = Math.min(98, Math.round((end - oldest) / total * 100));
+                          }
+                          return (
+                            <div className="flex flex-col items-center gap-2 animate-in fade-in duration-300 w-72">
+                              <div className={`w-full h-1.5 ${darkMode ? 'bg-white/10' : 'bg-indigo-100'} rounded-full overflow-hidden`}>
+                                {pct !== null
+                                  ? <div className="h-full bg-indigo-500 rounded-full transition-all duration-700" style={{width: `${pct}%`}} />
+                                  : <div className="absolute h-full w-1/3 bg-indigo-500 rounded-full" style={{animation: 'indeterminate 1.5s ease-in-out infinite'}} />
+                                }
+                              </div>
+                              <p className={`text-xs font-medium ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                                {pct !== null
+                                  ? `${pct}% scanned · ${(searchBatchProgress.articles || 0).toLocaleString()} articles`
+                                  : 'Scanning articles across the database...'}
+                              </p>
                             </div>
-                            <p className={`text-xs font-medium ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                              Scanning articles across the database...
-                            </p>
-                          </div>
-                        )}
+                          );
+                        })()}
                       </div>
                     </div>
 
