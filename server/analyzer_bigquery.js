@@ -294,22 +294,29 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
     const BATCH_SIZE = 22000;
     const MAX_BATCHES = 15; // cap at 330K articles per brand
 
-    const baseSql = `
-      SELECT
-        id,
-        title,
-        COALESCE(agency, 'Unknown') AS agency,
-        CAST(published_at AS STRING) AS published_at,
-        COALESCE(summary, '') AS summary,
-        LEFT(COALESCE(full_body, ''), 1000) AS full_body,
-        COALESCE(url, '') AS url
-      FROM ${tableRef}
-      WHERE (${matchClause})
-        ${dateFilter}
-        ${excludeFilter}
-        ${topicFilter}
-      ORDER BY published_at DESC
-    `;
+    // Cursor-based pagination: after first batch, filter by published_at < lastSeen
+    // This avoids OFFSET which re-scans N rows on every batch (slow on batch 3+)
+    const buildBatchSql = (cursorDate) => {
+      const cursorFilter = cursorDate ? `AND published_at < TIMESTAMP(@cursor_date)` : '';
+      return `
+        SELECT
+          id,
+          title,
+          COALESCE(agency, 'Unknown') AS agency,
+          CAST(published_at AS STRING) AS published_at,
+          COALESCE(summary, '') AS summary,
+          LEFT(COALESCE(full_body, ''), 1000) AS full_body,
+          COALESCE(url, '') AS url
+        FROM ${tableRef}
+        WHERE (${matchClause})
+          ${dateFilter}
+          ${cursorFilter}
+          ${excludeFilter}
+          ${topicFilter}
+        ORDER BY published_at DESC
+        LIMIT ${BATCH_SIZE}
+      `;
+    };
 
     // Build regex patterns once (outside batch loop)
     const termRegexes = (searchTerms || []).map(t =>
@@ -318,11 +325,14 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
 
     try {
       let totalFetched = 0;
+      let cursorDate = null; // published_at of last row from previous batch
       for (let batch = 0; batch < MAX_BATCHES; batch++) {
-        const sql = `${baseSql} LIMIT ${BATCH_SIZE} OFFSET ${batch * BATCH_SIZE}`;
-        const batchRows = await bq.query(sql, brandQueryParams);
+        const sql = buildBatchSql(cursorDate);
+        const batchParams = cursorDate ? { ...brandQueryParams, cursor_date: cursorDate } : brandQueryParams;
+        const batchRows = await bq.query(sql, batchParams);
         totalFetched += batchRows.length;
         const oldestDate = batchRows.length > 0 ? batchRows[batchRows.length - 1]?.published_at : null;
+        if (oldestDate) cursorDate = oldestDate; // next batch starts from here (cursor pagination)
         if (onProgress) onProgress({ articles: totalFetched, brand: displayBrand, oldestDate });
         console.log(`[Analyzer] ${displayBrand} batch ${batch + 1}: ${batchRows.length} rows (total: ${totalFetched})`);
 
