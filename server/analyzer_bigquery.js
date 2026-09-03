@@ -310,103 +310,80 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
       ORDER BY published_at DESC
     `;
 
+    // Build regex patterns once (outside batch loop)
+    const termRegexes = (searchTerms || []).map(t =>
+      new RegExp('\\b' + t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i')
+    );
+    const uniqueArticles = new Set();
+
     try {
-      let allRows = [];
+      let totalFetched = 0;
       for (let batch = 0; batch < MAX_BATCHES; batch++) {
         const sql = `${baseSql} LIMIT ${BATCH_SIZE} OFFSET ${batch * BATCH_SIZE}`;
         const batchRows = await bq.query(sql, brandQueryParams);
-        allRows = allRows.concat(batchRows);
+        totalFetched += batchRows.length;
         const oldestDate = batchRows.length > 0 ? batchRows[batchRows.length - 1]?.published_at : null;
-        if (onProgress) onProgress({ articles: allRows.length, brand: displayBrand, oldestDate });
-        console.log(`[Analyzer] ${displayBrand} batch ${batch + 1}: ${batchRows.length} rows (total so far: ${allRows.length})`);
-        if (batchRows.length < BATCH_SIZE) break;
+        if (onProgress) onProgress({ articles: totalFetched, brand: displayBrand, oldestDate });
+        console.log(`[Analyzer] ${displayBrand} batch ${batch + 1}: ${batchRows.length} rows (total: ${totalFetched})`);
+
+        // Process each row immediately — never accumulate all rows in memory
+        for (const row of batchRows) {
+          const source = normalizePublicationName(row.agency);
+          const dateKey = row.published_at ? row.published_at.split('T')[0] : 'Unknown';
+          const titleText = (row.title || '').toLowerCase();
+          const bodyText = ((row.summary || '') + ' ' + (row.full_body || '')).toLowerCase();
+          const inHeadline = termRegexes.some(rx => rx.test(titleText));
+          const inBody = termRegexes.some(rx => rx.test(bodyText));
+
+          if (isHeadlineOnly && !inHeadline) continue;
+
+          const sentCategory = sentimentEngine.analyzeSentiment(row.title, row.summary, row.full_body);
+          const headlineSentCategory = sentimentEngine.analyzeSentiment(row.title, '', '');
+
+          const articleKey = (row.title || row.id || '').toLowerCase().trim();
+          uniqueArticles.add(articleKey);
+
+          results[displayBrand].mentions += 1;
+          results[displayBrand].sources[source] = (results[displayBrand].sources[source] || 0) + 1;
+          results[displayBrand].timeline[dateKey] = (results[displayBrand].timeline[dateKey] || 0) + 1;
+          results[displayBrand].sentiment[sentCategory] += 1;
+
+          if (inHeadline) {
+            results[displayBrand].headline_mentions += 1;
+            results[displayBrand].headline_sentiment[headlineSentCategory] += 1;
+          }
+          if (inBody) {
+            results[displayBrand].full_mentions += 1;
+            results[displayBrand].full_sentiment[sentCategory] += 1;
+          } else if (!inBody && inHeadline) {
+            results[displayBrand].full_sentiment[sentCategory] += 1;
+          }
+
+          if (results[displayBrand].article_samples[sentCategory].length < 100) {
+            const titleToCheck = row.title || 'No Title';
+            const urlToCheck = row.url || '';
+            const isDup = results[displayBrand].article_samples[sentCategory].some(
+              s => s.title === titleToCheck || (urlToCheck && s.url === urlToCheck)
+            );
+            if (!isDup) {
+              results[displayBrand].article_samples[sentCategory].push({
+                title: titleToCheck, source, url: urlToCheck, published: dateKey, sentiment: sentCategory
+              });
+            }
+          }
+        }
+
+        if (batchRows.length < BATCH_SIZE) break; // last batch — done
       }
-      return { displayBrand, rows: allRows, searchTerms };
+
+      results[displayBrand].articles = results[displayBrand].mentions;
+      totalKeywordArticles += results[displayBrand].mentions;
     } catch (err) {
       console.error(`[BigQuery Analyzer] Error querying brand "${displayBrand}":`, err.message);
-      return { displayBrand, rows: [], searchTerms };
     }
   });
 
-  const brandResults = await Promise.all(brandTasks);
-
-  for (const { displayBrand, rows, searchTerms } of brandResults) {
-    results[displayBrand].articles = rows.length;
-    totalKeywordArticles += rows.length;
-
-    const uniqueArticles = new Set();
-
-    // Build regex patterns for headline vs body classification
-    const termRegexes = (searchTerms || []).map(t => 
-      new RegExp('\\b' + t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i')
-    );
-
-    for (const row of rows) {
-      const source = normalizePublicationName(row.agency);
-      const dateKey = row.published_at ? row.published_at.split('T')[0] : 'Unknown';
-      
-      // Classify: does the brand appear in headline (title) vs body (summary/full_body)?
-      const titleText = (row.title || '').toLowerCase();
-      const bodyText = ((row.summary || '') + ' ' + (row.full_body || '')).toLowerCase();
-      const inHeadline = termRegexes.some(rx => rx.test(titleText));
-      const inBody = termRegexes.some(rx => rx.test(bodyText));
-
-      if (isHeadlineOnly && !inHeadline) {
-        continue;
-      }
-
-      // Real-time high-accuracy sentiment computed from headline + summary + body
-      const sentCategory = sentimentEngine.analyzeSentiment(row.title, row.summary, row.full_body);
-      // Headline-only sentiment (from title text alone)
-      const headlineSentCategory = sentimentEngine.analyzeSentiment(row.title, '', '');
-
-      const articleKey = (row.title || row.id || '').toLowerCase().trim();
-      if (!uniqueArticles.has(articleKey)) {
-        uniqueArticles.add(articleKey);
-      }
-
-      results[displayBrand].mentions += 1;
-      results[displayBrand].sources[source] = (results[displayBrand].sources[source] || 0) + 1;
-      results[displayBrand].timeline[dateKey] = (results[displayBrand].timeline[dateKey] || 0) + 1;
-      results[displayBrand].sentiment[sentCategory] += 1;
-
-      // Track headline vs full/body mentions and sentiment separately
-      if (inHeadline) {
-        results[displayBrand].headline_mentions += 1;
-        results[displayBrand].headline_sentiment[headlineSentCategory] += 1;
-      }
-      if (inBody && !inHeadline) {
-        // Body-only mention (not in headline)
-        results[displayBrand].full_mentions += 1;
-        results[displayBrand].full_sentiment[sentCategory] += 1;
-      } else if (inBody && inHeadline) {
-        // Appears in both — count as headline mention (already counted above), but also track body sentiment
-        results[displayBrand].full_mentions += 1;
-        results[displayBrand].full_sentiment[sentCategory] += 1;
-      } else if (!inBody && inHeadline) {
-        // Only in headline, no body match — still count full_sentiment from full article
-        results[displayBrand].full_sentiment[sentCategory] += 1;
-      }
-
-      // Keep up to 100 sample articles per sentiment category
-      if (results[displayBrand].article_samples[sentCategory].length < 100) {
-        const titleToCheck = row.title || 'No Title';
-        const urlToCheck = row.url || '';
-        const isDuplicate = results[displayBrand].article_samples[sentCategory].some(
-          s => s.title === titleToCheck || (urlToCheck && s.url === urlToCheck)
-        );
-        if (!isDuplicate) {
-          results[displayBrand].article_samples[sentCategory].push({
-            title: titleToCheck,
-            source: source,
-            url: urlToCheck,
-            published: dateKey,
-            sentiment: sentCategory
-          });
-        }
-      }
-    }
-  }
+  await Promise.all(brandTasks);
 
   // ─── Query 2: Total sector article count first ───
 
