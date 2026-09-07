@@ -2413,7 +2413,7 @@ app.delete('/api/reports/:id', getUserId, async (req, res) => {
   }
 });
 
-// NEXUS cron endpoint — called by Cloud Scheduler at 10:30 AM IST daily
+// NEXUS cron endpoint — called by Cloud Scheduler at 1:30 PM IST daily
 let nexusSyncRunning = false;
 
 app.post('/api/nexus/cron', async (req, res) => {
@@ -2424,7 +2424,7 @@ app.post('/api/nexus/cron', async (req, res) => {
   if (nexusSyncRunning) {
     return res.json({ success: false, message: 'Sync already running, skipped' });
   }
-  const days = Math.min(parseInt(req.body.days) || 2, 7);
+  const days = Math.min(parseInt(req.body.days) || 3, 7);
   nexusSyncRunning = true;
   // Sync synchronously so Cloud Run keeps CPU active during the request (avoids CPU throttle killing background tasks)
   const nexusClient = require('./nexus_client');
