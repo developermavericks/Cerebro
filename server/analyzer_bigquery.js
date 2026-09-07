@@ -374,7 +374,7 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
             );
             if (!isDup) {
               results[displayBrand].article_samples[sentCategory].push({
-                title: titleToCheck, source, url: urlToCheck, published: dateKey, sentiment: sentCategory
+                title: titleToCheck, source, url: urlToCheck, published: dateKey, sentiment: sentCategory, isHeadline: inHeadline
               });
             }
           }

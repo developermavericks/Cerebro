@@ -104,7 +104,8 @@ import {
   Volume2,
   CreditCard,
   AlertCircle,
-  ExternalLink
+  ExternalLink,
+  MoreVertical
 } from 'lucide-react';
 
 import { useEditor, EditorContent, ReactNodeViewRenderer, Extension } from '@tiptap/react';
@@ -3323,6 +3324,10 @@ function App() {
   const [isThemePickerOpen, setIsThemePickerOpen] = useState(false);
   const [activeConfigChartId, setActiveConfigChartId] = useState(null);
   const [sovViewMode, setSovViewMode] = useState('total'); // 'total' | 'headline' | 'full'
+  const [wordCloudMode, setWordCloudMode] = useState('headline'); // 'headline' | 'full'
+  const [chartTypeOverrides, setChartTypeOverrides] = useState({}); // { [chartId]: chartType }
+  const [openChartMenu, setOpenChartMenu] = useState(null);
+  const [chartMenuPos, setChartMenuPos] = useState({ x: 0, y: 0 });
 
   // Derived filtered brands object (Feature 1 & 4)
   const filteredBrandsObj = React.useMemo(() => {
@@ -3526,6 +3531,64 @@ function App() {
     }
 
     return processed;
+  };
+
+  // Build Chart.js config from brands data for chart type switcher
+  const buildChartJSFromBrands = (brandsObj, cfg, chartType) => {
+    if (!brandsObj) return null;
+    const bNames = Object.keys(brandsObj);
+    let labels = [], dataValues = [], bgColors = [];
+    const field = cfg.field || 'Total Mentions';
+    if (field === 'Total Mentions' || field === 'Share of Voice' || field === 'SOV' || field === 'Reach Index') {
+      labels = bNames;
+      dataValues = bNames.map(b => { const d = brandsObj[b]||{}; return (Number(d.headline_mentions)||0) + (Number(d.full_mentions||d.mentions)||0); });
+    } else if (field === 'Net Sentiment Index' || field === 'Sentiment' || field === 'Sentiment Landscape') {
+      labels = bNames;
+      dataValues = bNames.map(b => { const s = (brandsObj[b]||{}).sentiment||{}; const t=(Number(s.Positive)||0)+(Number(s.Neutral)||0)+(Number(s.Negative)||0); return t>0?Number((((Number(s.Positive)||0)-(Number(s.Negative)||0))/t*100).toFixed(1)):0; });
+    } else if (field === 'Articles Coverage' && cfg.groupBy === 'Publication') {
+      const pm = {};
+      bNames.forEach(b => Object.entries(brandsObj[b]?.sources||{}).forEach(([p,c]) => { pm[p]=(pm[p]||0)+(Number(c)||0); }));
+      const sorted = Object.entries(pm).sort((a,b)=>b[1]-a[1]).slice(0,15);
+      labels = sorted.map(([p])=>p); dataValues = sorted.map(([,v])=>v);
+    } else if (field === 'Articles Coverage') {
+      labels = bNames;
+      dataValues = bNames.map(b => { const d=brandsObj[b]||{}; const hm=Number(d.headline_mentions)||0,fm=Number(d.full_mentions||d.mentions)||0; const sc=Object.keys(d.sources||{}).length||1; return hm*sc*45000+fm*sc*12000; });
+    } else if (field === 'Media Diversity Count') {
+      labels = bNames;
+      dataValues = bNames.map(b => Object.keys(brandsObj[b]?.sources||{}).length);
+    } else {
+      const pd = processChartData(brandsObj, cfg);
+      labels = pd.map(d=>d.name); dataValues = pd.map(d=>d.value);
+    }
+    bgColors = labels.map((_,i) => BRAND_COLORS[i % BRAND_COLORS.length]);
+    const isCircular = ['pie','doughnut','polarArea'].includes(chartType);
+    const isRadar = chartType === 'radar';
+    return {
+      type: chartType,
+      data: { labels, datasets: [{ label: field, data: dataValues, backgroundColor: isRadar ? bgColors.map(c=>c+'30') : bgColors, borderColor: bgColors, borderWidth: isCircular?2:(isRadar?2:0), borderRadius: chartType==='bar'?6:0, tension: 0.4, fill: chartType==='line'||isRadar, pointRadius: ['line','radar'].includes(chartType)?4:0, pointBackgroundColor: bgColors }] },
+      options: { responsive:true, maintainAspectRatio:false, animation:{duration:400}, plugins:{ legend:{display:isCircular, position:'bottom', labels:{font:{size:10,weight:'bold'},padding:12,usePointStyle:true}} }, ...(!isCircular&&!isRadar?{scales:{x:{grid:{display:false},ticks:{font:{size:9,weight:'bold'},maxRotation:45}},y:{grid:{color:'#f1f5f9'},ticks:{font:{size:9}},beginAtZero:true}}}:{}) }
+    };
+  };
+
+  // Stop words for word cloud filtering
+  const STOP_WORDS = new Set(['the','a','an','and','or','but','in','on','at','to','for','of','with','by','from','is','it','its','as','was','were','are','be','been','being','have','has','had','do','does','did','will','would','could','should','may','might','can','this','that','these','those','me','my','we','our','you','your','he','him','his','she','her','they','them','their','not','no','so','if','than','too','very','just','about','up','out','into','over','after','before','between','under','also','new','said','says','more','most','other','some','all','what','when','where','who','how','why','which','per','via','now','here','there','back','even','still','while','first','last','top','many','much','year','years','amid','news','report','reports','according','today','next']);
+
+  // Extract word frequencies from article titles for word cloud
+  const extractWordFrequencies = (brandsObj, mode) => {
+    if (!brandsObj) return [];
+    const wordMap = {};
+    Object.values(brandsObj).forEach(brandData => {
+      const samples = brandData.article_samples || {};
+      Object.values(samples).forEach(sentArr => {
+        (sentArr || []).forEach(sample => {
+          if (!sample.title) return;
+          if (mode === 'headline' && sample.isHeadline === false) return;
+          const words = sample.title.toLowerCase().replace(/[^a-z0-9\s'-]/g, '').split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(w));
+          words.forEach(w => { wordMap[w] = (wordMap[w] || 0) + 1; });
+        });
+      });
+    });
+    return Object.entries(wordMap).sort((a,b) => b[1]-a[1]).slice(0, 80).map(([word, count]) => ({ word, count }));
   };
 
   // Conditional formatting helper (Feature 6)
@@ -12086,9 +12149,26 @@ const spec = JSON.parse(response.text);
                                     <div key={cIdx} className={`bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col transition-all ${expandedChartIds[chart.id] ? 'col-span-full' : ''}`}>
                                       {/* Capture area */}
                                       <div ref={el => { exportChartRefs.current[`${sIdx}-${cIdx}`] = el; }} className="p-5 bg-white flex-1">
-                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">{chart.label || cfg.field || cfg.type}</p>
+                                        <div className="flex items-center justify-between mb-3">
+                                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{chart.label || cfg.field || cfg.type}</p>
+                                          {cfg.field !== 'Word Cloud' && (
+                                            <div className="relative">
+                                              <button onClick={(e) => { e.stopPropagation(); const r = e.currentTarget.getBoundingClientRect(); setChartMenuPos({ x: Math.max(8, r.right - 176), y: r.bottom + 4 }); setOpenChartMenu(openChartMenu === chart.id ? null : chart.id); }} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-300 hover:text-slate-600 transition-all" title="Change chart type"><MoreVertical size={14} /></button>
+                                            </div>
+                                          )}
+                                        </div>
+                                        {openChartMenu === chart.id && ReactDOM.createPortal(
+                                          <><div className="fixed inset-0 z-[9998]" onClick={() => setOpenChartMenu(null)} /><div className="fixed z-[9999] w-44 bg-white border border-slate-200 rounded-xl shadow-xl py-1.5" style={{ top: chartMenuPos.y, left: chartMenuPos.x }}>
+                                            {[{ key: 'default', label: 'Default View' }, { key: 'bar', label: 'Bar Chart' }, { key: 'pie', label: 'Pie Chart' }, { key: 'doughnut', label: 'Doughnut' }, { key: 'line', label: 'Line Chart' }, { key: 'polarArea', label: 'Polar Area' }, { key: 'radar', label: 'Radar' }].map(opt => (
+                                              <button key={opt.key} onClick={() => { setChartTypeOverrides(prev => ({ ...prev, [chart.id]: opt.key })); setOpenChartMenu(null); }}
+                                                className={`w-full text-left px-3.5 py-2 text-[11px] font-semibold hover:bg-slate-50 flex items-center gap-2.5 transition-colors ${(chartTypeOverrides[chart.id] || 'default') === opt.key ? 'text-indigo-600 bg-indigo-50/60 font-bold' : 'text-slate-600'}`}
+                                              >{opt.label}{(chartTypeOverrides[chart.id] || 'default') === opt.key && <Check size={12} className="ml-auto text-indigo-500" />}</button>
+                                            ))}
+                                          </div></>,
+                                          document.body
+                                        )}
                                         {chart.chartjsConfig ? (
-                                          <DynamicChart config={chart.chartjsConfig} />
+                                          <DynamicChart config={chartTypeOverrides[chart.id] && chartTypeOverrides[chart.id] !== 'default' ? { ...chart.chartjsConfig, type: chartTypeOverrides[chart.id] } : chart.chartjsConfig} />
                                         ) : isFetchingTelemetry ? (
                                           <div className="flex items-center justify-center py-10">
                                             <div className="w-6 h-6 border-4 border-indigo-600/30 border-t-indigo-600 rounded-full animate-spin" />
@@ -12098,7 +12178,11 @@ const spec = JSON.parse(response.text);
                                             <Activity size={22} className="opacity-40" />
                                             <span className="text-xs font-bold text-slate-400">No articles found for these keywords</span>
                                           </div>
-                                        ) : cfg.field === 'Total Mentions' ? (() => {
+                                        ) : (chartTypeOverrides[chart.id] && chartTypeOverrides[chart.id] !== 'default' && cfg.field !== 'Word Cloud') ? (() => {
+                                          const cjsCfg = buildChartJSFromBrands(filteredBrandsObj, cfg, chartTypeOverrides[chart.id]);
+                                          if (!cjsCfg) return <div className="text-xs text-slate-400 py-6 text-center">Cannot display this data as {chartTypeOverrides[chart.id]}</div>;
+                                          return <div style={{ height: expandedChartIds[chart.id] ? 500 : 280 }}><DynamicChart config={cjsCfg} /></div>;
+                                        })() : cfg.field === 'Total Mentions' ? (() => {
                                           // === BRAND OVERVIEW: Headline vs Article mentions ===
                                           const bNames = Object.keys(filteredBrandsObj);
                                           const totalH = bNames.reduce((s, b) => s + (Number(filteredBrandsObj[b]?.headline_mentions) || 0), 0);
@@ -12427,6 +12511,39 @@ const spec = JSON.parse(response.text);
                                               <div className="flex justify-between text-[10px] font-bold text-slate-500 pt-2 border-t border-slate-100">
                                                 <span className="uppercase tracking-wider">Total ({sovViewMode === 'headline' ? 'Headline' : sovViewMode === 'full' ? 'Full Article' : 'All'})</span>
                                                 <span className="text-slate-800 font-black">{grandTotal.toLocaleString()}</span>
+                                              </div>
+                                            </div>
+                                          );
+                                        })() : cfg.field === 'Word Cloud' ? (() => {
+                                          // === WORD CLOUD ===
+                                          const words = extractWordFrequencies(filteredBrandsObj, wordCloudMode);
+                                          if (!words.length) return <div className="text-xs text-slate-400 py-6 text-center">No article data available for word cloud</div>;
+                                          const maxCount = words[0].count;
+                                          return (
+                                            <div className="space-y-3">
+                                              <div className="flex items-center gap-1.5 pb-2 border-b border-slate-100">
+                                                {[{ key: 'headline', label: 'Headlines' }, { key: 'full', label: 'Full Article' }].map(opt => (
+                                                  <button key={opt.key} type="button" onClick={() => setWordCloudMode(opt.key)}
+                                                    className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider transition-all ${wordCloudMode === opt.key ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                                                  >{opt.label}</button>
+                                                ))}
+                                              </div>
+                                              <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 py-4 px-2 min-h-[220px]">
+                                                {words.map((w, i) => {
+                                                  const sz = Math.round(12 + ((w.count / maxCount) * 36));
+                                                  const color = BRAND_COLORS[i % BRAND_COLORS.length];
+                                                  const rot = [0, 0, 0, -10, 8, 0, 0, -5, 6, 0][i % 10];
+                                                  const op = 0.55 + (w.count / maxCount) * 0.45;
+                                                  return (
+                                                    <span key={i} className="inline-block cursor-default transition-all duration-200 hover:scale-125 hover:opacity-100"
+                                                      style={{ fontSize: `${sz}px`, fontWeight: sz > 28 ? 900 : sz > 20 ? 700 : 600, color, opacity: op, transform: `rotate(${rot}deg)`, lineHeight: 1.2, padding: '2px 4px' }}
+                                                      title={`${w.word}: ${w.count} mentions`}
+                                                    >{w.word}</span>
+                                                  );
+                                                })}
+                                              </div>
+                                              <div className="text-center text-[9px] text-slate-400 font-bold pt-1 border-t border-slate-100">
+                                                {words.length} keywords · Top frequency: {words[0]?.count || 0}
                                               </div>
                                             </div>
                                           );
@@ -13671,6 +13788,15 @@ const spec = JSON.parse(response.text);
                         charts: [
                           { id: `${generatedId}-c10`, type: 'Bar Chart', field: 'Articles Coverage', width: 'full', align: 'center', config: { field: 'Articles Coverage', groupBy: 'Publication', sort: 'Descending', maxItems: 'Top 15' } },
                           { id: `${generatedId}-c13`, type: 'KPI Card',  field: 'Media Diversity Count', width: 'full', align: 'center', config: { field: 'Media Diversity Count', groupBy: 'Brand', sort: 'Descending', maxItems: 'All' } },
+                        ]
+                      },
+                      {
+                        id: `${generatedId}-s6`,
+                        title: '6. Word Cloud',
+                        content: '',
+                        images: [],
+                        charts: [
+                          { id: `${generatedId}-c14`, type: 'Word Cloud', field: 'Word Cloud', width: 'full', align: 'center', config: { field: 'Word Cloud', groupBy: 'Brand', sort: 'Descending', maxItems: 'All' } },
                         ]
                       }
                     ]
