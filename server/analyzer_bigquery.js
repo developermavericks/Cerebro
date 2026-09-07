@@ -232,7 +232,7 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
   const tableRef = bq.getTableRef();
 
   // Initialize results structure (same shape as legacy, plus headline/full breakdowns)
-  const displayBrands = [...targetBrands, "Others"];
+  const displayBrands = [...targetBrands];
   const results = {};
   for (const brand of displayBrands) {
     results[brand] = {
@@ -390,33 +390,6 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
     }
   }
 
-  // ─── Query 2: Total sector article count first ───
-
-  let totalSectorArticles = 0;
-  try {
-    const countSql = `
-      SELECT COUNT(*) AS total
-      FROM ${tableRef}
-      WHERE 1=1
-        ${dateFilter}
-        ${topicFilter}
-    `;
-
-    const countRows = await bq.query(countSql, { ...queryParams, ...topicParams });
-    totalSectorArticles = Number(countRows[0]?.total) || 0;
-  } catch (err) {
-    console.error('[BigQuery Analyzer] Error counting sector articles:', err.message);
-  }
-
-  // ─── Query 3: "Others" — total sector articles minus target brand matches ───
-  const othersTotal = Math.max(0, totalSectorArticles - totalKeywordArticles);
-  results["Others"].articles = othersTotal;
-  results["Others"].mentions = othersTotal;
-  results["Others"].sentiment = {
-    Positive: Math.round(othersTotal * 0.45),
-    Neutral: Math.round(othersTotal * 0.45),
-    Negative: Math.round(othersTotal * 0.10)
-  };
 
   // ─── Query 4: Top Indian publications (across all matched articles) ───
 
@@ -436,7 +409,6 @@ async function analyzeSpecificBrands({ targetKeywords = [], excludedKeywords = [
   return {
     brands: results,
     topIndianPublications,
-    totalSectorArticles,
     totalKeywordArticles
   };
 }

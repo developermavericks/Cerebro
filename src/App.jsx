@@ -3322,6 +3322,7 @@ function App() {
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(true);
   const [isThemePickerOpen, setIsThemePickerOpen] = useState(false);
   const [activeConfigChartId, setActiveConfigChartId] = useState(null);
+  const [sovViewMode, setSovViewMode] = useState('total'); // 'total' | 'headline' | 'full'
 
   // Derived filtered brands object (Feature 1 & 4)
   const filteredBrandsObj = React.useMemo(() => {
@@ -3330,6 +3331,9 @@ function App() {
     const filtered = {};
 
     Object.entries(brandsObj).forEach(([brandName, brandData]) => {
+      // 0. Skip "Others" — never display fabricated sector remainder
+      if (brandName.toLowerCase() === 'others') return;
+
       // 1. Filter by Brand/Keyword checklist
       if (reportFilters.brands.length > 0 && !reportFilters.brands.includes(brandName)) {
         return;
@@ -12366,37 +12370,64 @@ const spec = JSON.parse(response.text);
                                             </div>
                                           );
                                         })() : cfg.field === 'Share of Voice' ? (() => {
-                                          // === SHARE OF VOICE: stacked bar per brand ===
+                                          // === SHARE OF VOICE: percentage split with headline/full-article toggle ===
                                           const bNames = Object.keys(filteredBrandsObj);
-                                          const totalMentions = bNames.reduce((s, b) => s + (Number(filteredBrandsObj[b]?.headline_mentions) || 0) + (Number(filteredBrandsObj[b]?.full_mentions || filteredBrandsObj[b]?.mentions) || 0), 0);
-                                          const maxBrand = Math.max(...bNames.map(b => (Number(filteredBrandsObj[b]?.headline_mentions) || 0) + (Number(filteredBrandsObj[b]?.full_mentions || filteredBrandsObj[b]?.mentions) || 0)), 1);
+                                          // Compute totals per mode
+                                          const getVal = (b, mode) => {
+                                            const d = filteredBrandsObj[b] || {};
+                                            const bH = Number(d.headline_mentions) || 0;
+                                            const bF = Number(d.full_mentions || d.mentions) || 0;
+                                            if (mode === 'headline') return bH;
+                                            if (mode === 'full') return bF;
+                                            return bH + bF; // total
+                                          };
+                                          const grandTotal = bNames.reduce((s, b) => s + getVal(b, sovViewMode), 0);
+                                          const maxBrand = Math.max(...bNames.map(b => getVal(b, sovViewMode)), 1);
                                           return (
                                             <div className="space-y-3 py-1">
-                                              <div className="flex items-center justify-between text-[9px] text-slate-500 pb-1 border-b border-slate-100">
-                                                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-indigo-500"></span> Headline</span>
-                                                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-cyan-400"></span> Article Body</span>
+                                              {/* Toggle buttons */}
+                                              <div className="flex items-center gap-1.5 pb-2 border-b border-slate-100">
+                                                {[{ key: 'total', label: 'Total' }, { key: 'headline', label: 'Headline' }, { key: 'full', label: 'Full Article' }].map(opt => (
+                                                  <button
+                                                    key={opt.key}
+                                                    type="button"
+                                                    onClick={() => setSovViewMode(opt.key)}
+                                                    className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider transition-all ${
+                                                      sovViewMode === opt.key
+                                                        ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200'
+                                                        : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                                                    }`}
+                                                  >
+                                                    {opt.label}
+                                                  </button>
+                                                ))}
                                               </div>
                                               {bNames.map((b, i) => {
-                                                const d = filteredBrandsObj[b] || {};
-                                                const bH = Number(d.headline_mentions) || 0;
-                                                const bF = Number(d.full_mentions || d.mentions) || 0;
-                                                const bTot = bH + bF;
-                                                const sov = totalMentions > 0 ? ((bTot / totalMentions) * 100).toFixed(1) : '0';
-                                                const barW = (bTot / maxBrand) * 100;
-                                                const hShare = bTot > 0 ? (bH / bTot) * 100 : 0;
+                                                const val = getVal(b, sovViewMode);
+                                                const sov = grandTotal > 0 ? ((val / grandTotal) * 100).toFixed(1) : '0';
+                                                const barW = (val / maxBrand) * 100;
                                                 return (
                                                   <div key={i} className="space-y-1">
                                                     <div className="flex justify-between text-xs">
-                                                      <span className="font-bold text-slate-700 capitalize">{b} <span className="text-[10px] text-slate-400 font-normal">({sov}%)</span></span>
-                                                      <span className="font-black text-slate-800">{bTot.toLocaleString()}</span>
+                                                      <span className="flex items-center gap-2">
+                                                        <span className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: BRAND_COLORS[i % BRAND_COLORS.length] }} />
+                                                        <span className="font-bold text-slate-700 capitalize">{b}</span>
+                                                        <span className="text-[10px] text-slate-400 font-medium">({sov}%)</span>
+                                                      </span>
+                                                      <span className="font-black text-slate-800">{val.toLocaleString()}</span>
                                                     </div>
-                                                    <div className="h-3.5 bg-slate-100 rounded-full overflow-hidden flex" style={{ width: `${Math.max(barW, 5)}%` }}>
-                                                      <div style={{ width: `${hShare}%` }} className="h-full bg-indigo-500" />
-                                                      <div style={{ width: `${100 - hShare}%` }} className="h-full bg-cyan-400" />
+                                                    <div className="h-3.5 bg-slate-100 rounded-full overflow-hidden" style={{ width: `${Math.max(barW, 5)}%` }}>
+                                                      <div className="h-full rounded-full" title={`${sov}%`}
+                                                        style={{ width: '100%', backgroundColor: BRAND_COLORS[i % BRAND_COLORS.length], opacity: 0.85 }} />
                                                     </div>
                                                   </div>
                                                 );
                                               })}
+                                              {/* Total footer */}
+                                              <div className="flex justify-between text-[10px] font-bold text-slate-500 pt-2 border-t border-slate-100">
+                                                <span className="uppercase tracking-wider">Total ({sovViewMode === 'headline' ? 'Headline' : sovViewMode === 'full' ? 'Full Article' : 'All'})</span>
+                                                <span className="text-slate-800 font-black">{grandTotal.toLocaleString()}</span>
+                                              </div>
                                             </div>
                                           );
                                         })() : (() => {
@@ -13603,7 +13634,6 @@ const spec = JSON.parse(response.text);
                         images: [],
                         charts: [
                           { id: `${generatedId}-c1`, type: 'KPI Card',  field: 'Total Mentions',  width: 'full', align: 'center', config: { field: 'Total Mentions',  groupBy: 'Brand', sort: 'Descending', maxItems: 'All' } },
-                          { id: `${generatedId}-c2`, type: 'Bar Chart', field: 'Share of Voice',  width: 'full', align: 'center', config: { field: 'Share of Voice',  groupBy: 'Brand', sort: 'Descending', maxItems: 'All' } },
                         ]
                       },
                       {
@@ -13612,7 +13642,7 @@ const spec = JSON.parse(response.text);
                         content: '',
                         images: [],
                         charts: [
-                          { id: `${generatedId}-c4`, type: 'Bar Chart', field: 'Articles Coverage', width: 'full', align: 'center', config: { field: 'Articles Coverage', groupBy: 'Brand', sort: 'Descending', maxItems: 'All' } },
+                          { id: `${generatedId}-c2`, type: 'Bar Chart', field: 'Share of Voice', width: 'full', align: 'center', config: { field: 'Share of Voice', groupBy: 'Brand', sort: 'Descending', maxItems: 'All' } },
                         ]
                       },
                       {
