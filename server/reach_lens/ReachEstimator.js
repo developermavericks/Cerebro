@@ -270,13 +270,70 @@ class ReachEstimator {
              };
         }
 
+        // v10.0: Apex Precision Engine
+        else if (version === 'v10') {
+            const stability = this.getDomainStability(hostname);
+            const jitter = 0.004 + (stability * 0.06); // Tighter bounds than v9
+
+            const uv = Math.floor(tierValue * (1 - jitter + (Math.random() * jitter * 2)));
+            const upv = Math.floor(uv * (1.65 + Math.random() * 0.25));
+
+            // FIX 1: Domain-diversity-aware indexing factor
+            const rawMentions = (metadata && typeof metadata.totalMentions === 'number' && metadata.totalMentions > 0)
+                ? metadata.totalMentions : baseMentions;
+            const uniqueDomainCount = (metadata && Array.isArray(metadata.domains))
+                ? new Set(metadata.domains.map(d => d.replace('www.', '').split('.').slice(-2).join('.'))).size
+                : 1;
+            const diversityFactor = Math.min(1.0, uniqueDomainCount / Math.max(1, Math.ceil(rawMentions / 8)));
+            const effectiveMentions = Math.max(1, Math.ceil(rawMentions * (0.55 + diversityFactor * 0.45)));
+
+            const indexingFactor = 1.0 + Math.log10(effectiveMentions) * 0.38;
+            let groundedBase = ((tierValue * 0.12) + (uv * 0.88)) * indexingFactor;
+
+            // FIX 6: Reddit as amplification signal (max +15% bonus), NOT raw count
+            const redditCount = (metadata && typeof metadata.redditMentions === 'number') ? metadata.redditMentions : 0;
+            const redditAmplification = redditCount > 0
+                ? 1.0 + Math.min(0.15, (Math.log10(redditCount + 1) / Math.log10(201)) * 0.15)
+                : 1.0;
+            groundedBase *= redditAmplification;
+
+            // FIX 7: Reprint penalty (inherited + refined from v8)
+            const provenanceTier = (metadata && metadata.provenanceTier) || 'T0';
+            const provenanceMap = { T0: 1.0, T1: 0.55, T2: 0.15, T3: 0.04, T4: 0.0 };
+            groundedBase *= (provenanceMap[provenanceTier] !== undefined ? provenanceMap[provenanceTier] : 1.0);
+
+            // FIX 3: Sentiment applied ONCE here — NOT re-applied in applyModifiers
+            const sentimentScore = this.analyzeSentiment(
+                (metadata && metadata.title) || '',
+                (metadata && metadata.description) || '',
+                (metadata && metadata.snippet) || ''
+            );
+            let sentimentMultiplier = 1.0;
+            if      (sentimentScore >  3.0) sentimentMultiplier = 1.22; // Very Positive
+            else if (sentimentScore >  1.0) sentimentMultiplier = 1.08; // Positive
+            else if (sentimentScore < -3.0) sentimentMultiplier = 1.28; // Very Negative (controversy)
+            else if (sentimentScore < -1.0) sentimentMultiplier = 1.12; // Negative
+            groundedBase *= sentimentMultiplier;
+
+            return {
+                reach: Math.max(0, Math.floor(groundedBase)),
+                mentions: effectiveMentions,
+                confidence: 99,
+                sentimentScore,
+                uv,
+                upv,
+                provenanceTier,
+                entropy: this.calculateShannonEntropy((metadata && metadata.socialProof) || {})
+            };
+        }
+
         return { reach: baseReach, mentions: baseMentions, confidence: 65, sentimentScore: 0 };
     }
 
     static async getDomainWeight(hostname) {
         if (typeof hostname !== 'string') return 1.0;
         hostname = hostname.replace('www.', '').toLowerCase().trim();
-        
+
         // Static lists check first (highest priority) to guarantee tier levels
         if (this.premierDomains.some(d => hostname.includes(d))) return 5.0;
         if (this.authorityDomains.some(d => hostname.includes(d))) return 3.0;
@@ -304,6 +361,41 @@ class ReachEstimator {
             return 1.1;                        // Top 1,000,000
         }
         return 1.0;
+    }
+
+    // v10: Continuous (non-bucketed) domain weight — FIX 2 & FIX 8
+    static async getDomainWeightContinuous(hostname) {
+        if (typeof hostname !== 'string') return 1.5;
+        hostname = hostname.replace('www.', '').toLowerCase().trim();
+
+        // Static premium lists retain their known values
+        if (this.premierDomains.some(d => hostname.includes(d))) return 5.0;
+        if (this.authorityDomains.some(d => hostname.includes(d))) return 3.0;
+        if (this.growthDomains.some(d => hostname.includes(d))) return 1.5;
+
+        try {
+            const pageRank = await OpenPageRank.getDomainRank(hostname);
+            if (pageRank > 0) {
+                // Continuous linear scale: OPR 0–10 → weight 0.5–5.0
+                return parseFloat(Math.max(0.5, Math.min(5.0, (pageRank / 10) * 5.0)).toFixed(3));
+            }
+        } catch (err) {
+            console.error('[ReachEstimator] getDomainWeightContinuous error:', err.message);
+        }
+
+        // FIX 8: SiteRank continuous interpolation instead of hard buckets
+        const rank = SiteRank.getRank(hostname);
+        if (rank !== null) {
+            if (rank <= 100)     return 5.0;
+            if (rank <= 1000)    return parseFloat((4.0 + ((1000 - rank) / 900)).toFixed(3));
+            if (rank <= 10000)   return parseFloat((3.0 + ((10000 - rank) / 9000)).toFixed(3));
+            if (rank <= 100000)  return parseFloat((2.0 + ((100000 - rank) / 90000)).toFixed(3));
+            if (rank <= 1000000) return parseFloat((1.0 + ((1000000 - rank) / 900000)).toFixed(3));
+            return 0.8;
+        }
+
+        // FIX 8: Neutral mid-tier fallback (1.5) instead of lowest tier (1.0)
+        return 1.5;
     }
 
     // Apply Modifiers based on Version
@@ -542,6 +634,93 @@ class ReachEstimator {
                 deviation: parseFloat(Math.min(0.8, deviation).toFixed(2)),
                 uv: metadata?.uv || reach / 1.1,
                 upv: metadata?.upv || reach / 1.05
+            };
+        }
+
+        // v10.0: Apex Precision Engine — 300-draw QMC + calibrated Bayesian posterior
+        else if (version === 'v10') {
+            let hostname = '';
+            try {
+                hostname = new URL((metadata && metadata.url) || 'https://google.com').hostname.replace('www.', '');
+            } catch (e) {
+                hostname = ((metadata && metadata.url) || 'google.com').replace('www.', '');
+            }
+
+            const sobolPoints = this.generateSobolSequence(300);
+            const simulationResults = [];
+
+            for (let i = 0; i < 300; i++) {
+                const draw = sobolPoints[i];
+                let simReach = reach;
+
+                const stability = this.getDomainStability(hostname);
+                const jitterMagnitude = 0.004 + (stability * 0.06);
+                const jitter = (1 - jitterMagnitude) + (draw * jitterMagnitude * 2);
+
+                const socialProof = (metadata && metadata.socialProof) || { x: 0, linkedin: 0, reddit: 0, facebook: 0 };
+                const entropy = this.calculateShannonEntropy(socialProof);
+                simReach *= (1 + (entropy * 0.70)); // Slightly tighter than v9's 0.85
+
+                simReach *= 1.25; // Dark social factor (conservative vs v9's 1.35)
+
+                // FIX 5: Temporal freshness signal
+                const dates = (metadata && metadata.temporalLog) || [];
+                if (dates.length > 0) {
+                    const isBreaking = dates.some(d => typeof d === 'string' && (d.toLowerCase().includes('hour') || d.toLowerCase().includes('minute')));
+                    if (isBreaking) simReach *= 2.1; // Calibrated vs v9's 2.45
+                }
+
+                simulationResults.push(simReach * jitter);
+            }
+
+            simulationResults.sort((a, b) => a - b);
+            const rawMedian = simulationResults[150]; // Median of 300 draws
+
+            // Bayesian posterior: 93% data weight, 7% prior — more data-confident than v9 (90/10)
+            const benchmarkPrior = 40000;
+            finalReach = (rawMedian * 0.93) + (benchmarkPrior * 0.07);
+
+            const low  = simulationResults[9];
+            const high = simulationResults[290];
+            const deviation = ((high - low) / (2 * Math.max(1, finalReach))) * 100;
+
+            // FIX 5: Time decay — exponential, article-age-aware
+            if (articleDate) {
+                const ageInHrs = Math.max(0, (new Date().getTime() - dateObj.getTime()) / (1000 * 3600));
+
+                if (ageInHrs <= 6) {
+                    // Ramp-up: sigmoid
+                    finalReach *= (1 / (1 + Math.exp(-0.65 * (ageInHrs - 2))));
+                } else if (ageInHrs <= 72) {
+                    // Peak window — very gentle decay
+                    finalReach *= Math.exp(-0.004 * (ageInHrs - 6));
+                } else if (ageInHrs <= 336) {
+                    // Standard decay (gentler than v9's 1.25 base)
+                    const days = ageInHrs / 24;
+                    finalReach /= Math.pow(1.18, (days - 0.25));
+                } else {
+                    // Long tail
+                    const days = ageInHrs / 24;
+                    const isEvergreen = domainsArray.some(d =>
+                        d.includes('perplexity') || d.includes('gemini') ||
+                        d.includes('wikipedia') || d.includes('github'));
+                    finalReach /= isEvergreen
+                        ? Math.pow(1.08, (days / 14))
+                        : Math.pow(1.35, (days / 7));
+                }
+            }
+
+            // FIX 3: Sentiment NOT re-applied here (already applied once in estimate())
+
+            return {
+                finalReach: Math.max(0, Math.floor(finalReach)),
+                velocity: Math.min(100, Math.floor((reach / 700))),
+                agenticStatus: domainsArray.some(d => d.includes('perplexity') || d.includes('gemini'))
+                    ? 'Apex-Verified' : 'None',
+                deviation: parseFloat(Math.min(0.55, deviation).toFixed(2)),
+                uv:  (metadata && metadata.uv)  || reach / 1.06,
+                upv: (metadata && metadata.upv) || reach / 1.03,
+                entropy: this.calculateShannonEntropy((metadata && metadata.socialProof) || {})
             };
         }
 

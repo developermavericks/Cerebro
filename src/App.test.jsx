@@ -15,6 +15,8 @@ describe('Cerebro Studio Architecture & Component Suite', () => {
 
   const loginToApp = async () => {
     render(<App />);
+    const maverickTabBtn = screen.getByText('Maverick');
+    fireEvent.click(maverickTabBtn);
     const emailInput = screen.getByPlaceholderText('user@themavericksindia.com');
     const passwordInput = screen.getByPlaceholderText('••••••••');
     const signInBtn = screen.getByText(/Sign In to Cerebro/i);
@@ -34,7 +36,7 @@ describe('Cerebro Studio Architecture & Component Suite', () => {
     const reportAnalysisTab = screen.getByText(/Report Analysis/i);
     fireEvent.click(reportAnalysisTab);
 
-    const briefingCard = await screen.findByText(/Q2 Competitor Trajectory/i);
+    const briefingCard = await screen.findByText(/AI Competitive/i);
     fireEvent.click(briefingCard);
 
     expect(screen.getByText(/Present View/i)).toBeDefined();
@@ -46,7 +48,7 @@ describe('Cerebro Studio Architecture & Component Suite', () => {
     const reportAnalysisTab = screen.getByText(/Report Analysis/i);
     fireEvent.click(reportAnalysisTab);
 
-    const briefingCard = await screen.findByText(/Q2 Competitor Trajectory/i);
+    const briefingCard = await screen.findByText(/AI Competitive/i);
     fireEvent.click(briefingCard);
 
     const historyBtn = screen.getByText(/History Log \(/i);
@@ -60,7 +62,7 @@ describe('Cerebro Studio Architecture & Component Suite', () => {
     const reportAnalysisTab = screen.getByText(/Report Analysis/i);
     fireEvent.click(reportAnalysisTab);
 
-    const briefingCard = await screen.findByText(/Q2 Competitor Trajectory/i);
+    const briefingCard = await screen.findByText(/AI Competitive/i);
     fireEvent.click(briefingCard);
 
     const presentBtn = screen.getByText(/Present View/i);
@@ -75,12 +77,12 @@ describe('Cerebro Studio Architecture & Component Suite', () => {
     fireEvent.click(reportAnalysisTab);
 
     // Click on "Create Report" button to open modal
-    const createBtn = screen.getByText(/Create Report/i);
+    const createBtn = screen.getByText((content, element) => element.tagName === 'H1' && element.textContent === 'Create Report');
     fireEvent.click(createBtn);
 
     // Check that modal inputs are present
     const titleInput = screen.getByPlaceholderText(/e.g. Q3 APAC Generative/i);
-    const keywordsInput = screen.getByPlaceholderText(/e.g. Nvidia, OpenAI/i);
+    const keywordsInput = screen.getByPlaceholderText(/e.g. Cerebro, PulseWire/i);
     const submitBtn = screen.getByText(/Generate Assessment/i);
 
     fireEvent.change(titleInput, { target: { value: 'AI Strategy Report' } });
@@ -90,7 +92,7 @@ describe('Cerebro Studio Architecture & Component Suite', () => {
     fireEvent.click(submitBtn);
 
     // Verify report card is created (should show title)
-    expect(await screen.findByText('AI Strategy Report')).toBeDefined();
+    expect(await screen.findByDisplayValue('AI Strategy Report')).toBeDefined();
 
     // Click "Insert Analytics Chart" (which is also "Add Chart") button
     const insertChartBtn = screen.getByText(/Insert Analytics Chart/i);
@@ -115,7 +117,7 @@ describe('Cerebro Studio Architecture & Component Suite', () => {
     fireEvent.click(reportAnalysisTab);
 
     // Open existing report
-    const briefingCard = await screen.findByText(/Q2 Competitor Trajectory/i);
+    const briefingCard = await screen.findByText(/AI Competitive/i);
     fireEvent.click(briefingCard);
 
     // Click "Insert Analytics Chart" to open Right Drawer

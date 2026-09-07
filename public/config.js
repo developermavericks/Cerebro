@@ -1,9 +1,15 @@
+// ✰ Cerebro App Config ✰
+// Replace the value below with your Google OAuth 2.0 Client ID from Google Cloud Console
+// (APIs & Services → Credentials → OAuth 2.0 Client IDs)
+window.GOOGLE_CLIENT_ID = '358839170188-c5ml1t2v1h8sod4mnot6v6pthm4gsg1r.apps.googleusercontent.com';
+
 // ✰ webmeji config ✰
 window.SPAWNING = [
   { id: 'webmeji-1', config: 'MIKU_CONFIG' },
   { id: 'webmeji-2', config: 'C1_CONFIG' },
   { id: 'webmeji-3', config: 'C2_CONFIG' },
-  { id: 'webmeji-4', config: 'C3_CONFIG' }
+  { id: 'webmeji-4', config: 'C3_CONFIG' },
+  { id: 'webmeji-6', config: 'SHIMEJI_CONFIG' }
 ];
 
 window.SHIMEJI_CONFIG = {
@@ -324,3 +330,49 @@ window.C3_CONFIG = {
   hangstillTop: { frames: ["cartoons/c3/sprites/0022.webp","cartoons/c3/sprites/0054.webp","cartoons/c3/sprites/0020.webp","cartoons/c3/sprites/0021.webp","cartoons/c3/sprites/0055.webp","cartoons/c3/sprites/0056.webp","cartoons/c3/sprites/0057.webp","cartoons/c3/sprites/0058.webp"], interval: 200, loops: 2, randomizeDuration: true, min: 3000, max: 11000 },
   jump: { frames: ["cartoons/c3/sprites/0062.webp"], interval: 200 }
 };
+
+
+window.C5_CONFIG = {
+  ALLOWANCES: ['pet', 'drag', 'bottom', 'top', 'left', 'right'],
+  walkspeed: 50,
+  fallspeed: 200,
+  jumpspeed: 150,
+  gettingupspeed: 2000,
+
+  walk: { frames: ["cartoons/c5/sprites/0027.webp", "cartoons/c5/sprites/0001.webp", "cartoons/c5/sprites/0028.webp", "cartoons/c5/sprites/0002.webp"], interval: 175, loops: 6 },
+  stand: { frames: ["cartoons/c5/sprites/0000.webp"], interval: 200, loops: 1 },
+  sit: { frames: ["cartoons/c5/sprites/0008.webp"], interval: 1000, loops: 1, randomizeDuration: true, min: 3000, max: 11000 },
+  spin: { frames: ["cartoons/c5/sprites/0000.webp"], interval: 150, loops: 3 },
+  dance: { frames: ["cartoons/c5/sprites/0000.webp"], interval: 200, loops: 5 },
+  trip: { frames: ["cartoons/c5/sprites/0036.webp", "cartoons/c5/sprites/0037.webp", "cartoons/c5/sprites/0038.webp", "cartoons/c5/sprites/0039.webp", "cartoons/c5/sprites/0040.webp"], interval: 250, loops: 1 },
+  forcewalk: { loops: 6 },
+  forcethink: { frames: ["cartoons/c5/sprites/0000.webp"], interval: 500, loops: 2 },
+  pet: { frames: ["cartoons/c5/sprites/0015.webp", "cartoons/c5/sprites/0016.webp"], interval: 75 },
+  drag: { frames: ["cartoons/c5/sprites/0006.webp", "cartoons/c5/sprites/0004.webp", "cartoons/c5/sprites/0005.webp", "cartoons/c5/sprites/0007.webp", "cartoons/c5/sprites/0059.webp", "cartoons/c5/sprites/0060.webp"], interval: 210 },
+  falling: { frames: ["cartoons/c5/sprites/0003.webp"], interval: 200, loops: 2 },
+  fallen: { frames: ["cartoons/c5/sprites/0015.webp", "cartoons/c5/sprites/0016.webp"], interval: 250, loops: 1 },
+
+  ORIGINAL_ACTIONS: [
+    'walk','walk','walk','walk','walk','walk',
+    'walk','walk','walk','walk','walk','walk',
+    'spin','spin','spin',
+    'sit','sit',
+    'dance','dance',
+    'trip'
+  ],
+
+  EDGE_ACTIONS: [
+    'hang','hang',
+    'climb','climb','climb','climb',
+    'fall','fall'
+  ],
+
+  JUMP_CHANCE: 0.06,
+
+  climbSide: { frames: ["cartoons/c5/sprites/0011.webp", "cartoons/c5/sprites/0041.webp", "cartoons/c5/sprites/0009.webp", "cartoons/c5/sprites/0010.webp", "cartoons/c5/sprites/0042.webp", "cartoons/c5/sprites/0043.webp", "cartoons/c5/sprites/0044.webp", "cartoons/c5/sprites/0045.webp"], interval: 200, loops: 2 },
+  hangstillSide: { frames: ["cartoons/c5/sprites/0045.webp", "cartoons/c5/sprites/0044.webp", "cartoons/c5/sprites/0043.webp", "cartoons/c5/sprites/0042.webp", "cartoons/c5/sprites/0010.webp", "cartoons/c5/sprites/0009.webp", "cartoons/c5/sprites/0041.webp", "cartoons/c5/sprites/0011.webp"], interval: 200, loops: 2, randomizeDuration: true, min: 3000, max: 11000 },
+  climbTop: { frames: ["cartoons/c5/sprites/0022.webp", "cartoons/c5/sprites/0054.webp", "cartoons/c5/sprites/0020.webp", "cartoons/c5/sprites/0021.webp", "cartoons/c5/sprites/0055.webp", "cartoons/c5/sprites/0056.webp", "cartoons/c5/sprites/0057.webp", "cartoons/c5/sprites/0058.webp"], interval: 200, loops: 6 },
+  hangstillTop: { frames: ["cartoons/c5/sprites/0022.webp", "cartoons/c5/sprites/0054.webp", "cartoons/c5/sprites/0020.webp", "cartoons/c5/sprites/0021.webp", "cartoons/c5/sprites/0055.webp", "cartoons/c5/sprites/0056.webp", "cartoons/c5/sprites/0057.webp", "cartoons/c5/sprites/0058.webp"], interval: 200, loops: 2, randomizeDuration: true, min: 3000, max: 11000 },
+  jump: { frames: ["cartoons/c5/sprites/0019.webp"], interval: 200 }
+};
+
