@@ -6253,8 +6253,8 @@ ${bodyHtml}
                   { id: 'keyword-search', label: 'Keyword Search', icon: Search },
                   { id: 'report-analysis', label: 'Report Analysis', icon: FileText },
                   { id: 'article-reach', label: 'Article Reach', icon: Globe },
-                  { id: 'brand-tracker', label: 'Brand Tracker', icon: Activity },
-                  { id: 'competitor-analysis', label: 'Competitor Analysis', icon: BarChart3 },
+                  { id: 'brand-tracker', label: 'Tracker', icon: Activity },
+                  // { id: 'competitor-analysis', label: 'Competitor Analysis', icon: BarChart3 },
                 ].map(item => (
                   <button
                     key={item.id}
@@ -8126,6 +8126,8 @@ ${bodyHtml}
                     )}
                   </div>
                 ) : activeTab === 'competitor-analysis' ? (
+                  <div className="flex items-center justify-center h-full text-slate-400">Competitor Analysis coming soon.</div>
+                ) : false ? (
                   <div className={`h-full flex flex-col items-center justify-start ${sidebarCollapsed ? 'max-w-[1850px]' : 'max-w-[1700px]'} mx-auto w-full transition-all duration-500`}>
                     {/* Top Actions Bar */}
                     <div className="w-full flex justify-end items-center gap-3 mb-8 animate-in fade-in slide-in-from-right-4 duration-700 relative">

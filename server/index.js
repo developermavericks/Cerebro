@@ -2298,7 +2298,7 @@ app.get('/api/reports', getUserId, async (req, res) => {
               brand_keywords as "brandKeywords", competitor_keywords as "competitorKeywords",
               summary, tags, metrics, sections, bookmarks
        FROM reports
-       WHERE user_id = $1 AND id NOT LIKE 'predefined-%'
+       WHERE user_id = $1 AND id NOT LIKE 'predefined-%' AND is_archived = false
        ORDER BY created_at DESC`,
       [req.userId]
     );
@@ -2723,6 +2723,7 @@ if (process.env.NODE_ENV === 'production') {
     await db.query(`ALTER TABLE reports ADD COLUMN IF NOT EXISTS competitor_keywords TEXT DEFAULT ''`);
     await db.query(`ALTER TABLE reports ADD COLUMN IF NOT EXISTS sections JSONB DEFAULT '[]'`);
     await db.query(`ALTER TABLE reports ADD COLUMN IF NOT EXISTS bookmarks JSONB DEFAULT '[]'`);
+    await db.query(`ALTER TABLE reports ADD COLUMN IF NOT EXISTS is_archived BOOLEAN DEFAULT false`);
     await db.query(`
       CREATE TABLE IF NOT EXISTS support_tickets (
         id SERIAL PRIMARY KEY,
