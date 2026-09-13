@@ -2424,7 +2424,7 @@ app.post('/api/nexus/cron', async (req, res) => {
   if (nexusSyncRunning) {
     return res.json({ success: false, message: 'Sync already running, skipped' });
   }
-  const days = Math.min(parseInt(req.body.days) || 7, 7);
+  const days = Math.min(parseInt(req.body.days) || 7, 14);
   nexusSyncRunning = true;
   // Sync synchronously so Cloud Run keeps CPU active during the request (avoids CPU throttle killing background tasks)
   const nexusClient = require('./nexus_client');
