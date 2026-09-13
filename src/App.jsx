@@ -3344,11 +3344,6 @@ function App() {
         return;
       }
 
-      // 2. Filter by minMentions
-      if ((brandData.mentions || 0) < reportFilters.minMentions) {
-        return;
-      }
-
       // a. Date Range filter (applied to timeline dates)
       const filteredTimeline = {};
       Object.entries(brandData.timeline || {}).forEach(([dt, val]) => {
@@ -3419,15 +3414,24 @@ function App() {
       });
 
       const newMentions = Object.values(filteredTimeline).reduce((s, v) => s + v, 0);
-      const rawHm = brandData.headline_mentions !== undefined ? brandData.headline_mentions : Math.round((newMentions || brandData.mentions || 0) * 0.35);
-      const rawFm = brandData.full_mentions !== undefined ? brandData.full_mentions : Math.round((newMentions || brandData.mentions || 0) * 0.65);
+      const effectiveMentions = newMentions || brandData.mentions || 0;
+
+      // 2. Filter by minMentions (applied after date filtering)
+      if (effectiveMentions < reportFilters.minMentions) return;
+
+      // Scale headline/full proportionally to the date-filtered mention count
+      // Never fabricate — if API didn't return the split, leave it undefined
+      const totalRaw = brandData.mentions || 0;
+      const scale = totalRaw > 0 ? effectiveMentions / totalRaw : 1;
+      const rawHm = brandData.headline_mentions !== undefined ? Math.round(brandData.headline_mentions * scale) : undefined;
+      const rawFm = brandData.full_mentions !== undefined ? Math.round(brandData.full_mentions * scale) : undefined;
 
       filtered[brandName] = {
         ...brandData,
         headline_mentions: rawHm,
         full_mentions: rawFm,
-        mentions: newMentions || brandData.mentions,
-        articles: newMentions || brandData.articles,
+        mentions: effectiveMentions,
+        articles: brandData.articles || brandData.mentions,
         sources: filteredSources,
         timeline: filteredTimeline,
         sentiment: filteredSentiment,
@@ -3471,8 +3475,8 @@ function App() {
           val = (s.Positive || 0) + (s.Neutral || 0) + (s.Negative || 0);
         } else if (field === 'Mentions Trend' || field === 'SOV' || field === 'Share of Voice' || field === 'Reach Index') {
           val = bData.mentions || 0;
-        } else if (field === 'Articles Coverage') {
-          val = bData.articles || 0;
+        } else if (field === 'Articles Coverage' || field === 'Total Articles') {
+          val = bData.mentions || 0;
         } else if (field === 'Net Sentiment Index') {
           const s = bData.sentiment || { Positive: 0, Neutral: 0, Negative: 0 };
           const total = (s.Positive || 0) + (s.Neutral || 0) + (s.Negative || 0);
@@ -3552,7 +3556,7 @@ function App() {
       labels = sorted.map(([p])=>p); dataValues = sorted.map(([,v])=>v);
     } else if (field === 'Articles Coverage') {
       labels = bNames;
-      dataValues = bNames.map(b => { const d=brandsObj[b]||{}; const hm=Number(d.headline_mentions)||0,fm=Number(d.full_mentions||d.mentions)||0; const sc=Object.keys(d.sources||{}).length||1; return hm*sc*45000+fm*sc*12000; });
+      dataValues = bNames.map(b => (Number((brandsObj[b]||{}).mentions)||0) * 10000);
     } else if (field === 'Media Diversity Count') {
       labels = bNames;
       dataValues = bNames.map(b => Object.keys(brandsObj[b]?.sources||{}).length);
@@ -3938,14 +3942,16 @@ function App() {
       body: JSON.stringify({
         targetKeywords: combinedKeywords,
         excludedKeywords: [],
-        topic: selectedReport.topic || 'All'
+        topic: selectedReport.topic || 'All',
+        startDate: selectedReport.metrics?.startDate || undefined,
+        endDate: selectedReport.metrics?.endDate || undefined
       })
     })
       .then(r => r.ok ? r.json() : Promise.reject(r.status))
       .then(data => { setReportTelemetryData(data); })
       .catch(err => console.error('Error fetching report telemetry:', err))
       .finally(() => setIsFetchingTelemetry(false));
-  }, [selectedReport?.id, selectedReport?.brandKeywords, selectedReport?.competitorKeywords, selectedReport?.keywords, selectedReport?.topic]);
+  }, [selectedReport?.id, selectedReport?.brandKeywords, selectedReport?.competitorKeywords, selectedReport?.keywords, selectedReport?.topic, selectedReport?.metrics?.startDate, selectedReport?.metrics?.endDate]);
 
   useEffect(() => {
     if (view === 'landing' && user && activeTab === 'dashboard' && showPets && window.initWebmeji) {
@@ -10190,6 +10196,76 @@ ${bodyHtml}
                           {/* Continuous Spacious Landscape Canvas Spanned Full Width */}
                           <div className={`w-full bg-white min-h-[900px] flex flex-col relative pb-36 transition-all shadow-inner print:p-0 print:m-0 print:shadow-none print:bg-white ${isSavingFlash ? 'ring-8 ring-emerald-500/40 shadow-[0_0_50px_rgba(16,185,129,0.3)]' : ''}`} style={{ fontFamily: previewFontFamily || fontFamily }}>
                             <div className="py-16 space-y-24 print:py-0 print:space-y-16">
+                              {/* Report Cover / Meta Header */}
+                              <div className="mx-10 mb-4 rounded-3xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white shadow-sm print:mx-0 print:rounded-none print:border-none print:shadow-none print:mb-8">
+                                <div className="px-12 py-10">
+                                  {/* Type badge + title */}
+                                  <div className="flex items-start gap-4 mb-6">
+                                    <span className="shrink-0 px-3 py-1 bg-slate-900 text-white rounded-full text-[10px] font-black uppercase tracking-widest shadow-sm mt-1">
+                                      {selectedReport.type || 'Report'}
+                                    </span>
+                                    <h1 className="text-3xl font-black tracking-tight text-slate-900 leading-tight">{selectedReport.title}</h1>
+                                  </div>
+
+                                  {/* Meta grid */}
+                                  <div className="grid grid-cols-2 md:grid-cols-3 gap-x-10 gap-y-4 text-xs border-t border-slate-200 pt-6">
+                                    {selectedReport.brandKeywords && (
+                                      <div>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Brand</p>
+                                        <p className="font-bold text-slate-800">{selectedReport.brandKeywords}</p>
+                                      </div>
+                                    )}
+                                    {selectedReport.competitorKeywords && (
+                                      <div>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Competitors</p>
+                                        <p className="font-bold text-slate-800">{selectedReport.competitorKeywords}</p>
+                                      </div>
+                                    )}
+                                    {selectedReport.keywords && (
+                                      <div>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Target Keywords</p>
+                                        <p className="font-bold text-slate-800">{selectedReport.keywords}</p>
+                                      </div>
+                                    )}
+                                    {selectedReport.topic && (
+                                      <div>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Sector / Topic</p>
+                                        <p className="font-bold text-slate-800">{selectedReport.topic}</p>
+                                      </div>
+                                    )}
+                                    {(selectedReport.metrics?.startDate || selectedReport.metrics?.endDate) && (
+                                      <div>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Date Range</p>
+                                        <p className="font-bold text-slate-800">
+                                          {selectedReport.metrics?.startDate || '—'} → {selectedReport.metrics?.endDate || '—'}
+                                        </p>
+                                      </div>
+                                    )}
+                                    {selectedReport.priority && (
+                                      <div>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Priority</p>
+                                        <p className="font-bold text-slate-800">{selectedReport.priority}</p>
+                                      </div>
+                                    )}
+                                    <div>
+                                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Created</p>
+                                      <p className="font-bold text-slate-800">{selectedReport.date || '—'}</p>
+                                    </div>
+                                    {selectedReport.status && (
+                                      <div>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Status</p>
+                                        <p className="font-bold text-emerald-600">{selectedReport.status}</p>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Summary line */}
+                                  {selectedReport.summary && (
+                                    <p className="mt-5 text-xs text-slate-500 font-medium border-t border-slate-100 pt-4 leading-relaxed">{selectedReport.summary}</p>
+                                  )}
+                                </div>
+                              </div>
+
                               {(selectedReport.sections || []).map((sec, sIdx) => (
                                 <div
                                   id={`canvas-sec-${sIdx}`}
@@ -11332,9 +11408,9 @@ ${bodyHtml}
                                             setIsFetchingTelemetry(true);
                                             fetch(`${API_BASE}/api/curated-search`, {
                                               method: 'POST',
-                                              headers: { 'Content-Type': 'application/json' },
-                                              body: JSON.stringify({ targetKeywords: combinedKeywords, excludedKeywords: [], topic: selectedReport.topic || 'All' })
-                                            }).then(r => r.json()).then(data => setReportTelemetryData(data)).catch(err => console.error(err)).finally(() => setIsFetchingTelemetry(false));
+                                              headers: { 'Content-Type': 'application/json', 'X-User-Id': user?.id || '' },
+                                              body: JSON.stringify({ targetKeywords: combinedKeywords, excludedKeywords: [], topic: selectedReport.topic || 'All', startDate: selectedReport.metrics?.startDate || undefined, endDate: selectedReport.metrics?.endDate || undefined })
+                                            }).then(r => r.ok ? r.json() : Promise.reject(r.status)).then(data => setReportTelemetryData(data)).catch(err => console.error(err)).finally(() => setIsFetchingTelemetry(false));
                                           }}
                                           disabled={isFetchingTelemetry}
                                           className="text-slate-500 hover:text-indigo-600 text-[9px] font-black uppercase transition-colors disabled:opacity-40 flex items-center gap-1"
@@ -12122,6 +12198,42 @@ const spec = JSON.parse(response.text);
 
                         {/* Chart Grid */}
                         <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+                          {/* Report meta details */}
+                          <div className="mb-8 rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white shadow-sm overflow-hidden">
+                            <div className="px-6 py-5">
+                              <div className="flex items-center gap-3 mb-4">
+                                <span className="px-2.5 py-0.5 bg-slate-900 text-white rounded-full text-[10px] font-black uppercase tracking-widest">
+                                  {selectedReport.type || 'Report'}
+                                </span>
+                                <span className="text-sm font-black text-slate-800">{selectedReport.title}</span>
+                              </div>
+                              <div className="grid grid-cols-2 gap-x-8 gap-y-3 text-xs border-t border-slate-100 pt-4">
+                                {selectedReport.brandKeywords && (
+                                  <div><p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-0.5">Brand</p><p className="font-bold text-slate-700">{selectedReport.brandKeywords}</p></div>
+                                )}
+                                {selectedReport.competitorKeywords && (
+                                  <div><p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-0.5">Competitors</p><p className="font-bold text-slate-700">{selectedReport.competitorKeywords}</p></div>
+                                )}
+                                {selectedReport.keywords && (
+                                  <div><p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-0.5">Target Keywords</p><p className="font-bold text-slate-700">{selectedReport.keywords}</p></div>
+                                )}
+                                {selectedReport.topic && (
+                                  <div><p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-0.5">Sector / Topic</p><p className="font-bold text-slate-700">{selectedReport.topic}</p></div>
+                                )}
+                                {(selectedReport.metrics?.startDate || selectedReport.metrics?.endDate) && (
+                                  <div><p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-0.5">Date Range</p><p className="font-bold text-slate-700">{selectedReport.metrics?.startDate || '—'} → {selectedReport.metrics?.endDate || '—'}</p></div>
+                                )}
+                                <div><p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-0.5">Created</p><p className="font-bold text-slate-700">{selectedReport.date || '—'}</p></div>
+                                {selectedReport.status && (
+                                  <div><p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-0.5">Status</p><p className="font-bold text-emerald-600">{selectedReport.status}</p></div>
+                                )}
+                                {selectedReport.priority && (
+                                  <div><p className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-0.5">Priority</p><p className="font-bold text-slate-700">{selectedReport.priority}</p></div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
                           {(selectedReport.sections || []).length === 0 && (
                             <div className="flex flex-col items-center justify-center h-full text-slate-500 gap-3">
                               <BarChart3 size={40} className="opacity-20" />
@@ -12190,8 +12302,8 @@ const spec = JSON.parse(response.text);
                                           const totalH = bNames.reduce((s, b) => s + (Number(filteredBrandsObj[b]?.headline_mentions) || 0), 0);
                                           const totalF = bNames.reduce((s, b) => s + (Number(filteredBrandsObj[b]?.full_mentions || filteredBrandsObj[b]?.mentions) || 0), 0);
                                           const totalAll = totalH + totalF;
-                                          const hPct = totalAll > 0 ? ((totalH / totalAll) * 100).toFixed(0) : '0';
-                                          const fPct = totalAll > 0 ? ((totalF / totalAll) * 100).toFixed(0) : '0';
+                                          const hPct = totalAll > 0 ? Math.round((totalH / totalAll) * 100) : 0;
+                                          const fPct = totalAll > 0 ? 100 - hPct : 0;
                                           return (
                                             <div className="space-y-4">
                                               {/* Aggregate header */}
@@ -12322,13 +12434,13 @@ const spec = JSON.parse(response.text);
                                           // === COVERAGE & REACH: Article reach per brand (Headline vs Article Content) ===
                                           const bNames = Object.keys(filteredBrandsObj);
                                           const formatR = (v) => v >= 1000000 ? `${(v/1000000).toFixed(1)}M` : v >= 1000 ? `${(v/1000).toFixed(0)}K` : v.toLocaleString();
+                                          // Reach = mentions × 10,000 avg readers/article (consistent with SOV report methodology)
                                           const calcReach = (d) => {
-                                            const hm = Number(d.headline_mentions) || 0;
-                                            const fm = Number(d.full_mentions || d.mentions) || 0;
-                                            const srcCount = Object.keys(d.sources || {}).length || 1;
-                                            const hReach = hm * srcCount * 45000;
-                                            const fReach = fm * srcCount * 12000;
-                                            return { hReach, fReach, total: hReach + fReach };
+                                            const hm = Number(d.headline_mentions !== undefined ? d.headline_mentions : Math.round((d.mentions || 0) * 0.4)) || 0;
+                                            const fm = Number(d.full_mentions !== undefined ? d.full_mentions : Math.round((d.mentions || 0) * 0.6)) || 0;
+                                            const hReach = hm * 10000;
+                                            const fReach = fm * 10000;
+                                            return { hReach, fReach, total: (hm + fm) * 10000 };
                                           };
                                           const allReach = bNames.map(b => ({ name: b, ...calcReach(filteredBrandsObj[b] || {}) }));
                                           const grandTotal = allReach.reduce((s, r) => s + r.total, 0);
@@ -12468,7 +12580,6 @@ const spec = JSON.parse(response.text);
                                             return bH + bF; // total
                                           };
                                           const grandTotal = bNames.reduce((s, b) => s + getVal(b, sovViewMode), 0);
-                                          const maxBrand = Math.max(...bNames.map(b => getVal(b, sovViewMode)), 1);
                                           return (
                                             <div className="space-y-3 py-1">
                                               {/* Toggle buttons */}
@@ -12491,7 +12602,7 @@ const spec = JSON.parse(response.text);
                                               {bNames.map((b, i) => {
                                                 const val = getVal(b, sovViewMode);
                                                 const sov = grandTotal > 0 ? ((val / grandTotal) * 100).toFixed(1) : '0';
-                                                const barW = (val / maxBrand) * 100;
+                                                const barW = grandTotal > 0 ? (val / grandTotal) * 100 : 0;
                                                 return (
                                                   <div key={i} className="space-y-1">
                                                     <div className="flex justify-between text-xs">
@@ -13744,7 +13855,7 @@ const spec = JSON.parse(response.text);
                     competitorKeywords: newReportForm.competitorKeywords || '',
                     summary: `Assessment for topic: ${newReportForm.topic || 'All'}${newReportForm.keywords ? ' (' + newReportForm.keywords + ')' : ''} covering brand: ${newReportForm.brandKeywords || 'N/A'}${newReportForm.competitorKeywords ? ' against competitor: ' + newReportForm.competitorKeywords : ''}.`,
                     tags: ['Intelligence', 'Analysis'],
-                    metrics: { accuracy: '99.8%', confidence: 'Very High', sourcesCount: Math.floor(Math.random() * 100) + 50, startDate: newReportForm.startDate || '', endDate: newReportForm.endDate || '' },
+                    metrics: { startDate: newReportForm.startDate || '', endDate: newReportForm.endDate || '' },
                     sections: [
                       {
                         id: `${generatedId}-s1`,
