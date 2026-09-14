@@ -212,45 +212,46 @@ async function syncCloudSQLToBigQuery({ dryRun = false, lookbackDays } = {}) {
   const stagingTable = await createStagingTable(bigquery);
   console.log(`  [BQ Sync] Staging table ready: ${STAGING_TABLE}`);
 
-  // Step 3: Stream rows in batches
-  let offset      = 0;
+  // Step 3: Stream rows in batches (cursor-based — O(n) vs O(n²) OFFSET)
+  let lastId       = 0;
+  let streamed     = 0;
   let streamErrors = 0;
 
-  // Build param array for consistent positional params
-  const batchParams = lookbackDays ? [] : [];
-
-  while (offset < totalRows) {
-    const limit = BATCH_SIZE;
-    const sql   = lookbackDays
+  while (true) {
+    const sql = lookbackDays
       ? `SELECT id, title, url, full_body, author, agency, published_at,
                 sector, region, summary, sentiment, word_count, scraped_at
          FROM nexus_articles
-         WHERE imported_at >= NOW() - INTERVAL '${parseInt(lookbackDays)} days'
-         ORDER BY imported_at ASC
-         LIMIT $1 OFFSET $2`
+         WHERE id > $1
+           AND imported_at >= NOW() - INTERVAL '${parseInt(lookbackDays)} days'
+         ORDER BY id ASC
+         LIMIT $2`
       : `SELECT id, title, url, full_body, author, agency, published_at,
                 sector, region, summary, sentiment, word_count, scraped_at
          FROM nexus_articles
-         ORDER BY imported_at ASC
-         LIMIT $1 OFFSET $2`;
+         WHERE id > $1
+         ORDER BY id ASC
+         LIMIT $2`;
 
-    const batchRes = await db.query(sql, [limit, offset]);
+    const batchRes = await db.query(sql, [lastId, BATCH_SIZE]);
+    if (!batchRes.rows.length) break;
+
     const rows = batchRes.rows.map(normalizeRow).filter(r => r.url);
+    lastId    = batchRes.rows[batchRes.rows.length - 1].id;
+    streamed += batchRes.rows.length;
 
     try {
       await streamBatch(stagingTable, rows);
-      process.stdout.write(`\r  [BQ Sync] Streamed ${Math.min(offset + BATCH_SIZE, totalRows)}/${totalRows} rows...`);
+      console.log(`  [BQ Sync] Streamed ${streamed}/${totalRows} rows...`);
     } catch (err) {
       streamErrors++;
       const errMsg = err.errors ? JSON.stringify(err.errors.slice(0, 3)) : err.message;
-      console.warn(`\n  [BQ Sync] Batch at offset ${offset} had errors: ${errMsg}`);
+      console.warn(`  [BQ Sync] Batch ending at id ${lastId} had errors: ${errMsg}`);
       if (streamErrors > 5) {
         await dropStagingTable(bigquery);
         throw new Error(`Too many streaming errors (${streamErrors}). Aborting. Cloud SQL data preserved.`);
       }
     }
-
-    offset += BATCH_SIZE;
   }
 
   console.log(`\n  [BQ Sync] All ${totalRows} rows in staging.`);
