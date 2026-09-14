@@ -37,7 +37,8 @@ const LOCATION      = 'asia-south1';
 const CLOUD_SQL_RETENTION_DAYS = 1;
 
 // Batch size for reading from Cloud SQL
-const BATCH_SIZE = 5000;
+// Keep under ~4MB per BQ streaming insert (full_body can be large)
+const BATCH_SIZE = 2000;
 
 // ── Schema ────────────────────────────────────────────────────────────────────
 
