@@ -211,6 +211,9 @@ async function syncCloudSQLToBigQuery({ dryRun = false, lookbackDays } = {}) {
   const bigquery = requireBQClient();
   const stagingTable = await createStagingTable(bigquery);
   console.log(`  [BQ Sync] Staging table ready: ${STAGING_TABLE}`);
+  // BQ needs ~10s to propagate a new table before streaming inserts are accepted
+  await new Promise(r => setTimeout(r, 10000));
+  console.log(`  [BQ Sync] Staging table propagated — starting stream...`);
 
   // Step 3: Stream rows in batches (cursor-based — O(n) vs O(n²) OFFSET)
   let lastId       = 0;
