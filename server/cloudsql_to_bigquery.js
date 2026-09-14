@@ -37,7 +37,7 @@ const LOCATION      = 'asia-south1';
 const CLOUD_SQL_RETENTION_DAYS = 1;
 
 // Batch size for reading from Cloud SQL
-const BATCH_SIZE = 500;
+const BATCH_SIZE = 5000;
 
 // ── Schema ────────────────────────────────────────────────────────────────────
 
