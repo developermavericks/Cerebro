@@ -37,8 +37,8 @@ const LOCATION      = 'asia-south1';
 const CLOUD_SQL_RETENTION_DAYS = 1;
 
 // Batch size for reading from Cloud SQL
-// Keep under ~4MB per BQ streaming insert (full_body can be large)
-const BATCH_SIZE = 2000;
+// Articles have ~5KB full_body; 1000 rows ≈ 5MB, safely under BQ's 10MB insert limit
+const BATCH_SIZE = 1000;
 
 // ── Schema ────────────────────────────────────────────────────────────────────
 
