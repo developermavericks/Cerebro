@@ -21,6 +21,78 @@ class SmartScraper {
         return userAgent.toString();
     }
 
+    async launchBrowser(useProxy) {
+        const args = [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-blink-features=AutomationControlled',
+            '--window-size=1920,1080'
+        ];
+
+        if (useProxy && process.env.DATAIMPULSE_PROXY_URL) {
+            const parsed = new URL(process.env.DATAIMPULSE_PROXY_URL);
+            args.push(`--proxy-server=${parsed.host}`);
+        }
+
+        const browser = await puppeteerExtra.launch({
+            headless: true,
+            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+            args
+        });
+
+        return browser;
+    }
+
+    async initPage(browserInstance, useProxy) {
+        const page = await browserInstance.newPage();
+        
+        if (useProxy && process.env.DATAIMPULSE_PROXY_URL) {
+            const parsed = new URL(process.env.DATAIMPULSE_PROXY_URL);
+            if (parsed.username && parsed.password) {
+                await page.authenticate({
+                    username: decodeURIComponent(parsed.username),
+                    password: decodeURIComponent(parsed.password)
+                });
+            }
+        }
+
+        await page.setRequestInterception(true);
+        page.on('request', (req) => {
+            try {
+                const resourceType = req.resourceType();
+                const reqUrl = req.url().toLowerCase();
+                
+                const adKeywords = [
+                    'doubleclick', 'google-analytics', 'adservice', 'adsystem', 
+                    'adnxs', 'taboola', 'outbrain', 'hotjar', 'facebook', 'amazon-adsystem'
+                ];
+                
+                const isAd = adKeywords.some(keyword => reqUrl.includes(keyword));
+
+                if (isAd || ['image', 'font', 'stylesheet', 'media'].includes(resourceType)) {
+                    req.abort().catch(() => {});
+                } else if (resourceType === 'script') {
+                    // Allow Google/Gstatic scripts for Google searches to avoid timeouts/detaches
+                    if (reqUrl.includes('google') || reqUrl.includes('gstatic')) {
+                        req.continue().catch(() => {});
+                    } else {
+                        req.abort().catch(() => {});
+                    }
+                } else {
+                    req.continue().catch(() => {});
+                }
+            } catch (e) {
+                // Handled
+            }
+        });
+
+        const ua = this.getRandomUserAgent();
+        await page.setUserAgent(ua);
+        await page.setViewport({ width: 1920, height: 1080 });
+        return page;
+    }
+
     async scrapeDirectPageAxios(url) {
         try {
             console.log(`[SmartScraper] Attempting fast HTTP fetch for ${url}`);
@@ -70,7 +142,6 @@ class SmartScraper {
     }
 
     async scrapeUrl(url, title = '') {
-        let browser;
         let isFrontPage = false;
 
         // Extract a robust fallback title from URL path if not provided
@@ -140,68 +211,41 @@ class SmartScraper {
             console.warn(`[SmartScraper] Homepage check failed or timed out: ${err.message}`);
         }
 
-        try {
-            console.log(`[SmartScraper] Launching stealth browser for ${url}`);
-            browser = await puppeteerExtra.launch({
-                headless: true,
-                executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-                args: [
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--disable-dev-shm-usage',
-                    '--single-process',
-                    '--disable-blink-features=AutomationControlled',
-                    '--window-size=1920,1080'
-                ]
-            });
-
-            const page = await browser.newPage();
-
-            // Intelligent request interception: block ads, images, media, and scripts for direct targets
-            await page.setRequestInterception(true);
-            page.on('request', (req) => {
-                const resourceType = req.resourceType();
-                const reqUrl = req.url().toLowerCase();
+        const runSearchPhase1 = async (useProxy) => {
+            let tempBrowser;
+            try {
+                console.log(`[SmartScraper] Launching stealth browser for Phase 1 search (useProxy=${useProxy})...`);
+                tempBrowser = await this.launchBrowser(useProxy);
+                const page = await this.initPage(tempBrowser, useProxy);
                 
-                const adKeywords = [
-                    'doubleclick', 'google-analytics', 'adservice', 'adsystem', 
-                    'adnxs', 'taboola', 'outbrain', 'hotjar', 'facebook', 'amazon-adsystem'
-                ];
-                
-                const isAd = adKeywords.some(keyword => reqUrl.includes(keyword));
-
-                if (isAd || ['image', 'font', 'stylesheet', 'media'].includes(resourceType)) {
-                    req.abort();
-                } else if (resourceType === 'script') {
-                    // Only allow scripts for Google Searches, block on targets to avoid timeouts/detaches
-                    if (reqUrl.includes('google.com/search') || reqUrl.includes('google.co.')) {
-                        req.continue();
-                    } else {
-                        req.abort();
-                    }
-                } else {
-                    req.continue();
+                console.log(`[SmartScraper] Searching Google for URL (useProxy=${useProxy})...`);
+                const res = await this.searchGoogle(page, `"${url}"`);
+                if (!res) {
+                    throw new Error("CAPTCHA detected or search returned empty/failed");
                 }
-            });
 
-            const ua = this.getRandomUserAgent();
-            await page.setUserAgent(ua);
-            await page.setViewport({ width: 1920, height: 1080 });
+                console.log(`[SmartScraper] Found ${res.count} mentions. Extracting meta/social...`);
+                let meta = {};
+                try {
+                    meta = await this.scrapeDirectPage(page, url);
+                } catch (metaErr) {
+                    console.warn(`[SmartScraper] Direct page scrape failed: ${metaErr.message}`);
+                }
 
-            // --- PHASE 1: Google Search for URL ---
-            const result1 = await this.searchGoogle(page, `"${url}"`);
+                let social = { x: 0, linkedin: 0, facebook: 0 };
+                try {
+                    social = await this.scrapeSocialMentions(url, page);
+                } catch (socialErr) {
+                    console.warn(`[SmartScraper] Social mentions scrape failed: ${socialErr.message}`);
+                }
 
-            if (result1 && result1.count > 0) {
-                const meta = await this.scrapeDirectPage(page, url);
-                const social = await this.scrapeSocialMentions(url, page);
-                
-                await browser.close();
+                await tempBrowser.close();
                 return {
                     title: meta.title || title || '',
                     url,
-                    totalMentions: result1.count,
-                    domains: result1.domains,
-                    prominenceScore: result1.avgRankScore,
+                    totalMentions: res.count,
+                    domains: res.domains,
+                    prominenceScore: res.avgRankScore,
                     source: 'Direct',
                     status: 'Success',
                     metaDescription: meta.description,
@@ -209,13 +253,32 @@ class SmartScraper {
                     isFrontPage,
                     socialProof: {
                         ...social,
-                        reddit: result1.domains.filter(d => d.includes('reddit.com')).length
+                        reddit: res.domains.filter(d => d.includes('reddit.com')).length
                     },
-                    temporalLog: result1.dates
+                    temporalLog: res.dates
                 };
+            } catch (err) {
+                console.warn(`[SmartScraper] Phase 1 search failed (useProxy=${useProxy}): ${err.message}`);
+                if (tempBrowser) {
+                    await tempBrowser.close().catch(() => {});
+                }
+                return null;
+            }
+        };
+
+        try {
+            // Attempt 1: Direct unproxied Search
+            let result = await runSearchPhase1(false);
+
+            // Failover to Proxy if direct search fails
+            if (!result && process.env.DATAIMPULSE_PROXY_URL) {
+                console.log(`[SmartScraper] Direct Google search failed/blocked. Retrying via DataImpulse proxy...`);
+                result = await runSearchPhase1(true);
             }
 
-            await this.delay();
+            if (result) {
+                return result;
+            }
 
             // Attempt 2: Title Search
             if (title) {
@@ -224,29 +287,57 @@ class SmartScraper {
                 const hostname = new URL(url).hostname;
                 const query = `"${cleanTitle}" -site:${hostname}`;
 
-                const result2 = await this.searchGoogle(page, query);
-                if (result2) {
-                    await browser.close();
-                    return {
-                        title,
-                        url,
-                        totalMentions: result2.count,
-                        domains: result2.domains,
-                        prominenceScore: result2.avgRankScore,
-                        source: 'Title',
-                        status: 'Success',
-                        isFrontPage
-                    };
+                const runSearchPhase2 = async (useProxy) => {
+                    let tempBrowser;
+                    try {
+                        console.log(`[SmartScraper] Launching stealth browser for Phase 2 title search (useProxy=${useProxy})...`);
+                        tempBrowser = await this.launchBrowser(useProxy);
+                        const page = await this.initPage(tempBrowser, useProxy);
+                        
+                        console.log(`[SmartScraper] Searching Google for title (useProxy=${useProxy})...`);
+                        const res = await this.searchGoogle(page, query);
+                        if (!res) {
+                            throw new Error("CAPTCHA detected or search returned empty/failed");
+                        }
+
+                        await tempBrowser.close();
+                        return {
+                            title,
+                            url,
+                            totalMentions: res.count,
+                            domains: res.domains,
+                            prominenceScore: res.avgRankScore,
+                            source: 'Title',
+                            status: 'Success',
+                            isFrontPage
+                        };
+                    } catch (err) {
+                        console.warn(`[SmartScraper] Phase 2 title search failed (useProxy=${useProxy}): ${err.message}`);
+                        if (tempBrowser) {
+                            await tempBrowser.close().catch(() => {});
+                        }
+                        return null;
+                    }
+                };
+
+                // Try direct first
+                result = await runSearchPhase2(false);
+
+                // Failover to proxy
+                if (!result && process.env.DATAIMPULSE_PROXY_URL) {
+                    console.log(`[SmartScraper] Direct title search failed/blocked. Retrying via DataImpulse proxy...`);
+                    result = await runSearchPhase2(true);
+                }
+
+                if (result) {
+                    return result;
                 }
             }
 
-            await browser.close();
             throw new Error("All scraping attempts failed");
 
         } catch (error) {
-            console.error(`[SmartScraper] Blocked or Failed: ${error}`);
-            if (browser) await browser.close();
-
+            console.error(`[SmartScraper] Blocked or Failed: ${error.message}`);
             console.log(`[SmartScraper] Switching to ReachEstimator`);
             const estimate = ReachEstimator.estimate(url, title || '', 'v9', { isFrontPage });
             return {

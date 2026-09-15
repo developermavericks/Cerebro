@@ -1,0 +1,13 @@
+node_modules
+server/node_modules
+pgsql
+.git
+.env
+server/.env
+*.log
+dist
+tmp
+out
+npm-debug.log*
+.vscode
+.idea

@@ -1,11 +1,16 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Outfit:wght@400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Outfit:wght@400;500;600;700;800;900&family=Science+Gothic:ydeg,wght@1,400;1,700;1,900&family=Oxanium:wght@400;600;800&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+@keyframes indeterminate {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+
 :root {
   --font-body: "Inter", system-ui, sans-serif;
-  --font-heading: "Outfit", system-ui, sans-serif;
+  --font-heading: "New Science", "Science Gothic", "Oxanium", "Outfit", sans-serif;
   --bg-primary: #ffffff;
   --bg-secondary: #f8fafc;
   --text-primary: #023047;
@@ -15,12 +20,12 @@
 }
 
 .dark {
-  --bg-primary: #023047;
-  --bg-secondary: #011627;
+  --bg-primary: #0B121F;
+  --bg-secondary: #060B13;
   --text-primary: #ffffff;
   --text-secondary: #94a3b8;
-  --border-color: #1e293b;
-  --card-bg: rgba(1, 22, 39, 0.8);
+  --border-color: rgba(255, 255, 255, 0.08);
+  --card-bg: rgba(17, 26, 46, 0.8);
 }
 
 /* Global Dark Mode Text Overrides */
@@ -55,8 +60,17 @@
 .dark .bg-slate-100\/50,
 .dark .bg-slate-200,
 .dark .bg-teal-50\/50 {
-  background-color: #011627 !important;
+  background-color: #0B121F !important;
   border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.cleo-btn-off {
+  background-color: #ffffff !important;
+  border-color: #ffffff !important;
+  color: #1e293b !important;
+}
+.cleo-btn-off:hover {
+  background-color: #f1f5f9 !important;
 }
 
 .dark .border-slate-100,
@@ -70,6 +84,17 @@
   box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5) !important;
 }
 
+.dark [class*="shadow-indigo-"],
+.dark [class*="shadow-blue-"],
+.dark [class*="shadow-purple-"],
+.dark [class*="shadow-cyan-"],
+.dark [class*="shadow-pink-"],
+.dark [class*="shadow-emerald-"],
+.dark [class*="shadow-amber-"],
+.dark [class*="shadow-teal-"] {
+  box-shadow: none !important;
+}
+
 body {
   margin: 0;
   font-family: var(--font-body);
@@ -78,6 +103,10 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+h1, h2, h3, h4, h5, h6, .font-heading, aside button, aside span, aside label {
+  font-family: var(--font-heading) !important;
 }
 
 
@@ -114,6 +143,36 @@ body {
     animation: float 6s ease-in-out infinite;
   }
 
+  /* Create Report + button nudge animation */
+  @keyframes cta-nudge {
+    0%, 100% { transform: translateX(0) scale(1); }
+    15% { transform: translateX(4px) scale(1.08); }
+    30% { transform: translateX(-3px) scale(1.04); }
+    45% { transform: translateX(2px) scale(1.06); }
+    60% { transform: translateX(0) scale(1); }
+  }
+
+  @keyframes cta-ring-pulse {
+    0% { transform: scale(1); opacity: 0.6; }
+    70% { transform: scale(1.8); opacity: 0; }
+    100% { transform: scale(1.8); opacity: 0; }
+  }
+
+  .animate-cta-nudge {
+    animation: cta-nudge 2.5s ease-in-out infinite;
+    animation-delay: 1s;
+  }
+
+  .cta-ring::before {
+    content: "";
+    position: absolute;
+    inset: -4px;
+    border-radius: 9999px;
+    border: 2px solid #3b82f6;
+    animation: cta-ring-pulse 2s ease-out infinite;
+    pointer-events: none;
+  }
+
   .glass-shimmer {
     position: relative;
     overflow: hidden;
@@ -146,17 +205,13 @@ body {
     border-color: rgba(255, 255, 255, 0.4);
   }
 
-  /* Custom Scrollbar for Dropdowns */
+  /* Custom Scrollbar for Dropdowns - Hidden but scrollable */
+  .custom-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
   .custom-scrollbar::-webkit-scrollbar {
-    width: 8px;
-  }
-  
-  .custom-scrollbar::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  
-  .custom-scrollbar::-webkit-scrollbar-thumb {
-    @apply bg-slate-300 rounded-full hover:bg-slate-400 transition-colors;
+    display: none;
   }
 }
 
@@ -193,6 +248,7 @@ body {
   white-space: pre-wrap;
   word-break: break-word;
   line-height: 2.2;
+  font-family: inherit;
 }
 
 .ProseMirror p {
@@ -399,6 +455,11 @@ body {
 @media print { .fixed, [class*='fixed'] { position: relative !important; inset: auto !important; } }
 
 @media print {
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
   .grid > div, [class*='border rounded-3xl'], [class*='bg-white border'] {
     break-inside: avoid !important;
     page-break-inside: avoid !important;
@@ -406,10 +467,12 @@ body {
   }
 
   @page {
-    margin: 12mm !important;
+    size: landscape !important;
+    margin: 0 !important;
   }
 
   body {
+    padding: 15mm !important;
     zoom: 0.8 !important;
   }
 
