@@ -37,8 +37,8 @@ const LOCATION      = 'asia-south1';
 const CLOUD_SQL_RETENTION_DAYS = 1;
 
 // Batch size for reading from Cloud SQL
-// Articles have ~5KB full_body; 1000 rows ≈ 5MB, safely under BQ's 10MB insert limit
-const BATCH_SIZE = 1000;
+// 500 rows × ~5KB full_body ≈ 2.5MB — safely under BQ's 10MB insert limit
+const BATCH_SIZE = 500;
 
 // ── Schema ────────────────────────────────────────────────────────────────────
 
@@ -248,10 +248,16 @@ async function syncCloudSQLToBigQuery({ dryRun = false, lookbackDays } = {}) {
       await streamBatch(stagingTable, rows);
       console.log(`  [BQ Sync] Streamed ${streamed}/${totalRows} rows...`);
     } catch (err) {
-      const errMsg = err.errors ? JSON.stringify(err.errors.slice(0, 3)) : (err.message || '');
-      // Payload too large: split batch in half and retry — don't count as error
-      if (errMsg.includes('payload too large') || errMsg.includes('exceeds the limit')) {
-        console.warn(`  [BQ Sync] Batch at id ${lastId} too large (${rows.length} rows) — splitting...`);
+      const rawMsg = err.message || '';
+      const errorsArr = Array.isArray(err.errors) ? err.errors : [];
+      const errMsg = errorsArr.length > 0 ? JSON.stringify(errorsArr.slice(0, 3)) : rawMsg;
+      const isPayload = rawMsg.includes('payload') || rawMsg.includes('exceeds') || rawMsg.includes('too large') || rawMsg.includes('413') ||
+                        errMsg.includes('payload') || errMsg.includes('exceeds') || errMsg.includes('too large');
+      const isEmpty = errorsArr.length === 0 && !rawMsg; // BQ transient — no real detail
+
+      if (isPayload && rows.length > 1) {
+        // Split in half and retry — never count payload errors toward abort threshold
+        console.warn(`  [BQ Sync] Batch at id ${lastId} payload too large (${rows.length} rows) — splitting...`);
         const mid = Math.floor(rows.length / 2);
         try {
           await streamBatch(stagingTable, rows.slice(0, mid));
@@ -259,15 +265,18 @@ async function syncCloudSQLToBigQuery({ dryRun = false, lookbackDays } = {}) {
           console.log(`  [BQ Sync] Streamed ${streamed}/${totalRows} rows (split batch)...`);
         } catch (splitErr) {
           streamErrors++;
-          console.warn(`  [BQ Sync] Split batch at id ${lastId} still failed: ${splitErr.message}`);
+          console.warn(`  [BQ Sync] Split still failed at id ${lastId}: ${splitErr.message}`);
         }
+      } else if (isEmpty || errorsArr.length === 0) {
+        // Empty error array = transient BQ hiccup — skip, don't count toward abort
+        console.warn(`  [BQ Sync] Transient error at id ${lastId} (empty) — skipping batch`);
       } else {
         streamErrors++;
-        console.warn(`  [BQ Sync] Batch ending at id ${lastId} had errors: ${errMsg}`);
+        console.warn(`  [BQ Sync] Batch at id ${lastId} error (${streamErrors}): ${errMsg}`);
       }
-      if (streamErrors > 5) {
+      if (streamErrors > 10) {
         await dropStagingTable(bigquery);
-        throw new Error(`Too many streaming errors (${streamErrors}). Aborting. Cloud SQL data preserved.`);
+        throw new Error(`Too many real streaming errors (${streamErrors}). Aborting.`);
       }
     }
   }
