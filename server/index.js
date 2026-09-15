@@ -2547,6 +2547,45 @@ app.get('/api/nexus/bq-status', async (req, res) => {
   }
 });
 
+// Day-wise article stats for a given month (BQ + Cloud SQL)
+app.get('/api/nexus/daily-stats', async (req, res) => {
+  const secret = req.headers['x-cron-secret'] || req.query.secret;
+  if (!secret || secret !== process.env.CRON_SECRET) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    const month = req.query.month || '2026-09'; // e.g. 2026-09
+    const [year, mon] = month.split('-');
+    const start = `${year}-${mon}-01`;
+    const end   = mon === '12' ? `${Number(year)+1}-01-01` : `${year}-${String(Number(mon)+1).padStart(2,'0')}-01`;
+
+    const tableRef = `\`${bq.PROJECT_ID}.${bq.DATASET_ID}.${bq.TABLE_ID}\``;
+
+    // BQ: articles per day by published_at (article publish date)
+    const byPublished = await bq.query(`
+      SELECT DATE(published_at) AS day, COUNT(*) AS count
+      FROM ${tableRef}
+      WHERE published_at >= '${start}' AND published_at < '${end}'
+      GROUP BY 1 ORDER BY 1 ASC
+    `);
+
+    // BQ: articles per day by scraped_at (when Nexus fetched/imported them)
+    const byScraped = await bq.query(`
+      SELECT DATE(scraped_at) AS day, COUNT(*) AS count
+      FROM ${tableRef}
+      WHERE scraped_at >= '${start}' AND scraped_at < '${end}'
+      GROUP BY 1 ORDER BY 1 ASC
+    `);
+
+    res.json({
+      month,
+      note: 'by_published_at = article publish date in BQ | by_scraped_at = when Nexus scraped them',
+      by_published_at: byPublished.map(r => ({ day: r.day?.value || r.day, count: Number(r.count) })),
+      by_scraped_at:   byScraped.map(r => ({ day: r.day?.value || r.day, count: Number(r.count) })),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/nexus/region-check', async (req, res) => {
   const secret = req.headers['x-cron-secret'] || req.query.secret;
   if (!secret || secret !== process.env.CRON_SECRET) return res.status(401).json({ error: 'Unauthorized' });
