@@ -248,9 +248,23 @@ async function syncCloudSQLToBigQuery({ dryRun = false, lookbackDays } = {}) {
       await streamBatch(stagingTable, rows);
       console.log(`  [BQ Sync] Streamed ${streamed}/${totalRows} rows...`);
     } catch (err) {
-      streamErrors++;
-      const errMsg = err.errors ? JSON.stringify(err.errors.slice(0, 3)) : err.message;
-      console.warn(`  [BQ Sync] Batch ending at id ${lastId} had errors: ${errMsg}`);
+      const errMsg = err.errors ? JSON.stringify(err.errors.slice(0, 3)) : (err.message || '');
+      // Payload too large: split batch in half and retry — don't count as error
+      if (errMsg.includes('payload too large') || errMsg.includes('exceeds the limit')) {
+        console.warn(`  [BQ Sync] Batch at id ${lastId} too large (${rows.length} rows) — splitting...`);
+        const mid = Math.floor(rows.length / 2);
+        try {
+          await streamBatch(stagingTable, rows.slice(0, mid));
+          await streamBatch(stagingTable, rows.slice(mid));
+          console.log(`  [BQ Sync] Streamed ${streamed}/${totalRows} rows (split batch)...`);
+        } catch (splitErr) {
+          streamErrors++;
+          console.warn(`  [BQ Sync] Split batch at id ${lastId} still failed: ${splitErr.message}`);
+        }
+      } else {
+        streamErrors++;
+        console.warn(`  [BQ Sync] Batch ending at id ${lastId} had errors: ${errMsg}`);
+      }
       if (streamErrors > 5) {
         await dropStagingTable(bigquery);
         throw new Error(`Too many streaming errors (${streamErrors}). Aborting. Cloud SQL data preserved.`);
