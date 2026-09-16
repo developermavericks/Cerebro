@@ -3545,7 +3545,24 @@ function App() {
     const field = cfg.field || 'Total Mentions';
     if (field === 'Total Mentions' || field === 'Share of Voice' || field === 'SOV' || field === 'Reach Index') {
       labels = bNames;
-      dataValues = bNames.map(b => { const d = brandsObj[b]||{}; return (Number(d.headline_mentions)||0) + (Number(d.full_mentions||d.mentions)||0); });
+      // For bar/line: show two series — Headline vs Article Content
+      if (['bar', 'line'].includes(chartType)) {
+        const headlineVals = bNames.map(b => { const d = brandsObj[b]||{}; return Number(d.headline_mentions)||0; });
+        const articleVals  = bNames.map(b => { const d = brandsObj[b]||{}; return d.full_mentions != null ? Number(d.full_mentions)||0 : Math.max(0, (Number(d.mentions)||0) - (Number(d.headline_mentions)||0)); });
+        bgColors = labels.map((_,i) => BRAND_COLORS[i % BRAND_COLORS.length]);
+        return {
+          type: chartType,
+          data: {
+            labels,
+            datasets: [
+              { label: 'Headline Mentions', data: headlineVals, backgroundColor: '#6366f1', borderColor: '#6366f1', borderWidth: chartType==='bar'?0:2, borderRadius: chartType==='bar'?6:0, tension: 0.4, fill: false, pointRadius: chartType==='line'?4:0, stack: chartType==='bar'?'total':undefined },
+              { label: 'Article Content',   data: articleVals,  backgroundColor: '#06b6d4', borderColor: '#06b6d4', borderWidth: chartType==='bar'?0:2, borderRadius: chartType==='bar'?6:0, tension: 0.4, fill: false, pointRadius: chartType==='line'?4:0, stack: chartType==='bar'?'total':undefined },
+            ]
+          },
+          options: { responsive:true, maintainAspectRatio:false, animation:{duration:400}, plugins:{ legend:{display:true, position:'bottom', labels:{font:{size:10,weight:'bold'},padding:12,usePointStyle:true}} }, scales:{x:{grid:{display:false},ticks:{font:{size:9,weight:'bold'},maxRotation:45},stacked:chartType==='bar'},y:{grid:{color:'#f1f5f9'},ticks:{font:{size:9}},beginAtZero:true,stacked:chartType==='bar'}} }
+        };
+      }
+      dataValues = bNames.map(b => { const d = brandsObj[b]||{}; return d.full_mentions != null ? (Number(d.headline_mentions)||0) + (Number(d.full_mentions)||0) : (Number(d.mentions)||0); });
     } else if (field === 'Net Sentiment Index' || field === 'Sentiment' || field === 'Sentiment Landscape') {
       labels = bNames;
       dataValues = bNames.map(b => { const s = (brandsObj[b]||{}).sentiment||{}; const t=(Number(s.Positive)||0)+(Number(s.Neutral)||0)+(Number(s.Negative)||0); return t>0?Number((((Number(s.Positive)||0)-(Number(s.Negative)||0))/t*100).toFixed(1)):0; });
@@ -7102,6 +7119,8 @@ ${bodyHtml}
                             <input
                               type="date"
                               value={analysisStartDate}
+                              min="2026-07-01"
+                              max={analysisEndDate || undefined}
                               onChange={(e) => setAnalysisStartDate(e.target.value)}
                               className={`px-3 py-2 rounded-xl text-[10px] font-bold outline-none cursor-pointer shadow-md transition-all ${
                                 darkMode ? 'bg-[#151f32] border border-white/10 text-white [color-scheme:dark]' : 'bg-white border border-slate-200 text-slate-800'
@@ -7113,6 +7132,7 @@ ${bodyHtml}
                             <input
                               type="date"
                               value={analysisEndDate}
+                              min={analysisStartDate || "2026-07-01"}
                               onChange={(e) => setAnalysisEndDate(e.target.value)}
                               className={`px-3 py-2 rounded-xl text-[10px] font-bold outline-none cursor-pointer shadow-md transition-all ${
                                 darkMode ? 'bg-[#151f32] border border-white/10 text-white [color-scheme:dark]' : 'bg-white border border-slate-200 text-slate-800'
@@ -7950,12 +7970,14 @@ ${bodyHtml}
                                 <Calendar size={13} className={darkMode ? 'text-slate-400' : 'text-slate-500'} />
                                 <span className={`text-[10px] font-black uppercase tracking-widest ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>From</span>
                                 <input type="date" value={brandArticleDateFrom}
+                                  min="2026-07-01" max={brandArticleDateTo || undefined}
                                   onChange={(e) => { setBrandArticleDateFrom(e.target.value); setBrandArticlePage(1); setKwArticlesPage(1); }}
                                   className={`px-3 py-2 rounded-xl text-xs font-bold outline-none border cursor-pointer ${darkMode ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-800'}`} />
                               </div>
                               <div className="flex items-center gap-2">
                                 <span className={`text-[10px] font-black uppercase tracking-widest ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>To</span>
                                 <input type="date" value={brandArticleDateTo}
+                                  min={brandArticleDateFrom || "2026-07-01"}
                                   onChange={(e) => { setBrandArticleDateTo(e.target.value); setBrandArticlePage(1); setKwArticlesPage(1); }}
                                   className={`px-3 py-2 rounded-xl text-xs font-bold outline-none border cursor-pointer ${darkMode ? 'bg-[#0f172a] border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-800'}`} />
                               </div>
@@ -8322,12 +8344,12 @@ ${bodyHtml}
                             <span className={`text-[10px] font-black uppercase tracking-widest px-2 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Filter</span>
                             <div className="flex items-center gap-2">
                               <span className={`text-[10px] font-bold uppercase tracking-wider ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>From</span>
-                              <input type="date" value={compStartDate} onChange={e => setCompStartDate(e.target.value)}
+                              <input type="date" value={compStartDate} min="2026-07-01" max={compEndDate || undefined} onChange={e => setCompStartDate(e.target.value)}
                                 className={`text-xs font-semibold px-3 py-1.5 rounded-xl border focus:outline-none focus:ring-2 focus:ring-indigo-400 ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-300 text-slate-700'}`} />
                             </div>
                             <div className="flex items-center gap-2">
                               <span className={`text-[10px] font-bold uppercase tracking-wider ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>To</span>
-                              <input type="date" value={compEndDate} onChange={e => setCompEndDate(e.target.value)}
+                              <input type="date" value={compEndDate} min={compStartDate || "2026-07-01"} onChange={e => setCompEndDate(e.target.value)}
                                 className={`text-xs font-semibold px-3 py-1.5 rounded-xl border focus:outline-none focus:ring-2 focus:ring-indigo-400 ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-white border-slate-300 text-slate-700'}`} />
                             </div>
                             <select value={compSector} onChange={e => setCompSector(e.target.value)}
@@ -12300,7 +12322,7 @@ const spec = JSON.parse(response.text);
                                           // === BRAND OVERVIEW: Headline vs Article mentions ===
                                           const bNames = Object.keys(filteredBrandsObj);
                                           const totalH = bNames.reduce((s, b) => s + (Number(filteredBrandsObj[b]?.headline_mentions) || 0), 0);
-                                          const totalF = bNames.reduce((s, b) => s + (Number(filteredBrandsObj[b]?.full_mentions || filteredBrandsObj[b]?.mentions) || 0), 0);
+                                          const totalF = bNames.reduce((s, b) => { const d = filteredBrandsObj[b]||{}; return s + (d.full_mentions != null ? (Number(d.full_mentions)||0) : Math.max(0, (Number(d.mentions)||0) - (Number(d.headline_mentions)||0))); }, 0);
                                           const totalAll = totalH + totalF;
                                           const hPct = totalAll > 0 ? Math.round((totalH / totalAll) * 100) : 0;
                                           const fPct = totalAll > 0 ? 100 - hPct : 0;
@@ -13999,6 +14021,8 @@ const spec = JSON.parse(response.text);
                       <input
                         type="date"
                         value={newReportForm.startDate}
+                        min="2026-07-01"
+                        max={newReportForm.endDate || undefined}
                         onChange={(e) => setNewReportForm({ ...newReportForm, startDate: e.target.value })}
                         className="w-full py-3.5 px-5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-all shadow-inner"
                       />
@@ -14008,6 +14032,7 @@ const spec = JSON.parse(response.text);
                       <input
                         type="date"
                         value={newReportForm.endDate}
+                        min={newReportForm.startDate || "2026-07-01"}
                         onChange={(e) => setNewReportForm({ ...newReportForm, endDate: e.target.value })}
                         className="w-full py-3.5 px-5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 transition-all shadow-inner"
                       />
