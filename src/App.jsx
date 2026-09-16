@@ -3324,7 +3324,7 @@ function App() {
   const [isThemePickerOpen, setIsThemePickerOpen] = useState(false);
   const [activeConfigChartId, setActiveConfigChartId] = useState(null);
   const [sovViewMode, setSovViewMode] = useState('total'); // 'total' | 'headline' | 'full'
-  const [wordCloudMode, setWordCloudMode] = useState('headline'); // 'headline' | 'full'
+  const [wordCloudMode, setWordCloudMode] = useState('full'); // 'headline' | 'full'
   const [chartTypeOverrides, setChartTypeOverrides] = useState({}); // { [chartId]: chartType }
   const [openChartMenu, setOpenChartMenu] = useState(null);
   const [chartMenuPos, setChartMenuPos] = useState({ x: 0, y: 0 });
@@ -3545,23 +3545,6 @@ function App() {
     const field = cfg.field || 'Total Mentions';
     if (field === 'Total Mentions' || field === 'Share of Voice' || field === 'SOV' || field === 'Reach Index') {
       labels = bNames;
-      // For bar/line: show two series — Headline vs Article Content
-      if (['bar', 'line'].includes(chartType)) {
-        const headlineVals = bNames.map(b => { const d = brandsObj[b]||{}; return Number(d.headline_mentions)||0; });
-        const articleVals  = bNames.map(b => { const d = brandsObj[b]||{}; return d.full_mentions != null ? Number(d.full_mentions)||0 : Math.max(0, (Number(d.mentions)||0) - (Number(d.headline_mentions)||0)); });
-        bgColors = labels.map((_,i) => BRAND_COLORS[i % BRAND_COLORS.length]);
-        return {
-          type: chartType,
-          data: {
-            labels,
-            datasets: [
-              { label: 'Headline Mentions', data: headlineVals, backgroundColor: '#6366f1', borderColor: '#6366f1', borderWidth: chartType==='bar'?0:2, borderRadius: chartType==='bar'?6:0, tension: 0.4, fill: false, pointRadius: chartType==='line'?4:0, stack: chartType==='bar'?'total':undefined },
-              { label: 'Article Content',   data: articleVals,  backgroundColor: '#06b6d4', borderColor: '#06b6d4', borderWidth: chartType==='bar'?0:2, borderRadius: chartType==='bar'?6:0, tension: 0.4, fill: false, pointRadius: chartType==='line'?4:0, stack: chartType==='bar'?'total':undefined },
-            ]
-          },
-          options: { responsive:true, maintainAspectRatio:false, animation:{duration:400}, plugins:{ legend:{display:true, position:'bottom', labels:{font:{size:10,weight:'bold'},padding:12,usePointStyle:true}} }, scales:{x:{grid:{display:false},ticks:{font:{size:9,weight:'bold'},maxRotation:45},stacked:chartType==='bar'},y:{grid:{color:'#f1f5f9'},ticks:{font:{size:9}},beginAtZero:true,stacked:chartType==='bar'}} }
-        };
-      }
       dataValues = bNames.map(b => { const d = brandsObj[b]||{}; return d.full_mentions != null ? (Number(d.headline_mentions)||0) + (Number(d.full_mentions)||0) : (Number(d.mentions)||0); });
     } else if (field === 'Net Sentiment Index' || field === 'Sentiment' || field === 'Sentiment Landscape') {
       labels = bNames;
@@ -6544,7 +6527,7 @@ ${bodyHtml}
                         {
                           title: 'News Articles in DB',
                           subtitle: nexusStats.latest ? `Last synced: ${new Date(nexusStats.latest).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}` : 'Synced daily at 2:30 PM',
-                          value: nexusStats.total !== null ? nexusStats.total.toLocaleString('en-IN') : '—',
+                          value: nexusStats.total !== null ? (nexusStats.total >= 1e9 ? (nexusStats.total / 1e9).toFixed(1) + 'B' : nexusStats.total >= 1e6 ? (nexusStats.total / 1e6).toFixed(1) + 'M' : nexusStats.total >= 1e3 ? (nexusStats.total / 1e3).toFixed(1) + 'K' : nexusStats.total.toString()) : '—',
                           video: '/search.mp4',
                           action: () => setActiveTab('keyword-search')
                         }
@@ -12315,9 +12298,41 @@ const spec = JSON.parse(response.text);
                                             <span className="text-xs font-bold text-slate-400">No articles found for these keywords</span>
                                           </div>
                                         ) : (chartTypeOverrides[chart.id] && chartTypeOverrides[chart.id] !== 'default' && cfg.field !== 'Word Cloud') ? (() => {
-                                          const cjsCfg = buildChartJSFromBrands(filteredBrandsObj, cfg, chartTypeOverrides[chart.id]);
-                                          if (!cjsCfg) return <div className="text-xs text-slate-400 py-6 text-center">Cannot display this data as {chartTypeOverrides[chart.id]}</div>;
-                                          return <div style={{ height: expandedChartIds[chart.id] ? 500 : 280 }}><DynamicChart config={cjsCfg} /></div>;
+                                          const chartType = chartTypeOverrides[chart.id];
+                                          const h = expandedChartIds[chart.id] ? 500 : 260;
+                                          const hasSplit = ['Total Mentions','Net Sentiment Index','Sentiment','Sentiment Landscape','Share of Voice','SOV','Reach Index','Articles Coverage'].includes(cfg.field) && !(cfg.field === 'Articles Coverage' && cfg.groupBy === 'Publication');
+                                          if (hasSplit) {
+                                            // Build headline/full variants by remapping mentions+sentiment, then use buildChartJSFromBrands
+                                            const mkBrandsObj = (useHeadline) => {
+                                              const result = {};
+                                              for (const [b, d] of Object.entries(filteredBrandsObj)) {
+                                                result[b] = { ...d,
+                                                  mentions: useHeadline ? (Number(d.headline_mentions)||0) : (d.full_mentions != null ? Number(d.full_mentions)||0 : Math.max(0,(Number(d.mentions)||0)-(Number(d.headline_mentions)||0))),
+                                                  sentiment: useHeadline ? (d.headline_sentiment || d.sentiment) : (d.full_sentiment || d.sentiment),
+                                                  headline_mentions: null, full_mentions: null,
+                                                };
+                                              }
+                                              return result;
+                                            };
+                                            const hCfg = buildChartJSFromBrands(mkBrandsObj(true), cfg, chartType);
+                                            const aCfg = buildChartJSFromBrands(mkBrandsObj(false), cfg, chartType);
+                                            if (!hCfg || !aCfg) return <div className="text-xs text-slate-400 py-6 text-center">Cannot display this data as {chartType}</div>;
+                                            return (
+                                              <div className="grid grid-cols-2 gap-4">
+                                                <div>
+                                                  <p className="text-[9px] font-black uppercase tracking-widest text-indigo-500 mb-2 text-center">Headline</p>
+                                                  <div style={{height: h}}><DynamicChart config={hCfg} /></div>
+                                                </div>
+                                                <div>
+                                                  <p className="text-[9px] font-black uppercase tracking-widest text-cyan-500 mb-2 text-center">Full Article</p>
+                                                  <div style={{height: h}}><DynamicChart config={aCfg} /></div>
+                                                </div>
+                                              </div>
+                                            );
+                                          }
+                                          const cjsCfg = buildChartJSFromBrands(filteredBrandsObj, cfg, chartType);
+                                          if (!cjsCfg) return <div className="text-xs text-slate-400 py-6 text-center">Cannot display this data as {chartType}</div>;
+                                          return <div style={{ height: h }}><DynamicChart config={cjsCfg} /></div>;
                                         })() : cfg.field === 'Total Mentions' ? (() => {
                                           // === BRAND OVERVIEW: Headline vs Article mentions ===
                                           const bNames = Object.keys(filteredBrandsObj);
@@ -12651,7 +12666,9 @@ const spec = JSON.parse(response.text);
                                           );
                                         })() : cfg.field === 'Word Cloud' ? (() => {
                                           // === WORD CLOUD ===
-                                          const words = extractWordFrequencies(filteredBrandsObj, wordCloudMode);
+                                          let words = extractWordFrequencies(filteredBrandsObj, wordCloudMode);
+                                          // Auto-fallback: if headline mode empty, try full article
+                                          if (!words.length && wordCloudMode === 'headline') words = extractWordFrequencies(filteredBrandsObj, 'full');
                                           if (!words.length) return <div className="text-xs text-slate-400 py-6 text-center">No article data available for word cloud</div>;
                                           const maxCount = words[0].count;
                                           return (
