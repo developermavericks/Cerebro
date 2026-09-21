@@ -99,7 +99,14 @@ class BatchProcessor {
                     'UPDATE batch_jobs SET processed_urls = $1, results = $2 WHERE id = $3',
                     [Math.min(i + CONCURRENCY, totalUrls), JSON.stringify(initialResults), jobId]
                 );
-                
+
+                // Check for cancellation after each chunk
+                const statusCheck = await db.query('SELECT status FROM batch_jobs WHERE id = $1', [jobId]);
+                if (statusCheck.rows[0]?.status === 'cancelled') {
+                    console.log(`Job ${jobId} cancelled by user.`);
+                    return;
+                }
+
                 // Buffer between chunks to avoid Google block
                 if (i + CONCURRENCY < data.length) {
                     await new Promise(resolve => setTimeout(resolve, 3000));

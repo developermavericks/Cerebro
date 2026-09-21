@@ -5331,7 +5331,7 @@ ${bodyHtml}
         }
         const job = await response.json();
         setReachBatchJob(job);
-        if (job.status === 'completed' || job.status === 'failed') {
+        if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
           clearInterval(interval);
           setReachScanning(false);
         }
@@ -5339,6 +5339,17 @@ ${bodyHtml}
         console.error('Polling error:', err);
       }
     }, 3000);
+  };
+
+  const cancelReachBatchJob = async () => {
+    if (!reachBatchJob?.id) return;
+    try {
+      await fetch(`${API_BASE}/api/cancel-batch/${reachBatchJob.id}`, { method: 'POST' });
+      setReachBatchJob(prev => ({ ...prev, status: 'cancelled' }));
+      setReachScanning(false);
+    } catch (err) {
+      console.error('Cancel error:', err);
+    }
   };
 
   const loadLatestBatchJob = async () => {
@@ -6917,7 +6928,19 @@ ${bodyHtml}
                               />
                             </div>
                             {reachBatchJob.status === 'processing' && (
-                              <p className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest animate-pulse">Scraping URLs and computing reach in background. Please wait...</p>
+                              <div className="flex items-center justify-between">
+                                <p className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest animate-pulse">Scraping URLs and computing reach in background. Please wait...</p>
+                                <button
+                                  onClick={cancelReachBatchJob}
+                                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 text-[10px] font-black uppercase tracking-widest border border-red-200 transition-colors"
+                                >
+                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+                                  Stop
+                                </button>
+                              </div>
+                            )}
+                            {reachBatchJob.status === 'cancelled' && (
+                              <p className="text-[10px] font-bold text-red-500 uppercase tracking-widest">Job cancelled — {reachBatchJob.processed_urls} of {reachBatchJob.total_urls} URLs were processed.</p>
                             )}
                           </div>
                         )}

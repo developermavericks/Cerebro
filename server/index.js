@@ -2276,6 +2276,22 @@ app.get('/api/batch-status/:jobId', async (req, res) => {
   }
 });
 
+app.post('/api/cancel-batch/:jobId', async (req, res) => {
+  try {
+    const result = await db.query(
+      "UPDATE batch_jobs SET status = 'cancelled' WHERE id = $1 AND status = 'processing' RETURNING id",
+      [req.params.jobId]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Job not found or not running' });
+    }
+    res.json({ success: true, jobId: req.params.jobId });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 app.get('/api/download-result/:jobId', async (req, res) => {
   try {
     const result = await db.query('SELECT * FROM batch_jobs WHERE id = $1', [req.params.jobId]);
